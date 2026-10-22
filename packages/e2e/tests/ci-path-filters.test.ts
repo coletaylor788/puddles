@@ -98,7 +98,8 @@ it("selects independent application and release jobs", () => {
   const steps = release.jobs.release.steps.map((step: any) => step.run ?? '').join('\n');
   expect(release.jobs.release.defaults.run['working-directory']).toBe('packages/release');
   expect(steps).not.toContain('openclaw-test-env');
-  expect(steps).toContain('corepack pnpm test');
+  expect(steps).toContain('pnpm@12.4.0');
+  expect(release.jobs.release.steps.some((step: { run?: string }) => step.run === 'pnpm test')).toBe(true);
 });
 
 it('tests the packaged sandbox image on a Docker-capable runner for every integration event', () => {
