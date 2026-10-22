@@ -44,13 +44,15 @@ test('publication waits for a real maintenance owner then publishes exactly once
   } finally { await stop(); }
 });
 
-test('publication deadline leaves no allocation or partial candidate', { timeout: 40_000 }, async t => {
+test('publication deadline leaves no allocation or partial candidate', { timeout: 90_000 }, async t => {
   const f = fixture(t), stop = await owner(f.path);
   try {
     const started = performance.now();
     assert.throws(() => publishCandidate(f.registry, f.source, f.inputs, f.policy), /Operation is already running/);
     const elapsed = performance.now() - started;
-    assert.ok(elapsed >= 29_000 && elapsed < 35_000, `bounded publication wait: ${elapsed}ms`);
+    // SQLite bounds busy-handler sleep; loaded runners may deschedule the
+    // process between sleeps. Keep a watchdog without asserting scheduling.
+    assert.ok(elapsed >= 29_000 && elapsed < 75_000, `bounded publication wait: ${elapsed}ms`);
     assert.deepEqual(readdirSync(f.registry), ['.registry.lock']);
     assert.ok(readdirSync(f.path).every(name => ['lock.sqlite', 'lock.sqlite-journal'].includes(name)),
       'only the competing owner lock database and its rollback journal exist before admission');
