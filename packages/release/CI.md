@@ -25,6 +25,13 @@ agents own implementation, focused tests, retained review, and repairs.
    deploys PROD, runs read-only tests, merges the exact tested PR heads, and resumes
    intake. TEST teardown must finish before a terminal deployment result.
 
+Full-suite setup belongs to the maintained application test entrypoint. It creates
+separate service Python environments from hash-locked test tools and frozen runtime
+dependencies, verifies exact source imports, and keeps native transform caches in
+its owned test scratch. Children are joined before scratch removal; interrupted
+operations reconcile the same tree. Shared host Python environments and immutable
+artifacts are not install destinations. See the [suite prerequisites](../e2e/README.md).
+
 ## Integration requirements
 
 This is a single-owner workflow. User authorization and retained agent review

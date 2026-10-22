@@ -1,12 +1,17 @@
 import { afterEach, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error executable module
-import { applicationSuite, repository, runMappedTests, runCombinedProjects } from '../src/application-suite.mjs';
+import { applicationSuite as rawApplicationSuite, repository, runMappedTests as rawRunMappedTests, runCombinedProjects as rawRunCombinedProjects } from '../src/application-suite.mjs';
 // @ts-expect-error executable module
 import { applicationTestProject } from '../src/application-test-projects.mjs';
 const roots: string[] = [];
+const scratchRoot = () => { const path = realpathSync(mkdtempSync(join(tmpdir(), 'application-suite-scratch-'))); roots.push(path); return path; };
+const runMappedTests = (...args: unknown[]) => rawRunMappedTests(...args, 4, scratchRoot());
+const runCombinedProjects = (...args: unknown[]) => rawRunCombinedProjects(...args, scratchRoot());
+const applicationSuite = (options: object, ...args: unknown[]) => rawApplicationSuite({scratch:scratchRoot(), ...options}, ...args);
+const preparedPython = async ({env}: {env: Record<string,string>}) => ({env, pythonEnv: {...env,XDG_CACHE_HOME:'/owned/python-cache'}, interpreters: {'gmail-mcp':'fixture-gmail-python', 'rocket-money-mcp':'fixture-rocket-python'}});
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function combinedListing(args: string[]) {
   const config = args[args.indexOf('--config') + 1];
@@ -65,17 +70,23 @@ it('the full application gate tests prepared output without invoking a build or 
   const manifest = JSON.parse(readFileSync(join(repository, 'packages/e2e/openclaw-patch-suite.json'), 'utf8'));
   const root = source(['dist/ready', 'openclaw.mjs', ...new Set<string>([...manifest.tests, ...manifest.patches.flatMap((patch: { tests: string[] }) => patch.tests)])]);
   const calls: Array<{command: string; args: string[]; options: {env: Record<string, string>}}> = [];
-  const result = await applicationSuite({source: root, artifact: root, workers: 4}, async (command: string, args: string[], options: {env: Record<string, string>}) => {
+  const result = await applicationSuite({source: root, artifact: root, workers: 4, env:{XDG_CACHE_HOME:'/maintained/cache'}}, async (command: string, args: string[], options: {env: Record<string, string>}) => {
     calls.push({command, args, options});
     return combinedListing(args) ?? args.filter(arg => /\.test\.tsx?$/.test(arg)).join('\n');
-  });
+  }, preparedPython);
   expect(result.status).toBe('passed');
   expect(calls.some(({args}) => args.includes('build') || args.some(arg => arg.includes('packages/release')))).toBe(false);
   expect(calls.some(({args}) => args.join(' ') === 'pnpm test')).toBe(true);
   expect(calls.some(({args}) => args.includes('pytest'))).toBe(true);
+  expect(calls.filter(({args}) => args.includes('pytest') || args.includes('ruff')).every(({options}) => options.env.XDG_CACHE_HOME === '/owned/python-cache')).toBe(true);
+  expect(calls.filter(({command}) => command === 'corepack').every(({options}) => options.env.XDG_CACHE_HOME === '/maintained/cache')).toBe(true);
   expect(calls.some(({args}) => args.some(arg => arg.endsWith('/bin/test-application.mjs')))).toBe(true);
   expect(calls.every(({options}) => options.env.OPENCLAW_CANDIDATE_DIR === root)).toBe(true);
   expect(calls.every(({options}) => options.env.OPENCLAW_VITEST_MAX_WORKERS === '4')).toBe(true);
+  expect(calls.filter(({args}) => !args.includes('pytest') && !args.includes('ruff')).every(({options}) => options.env.OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT.endsWith('/vitest-cache'))).toBe(true);
+  const native = calls.filter(({args}) => args[0] === 'scripts/run-vitest.mjs');
+  expect(native.filter(({args}) => args[1] === 'list').every(({options}) => options.env.OPENCLAW_VITEST_FS_MODULE_CACHE_PATH.endsWith('/vitest-discovery-cache'))).toBe(true);
+  expect(native.filter(({args}) => args[1] === 'run').every(({options}) => options.env.OPENCLAW_VITEST_FS_MODULE_CACHE_PATH === '')).toBe(true);
 });
 
 it('rejects lost, added or reassigned regressions in combined discovery', async () => {
@@ -114,7 +125,7 @@ it('honors bounded companion check deadlines without changing other checks', asy
     const result = applicationSuite({ source: root, artifact: root, extensionPath }, async (command: string, args: string[], options: { timeoutMs: number }) => {
       calls.push({ command, timeoutMs: options.timeoutMs });
       return combinedListing(args) ?? args.filter(arg => /\.test\.tsx?$/.test(arg)).join('\n');
-    });
+    }, preparedPython);
     if (timeoutMs === 4_500_000) {
       await result;
       expect(calls.find(call => call.command === 'synthetic-sequential')?.timeoutMs).toBe(timeoutMs);
@@ -124,4 +135,21 @@ it('honors bounded companion check deadlines without changing other checks', asy
     }
     expect(calls.filter(call => call.command !== 'synthetic-sequential').every(call => call.timeoutMs === 30 * 60_000)).toBe(true);
   }
+});
+
+
+it('keeps combined configs deterministic inside owned scratch and cleans on failure', async () => {
+  const root = source(['a.test.ts']), scratch = scratchRoot();
+  const paths: string[] = [];
+  for (const fail of [false, true, false]) {
+    const operation = rawRunCombinedProjects(root, new Map([['unit', new Set(['a.test.ts'])]]), async (_: string, args: string[]) => {
+      const path = args[args.indexOf('--config') + 1]; paths.push(path);
+      expect(path).toBe(join(scratch, 'combined-projects/vitest.config.mts'));
+      if (fail && args[1] === 'run') throw new Error('owned failure');
+      return combinedListing(args);
+    }, [], scratch);
+    if (fail) await expect(operation).rejects.toThrow('owned failure'); else await operation;
+    expect(existsSync(join(scratch, 'combined-projects'))).toBe(false);
+  }
+  expect(new Set(paths).size).toBe(1);
 });

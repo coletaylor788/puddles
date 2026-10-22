@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // The native lifecycle modules are also executable without the TypeScript toolchain.
@@ -220,7 +220,8 @@ describe("offline installed runtime", () => {
   });
 
   it.each(["bundleDependencies", "bundledDependencies"])("materializes %s without overlapping npm's bundled files", async (field) => {
-    const directory = root();
+    // Arborist must inspect the canonical package root, as the owned suite does.
+    const directory = realpathSync(root());
     const source = join(directory, "source");
     json(join(source, "package.json"), {
       name: "synthetic-bundled-runtime", version: "1.0.0", files: ["index.cjs"],
@@ -247,7 +248,6 @@ describe("offline installed runtime", () => {
     expect((await selectRuntimePackageFiles(source)).sort())
       .toEqual(selection[0].files
         .map(({ path }: { path: string }) => path)
-        .filter((path: string) => !path.startsWith("node_modules/"))
         .sort());
     expect(selection[0].files.some(({ path }: { path: string }) => path.startsWith("node_modules/"))).toBe(true);
     const artifact = await packRuntime(source, join(directory, "artifacts"));

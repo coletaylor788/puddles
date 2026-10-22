@@ -1,7 +1,8 @@
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runCommand } from './process-runner.mjs';
+import { prepareApplicationPython } from './application-python.mjs';
 
 export const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 export function safeNode(version = process.versions.node) {
@@ -25,7 +26,7 @@ const collected = (output, target) => output.split('\n').some(line => {
 });
 
 /** Resolve alternatives in batches; run a target only once per selected project. */
-export async function runMappedTests(source, manifests, run, workers = 4) {
+export async function runMappedTests(source, manifests, run, workers = 4, scratch) {
   if (!Number.isSafeInteger(workers) || workers < 1) throw new Error('Test workers must be a positive integer');
   const requests = new Map();
   for (const manifest of manifests) for (const target of nativeRegressionTargets(manifest).tests) {
@@ -60,14 +61,16 @@ export async function runMappedTests(source, manifests, run, workers = 4) {
     }
   }
   const ordinary = new Map([...selected].filter(([project]) => project !== 'e2e'));
-  if (ordinary.size) await runCombinedProjects(source, ordinary, run, flags);
+  if (ordinary.size) await runCombinedProjects(source, ordinary, run, flags, scratch);
   // The upstream e2e entrypoint deliberately runs distinct transport modes.
   if (selected.has('e2e')) await run(process.execPath, ['scripts/run-vitest.mjs', 'run', '--config', 'test/vitest/vitest.e2e.config.ts', ...flags, ...selected.get('e2e')], { cwd: source });
   return { projects: selected.size, tests: [...selected.values()].reduce((count, files) => count + files.size, 0) };
 }
 
-export async function runCombinedProjects(source, selected, run, flags) {
-  const directory = mkdtempSync(join(dirname(source), 'application-projects-'));
+export async function runCombinedProjects(source, selected, run, flags, scratch) {
+  if (!isAbsolute(scratch ?? '') || realpathSync(scratch) !== scratch) throw new Error('Combined tests require owned canonical scratch');
+  const directory = join(scratch, 'combined-projects');
+  mkdirSync(directory);
   const path = join(directory, 'vitest.config.mts');
   const selection = [...selected].map(([project, files]) => ({ project, files: [...files] }));
   const targets = [...new Set(selection.flatMap(group => group.files))];
@@ -89,7 +92,7 @@ export async function runCombinedProjects(source, selected, run, flags) {
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }
 
-export async function applicationSuite({ source, artifact, extensionPath, workers = 4, env = process.env }, execute = runCommand) {
+export async function applicationSuite({ source, artifact, extensionPath, workers = 4, env = process.env, scratch = env.OPENCLAW_APPLICATION_TEST_SCRATCH }, execute = runCommand, preparePython = prepareApplicationPython) {
   if (!safeNode()) throw new Error('Application checks require SQLite-safe Node 24.16+ or 26.1+');
   if (!isAbsolute(source ?? '') || !existsSync(join(source, 'dist'))) throw new Error('OPENCLAW_SRC must name the prepared, incrementally built feature source');
   if (!isAbsolute(artifact ?? '') || !existsSync(join(artifact, 'openclaw.mjs'))) throw new Error('OPENCLAW_CANDIDATE_DIR must name the complete built feature output');
@@ -97,29 +100,41 @@ export async function applicationSuite({ source, artifact, extensionPath, worker
   // Optional application-owned companion. No release-tool imports or auto-discovery.
   const extension = extensionPath ? (await import(pathToFileURL(realpathSync(extensionPath)).href)).default : {};
   const manifests = [suite, ...(extension.suites ?? [])];
-  const testEnv = { ...env, OPENCLAW_SRC: source, OPENCLAW_CANDIDATE_DIR: artifact,
+  let testEnv = { ...env, OPENCLAW_SRC: source, OPENCLAW_CANDIDATE_DIR: artifact,
     OPENCLAW_COMBINED_CANDIDATE: source, OPENCLAW_CANDIDATE: source, OPENCLAW_VITEST_WORKER_CACHE: '1',
     OPENCLAW_VITEST_MAX_WORKERS: String(workers), OPENCLAW_E2E_USE_PREBUILT_DIST: '1' };
   const run = async (command, args, options = {}) => {
     const start = Date.now();
-    try { return await execute(command, args, { cwd: repository, timeoutMs: 30 * 60_000, env: testEnv, ...options }); }
+    try {
+      const selectedEnv = options.env ?? testEnv;
+      const commandEnv = args[0] === 'scripts/run-vitest.mjs'
+        ? { ...selectedEnv, OPENCLAW_VITEST_FS_MODULE_CACHE_PATH: args[1] === 'list' ? join(scratch, 'vitest-discovery-cache') : '' }
+        : selectedEnv;
+      return await execute(command, args, { cwd: repository, timeoutMs: 30 * 60_000, ...options, env: commandEnv });
+    }
     finally { console.log(JSON.stringify({ check: [command, ...args].join(' '), durationMs: Date.now() - start })); }
   };
+  const pythonSetup = await preparePython({ repository, artifact, scratch, env: testEnv, run });
+  testEnv = { ...pythonSetup.env,
+    // Native transform slots include config paths in their identity and do not
+    // evict old content. Keep them in the joined operation's disposable tree.
+    OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT: join(scratch, 'vitest-cache'),
+    OPENCLAW_VITEST_FS_MODULE_CACHE_PATH: join(scratch, 'vitest-direct-cache') };
   // Build belongs to the feature's incremental loop. This command only tests its output.
   await run('corepack', ['pnpm', 'lint']);
   await run('corepack', ['pnpm', 'test']);
-  const python = env.GMAIL_MCP_PYTHON ?? 'python3.11';
   for (const service of ['gmail-mcp', 'rocket-money-mcp']) {
     const cwd = join(repository, 'servers', service);
-    await run(python, ['-m', 'pytest', 'tests/', '--ignore=tests/integration', '-q'], { cwd });
-    await run(python, ['-m', 'ruff', 'check', 'src/', 'tests/', ...(service === 'rocket-money-mcp' ? ['../../packages/browser-auth/src'] : [])], { cwd });
+    const python = pythonSetup.interpreters[service];
+    await run(python, ['-m', 'pytest', 'tests/', '--ignore=tests/integration', '-q'], { cwd, env: pythonSetup.pythonEnv });
+    await run(python, ['-m', 'ruff', 'check', 'src/', 'tests/', ...(service === 'rocket-money-mcp' ? ['../../packages/browser-auth/src'] : [])], { cwd, env: pythonSetup.pythonEnv });
   }
   await run('corepack', ['pnpm', 'prompt:snapshots:check'], { cwd: source });
   for (const project of new Set(manifests.flatMap(manifest => (manifest.patches ?? []).flatMap(patch => patch.typechecks ?? [])))) {
     relativeFile(project);
     await run(process.execPath, ['scripts/run-tsgo.mjs', '-p', project, '--incremental'], { cwd: source });
   }
-  const mapped = await runMappedTests(source, manifests, run, workers);
+  const mapped = await runMappedTests(source, manifests, run, workers, scratch);
   const candidateTests = nativeRegressionTargets(suite).candidateTests;
   if (candidateTests.length) {
     for (const file of candidateTests) relativeFile(file);

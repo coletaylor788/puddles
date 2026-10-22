@@ -56,13 +56,36 @@ deployment. Reconcile DEV experiments with the reviewed base before declaring re
 
 ## Full application suite
 
-The release manager runs this against the frozen, already-built feature output:
+The implementation owner or CI runs this against the frozen, already-built feature output:
 
 ```sh
 OPENCLAW_SRC=/absolute/feature/openclaw \
 OPENCLAW_CANDIDATE_DIR=/absolute/feature/application \
   node packages/e2e/bin/openclaw-test-env.mjs ci
 ```
+
+The suite requires CPython 3.11 for the packaged native dependencies. Set
+`GMAIL_MCP_PYTHON` to the host interpreter; it is used only to create isolated
+service environments. Each environment installs the hash-locked test/build tools
+in `python-test-tools.lock`, selects its frozen runtime dependencies, and installs
+reviewed service source without dependency resolution. Source imports are checked
+explicitly before any tests. Gmail and Rocket Money remain separate because their
+runtime dependency versions can differ. Chrome, Docker and embedding fixture inputs
+remain explicit host prerequisites; the suite does not install those services.
+
+The standalone command owns one deterministic `<artifact>.tests` scratch tree and
+bounded SQLite control files under `<artifact>.tests.lock`, all within the feature
+workspace. Success, failure and catchable signals join children before removing
+scratch, including native transform caches and the combined-project config.
+Incremental build/compiler caches stay with the build workspace. After SIGKILL
+the next invocation joins the recorded process scope and
+reclaims the same tree before restarting. Whole-workspace finalization also owns
+these files; a hosted runner owns them through job teardown. Unknown preexisting
+scratch is refused. CI adapters can supply `OPENCLAW_APPLICATION_TEST_SCRATCH` only
+when their durable operation owns that separate empty directory and cleans it after
+child closure, including interrupted-run reconciliation. There is no unmanaged
+temporary-directory fallback. The immutable artifact and shared Python environment
+are never install destinations.
 
 A companion supplies `E2E_APPLICATION_EXTENSION=/absolute/companion/scripts/application-suite.mjs`.
 It declares additional application targets and checks. A companion check may declare
