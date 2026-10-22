@@ -12,7 +12,7 @@ export function validateCommand(command) {
   }
   return command;
 }
-export async function command(specification, context = {}, observe = () => {}) {
+export async function command(specification, context = {}, observe = () => {}, report = value => console.log(JSON.stringify(value))) {
   validateCommand(specification);
   const started = Date.now();
   const scope = createProcessScope();
@@ -66,7 +66,9 @@ export async function command(specification, context = {}, observe = () => {}) {
     if (capture) await closed;
     observe(null);
     retireProcessScope(scope);
-    console.log(JSON.stringify({ phase: context.PUDDLES_RELEASE_PHASE, durationMs: Date.now() - started }));
+    // Protocol receivers reserve stdout for their wire format. Let their caller
+    // direct diagnostics elsewhere without changing child I/O or supervision.
+    report({ phase: context.PUDDLES_RELEASE_PHASE, durationMs: Date.now() - started });
   }
   if (failure) {
     if (capture) for (const name of ['stdout', 'stderr']) {
