@@ -26,11 +26,18 @@ async function repositoryGates(run) {
   await run(python, ["-m", "ruff", "check", "src/", "tests/", "../../packages/browser-auth/src"], { cwd: rocketDir });
 }
 
-installSignalHandlers({ cleanup: cleanupNativeFixtures });
+// The standalone outer wrapper uses command() as its sole signal owner.
+// The inner suite still owns its native fixture and command process groups.
+if (process.argv[2] !== 'ci' || process.env.OPENCLAW_APPLICATION_TEST_SCRATCH) {
+  installSignalHandlers({ cleanup: cleanupNativeFixtures });
+}
 try {
   const command = process.argv[2];
   if (command === "ci") {
-    console.log(JSON.stringify(await applicationSuite({ source: process.env.OPENCLAW_SRC,
+    if (!process.env.OPENCLAW_APPLICATION_TEST_SCRATCH) {
+      const { applicationTestOperation } = await import('../src/application-test-operation.mjs');
+      await applicationTestOperation({ source: process.env.OPENCLAW_SRC, artifact: process.env.OPENCLAW_CANDIDATE_DIR });
+    } else console.log(JSON.stringify(await applicationSuite({ source: process.env.OPENCLAW_SRC,
       artifact: process.env.OPENCLAW_CANDIDATE_DIR, extensionPath: process.env.E2E_APPLICATION_EXTENSION,
       workers: Number(process.env.E2E_TEST_WORKERS ?? 4) })));
   } else if (["patches", "native", "build", "source-gate"].includes(command)) {

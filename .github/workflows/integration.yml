@@ -168,10 +168,9 @@ jobs:
       - name: Install Puddles dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Python service test dependencies
+      - name: Select application test prerequisites
         run: |
-          python -m pip install --require-hashes -r servers/rocket-money-mcp/requirements.lock
-          python -m pip install -e './servers/gmail-mcp[dev]' -e './packages/browser-auth' -e './servers/rocket-money-mcp[dev]'
+          echo "GMAIL_MCP_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
           test -x '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
       - name: Apply the application patch stack
