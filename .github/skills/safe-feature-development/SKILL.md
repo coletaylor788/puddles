@@ -421,11 +421,11 @@ investigating instead of asking.
 3. **Implement through the fast local and DEV loop**
    - The implementer iterates locally using the repository's established
      development workflow and runs focused tests that cover the changed
-     behavior. Use the Puddles daily workflow below: focused local tests,
-     incremental local builds, short-lock draft deployment to DEV, and installed
-     behavior assertions. Mutable drafts need no CI build or release receipt.
-     The release owner runs the complete application suite on the frozen feature
-     output before PROD. Reuse the incremental build; do not build a second candidate.
+     behavior. Reuse one incremental workspace. Publish a frozen candidate with
+     the installed build entrypoint; use `ci-dev` for shared target deployment,
+     installed checks and teardown. Complete retained review and required checks
+     before `ci-prod`. Production CI runs the full suite on that same immutable
+     artifact before TEST. Focused local tests do not require deployment.
    - Use mocks or fakes for local testing and iteration when exercising a live
      dependency is unnecessary.
    - Route external writes and delivery in tests through deny-by-default mocks
@@ -561,21 +561,24 @@ Feature work is complete only when:
 
 ## Puddles lifecycle
 
-Use [the application runner](../../../packages/e2e/README.md),
-[release tooling](../../../packages/release/README.md),
+Use [the application runner](../../../packages/e2e/README.md), [release
+tooling](../../../packages/release/README.md),
 [coordination](../../../packages/e2e/DEPLOYMENT_COORDINATION.md), and
-[storage](../../../packages/e2e/DEVELOPMENT_STORAGE.md). Plan 057 describes the
-replacement. Until its adoption checkpoint is complete, preserve existing
-recovery and use legacy commands only for outstanding legacy transactions.
+[storage](../../../packages/e2e/DEVELOPMENT_STORAGE.md). Follow [triggered
+CI](../../../packages/release/CI.md) and [Plan
+064](../../../docs/plans/064-triggered-ci.md) for current shared deployment.
+Plan 057 records historical controller adoption. Preserve recovery and use
+legacy commands only for identified outstanding legacy transactions.
 
 ### Daily development
 
 Keep a paired checkout when needed, prepared OpenClaw source, and one mutable
 application output in the feature workspace. Reuse compiler output and the host
-package store. Build incrementally, run focused tests, deploy to DEV, and check
-the installed behavior. Shared DEV needs only a short mutation lock; isolated
-instances with their own state and ports need no shared slot. No arbitrary cap
-on the number of feature builders. Measure actual host contention before tuning.
+package store. Refresh paired source from main, run focused local tests and
+build incrementally. Use `ci-dev` for shared deployment and installed checks; CI
+owns its slot through teardown. Local test fixtures with owned state, ports and
+cleanup remain useful for focused testing, not as alternate shared deployments.
+Measure actual host contention before tuning concurrent builders.
 
 A ready feature is reviewed, committed, refreshed from main, and tested in DEV.
 Submit its frozen build to GitHub CI. The service rejects a changed base and wakes
@@ -605,9 +608,19 @@ compatible with the state actually captured in the one backup.
 
 GitHub schedules the lane and deterministic scripts carry each feature through
 merge and cleanup. The host service recovers without an active agent. Owners
-receive start/result events and resume only for implementation or repairs.
-Do not recreate the retired manager or its heartbeat. Plan 064 records cutover
-and live qualification status; do not restart feature releases before it passes.
+receive start/result events and resume only for implementation or repairs. Do
+not recreate the retired manager or its heartbeat. Plan 064 records cutover and
+live qualification status; the requester decides when paused owners restart.
+Record submission/run IDs after dispatch and yield. Durable lifecycle events
+continue the owner; inspect the exact receipt before taking the next step. No
+agent polling loop or heartbeat is required.
+
+Before archiving source or finalizing its workspace, confirm that CI build and
+controls registrations, retained candidates, active consumers and recovery
+references no longer depend on it. The legacy finalizer alone does not verify
+these CI references. Use maintained lifecycle commands for eligible resources;
+preserve referenced or incompletely owned state and report the hold. Run
+teardown does not authorize deletion of retained source or warm output.
 
 Publish source before finalizing. Run `finalize` from outside the feature workspace;
 archive app-managed worktrees through the app. Delete generated builds, fixtures,

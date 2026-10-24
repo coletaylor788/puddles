@@ -134,8 +134,9 @@ reserve a shared deployment environment.
 
 Each feature owns one reusable workspace and one incremental application build.
 Use the shared package store, with separate writable output, state, ports, and
-processes. Any owner may deploy to DEV under its short mutation lock. Build and
-review before joining the ready queue.
+processes. Use the installed build entrypoint and `ci-dev` for shared target
+deployment, installed checks and teardown. Focused local tests remain
+independent of deployment. Complete review and required checks before `ci-prod`.
 
 GitHub CI and the installed host service own deployment execution. Follow
 [triggered CI](../packages/release/CI.md) and its cutover checkpoint. The release
@@ -165,13 +166,17 @@ unchanged PROD and prevents deployment. Keep intake held through production
 acceptance and merge. Never restore over new live writes. Do not delete backups
 by hand or create a second full backup as part of replacement.
 
-Completion includes `finalize`: publish source, stop owned development processes,
-retire worktrees, and delete the whole feature workspace including builds,
-fixtures, logs, and receipts. Results remain in the conversation. Keep only
-active queue, installed deployment, and recovery state. Preserve other owners,
-unpublished source, shared caches, production state, and the backup. Retry
-cleanup independently without holding the ready queue. Follow
-[development storage](../packages/e2e/DEVELOPMENT_STORAGE.md).
+Completion includes eligible workspace cleanup after source publication and
+owned process closure. Before archiving source or finalizing its workspace,
+confirm that CI build and controls registrations, retained candidates, active
+consumers and recovery references no longer depend on it. The legacy finalizer
+alone does not verify these CI references. Use maintained lifecycle commands for
+eligible resources; preserve referenced or incompletely owned state and report
+the hold. Run teardown does not authorize deletion of retained source or warm
+output. Results remain in the conversation. Preserve other owners, unpublished
+source, shared caches, production state and the backup. Retry cleanup
+independently without holding the release lane. Follow [development
+storage](../packages/e2e/DEVELOPMENT_STORAGE.md).
 
 Keep one independent reviewer through remediation. Review the complete current
 behavior diff after meaningful changes. Do not require a terminal fresh reviewer
@@ -310,9 +315,8 @@ and expected behavior; keep one-time repair inputs only while recovery needs the
 
 ## OpenClaw deployment topology
 
-Use the installed release controller for targets whose adoption is complete.
-During adoption, follow the manager's current ownership checkpoint in
-`packages/e2e/DEPLOYMENT_COORDINATION.md`. Existing legacy transactions use
-`docs/openclaw-setup/patches/apply-and-deploy.sh`; do not copy artifacts manually.
-For that wrapper, an unset `MINI_HOST` means local deployment on the target Mac
-mini. Set `MINI_HOST` only for an intentional, approved remote deployment.
+Use [triggered CI](../packages/release/CI.md) for shared target deployment:
+installed build, `ci-dev`, then reviewed `ci-prod`. Scripts own slots through
+teardown and the production transaction through merge and cleanup. Do not start
+a manager or competing controller. Legacy commands in the coordination guide are
+only for identified outstanding recovery, never an alternate new-release path.

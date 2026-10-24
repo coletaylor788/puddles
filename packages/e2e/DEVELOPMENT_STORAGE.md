@@ -26,8 +26,15 @@ PID, start identity, and owned command root. See [the schema](../release/README.
 
 ## Finish a feature
 
-Publish source and complete or hand off every active consumer. Stop owned development
-processes. Run this from outside the workspace:
+Publish source and complete or hand off every active consumer. Stop owned
+development processes. Before archiving source or finalizing its workspace,
+confirm that CI build and controls registrations, retained candidates, active
+consumers and recovery references no longer depend on it. The legacy finalizer
+alone does not verify these CI references. Use maintained lifecycle commands for
+eligible resources; preserve referenced or incompletely owned state and report
+the hold. Run teardown does not authorize deletion of retained source or warm
+output. See [CI storage and recovery](../release/CI.md#recovery-and-storage).
+After these prerequisites hold, run this from outside the workspace:
 
 ```sh
 node /absolute/release/bin/puddles-release.mjs finalize /absolute/feature OWNER
