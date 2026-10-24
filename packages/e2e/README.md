@@ -7,17 +7,18 @@ queueing, backup, recovery, and cleanup.
 
 ```mermaid
 flowchart LR
-  A[Edit and focused tests] --> B[Incremental build]
-  B --> C[DEV and behavior checks]
-  C --> A
-  C --> D[Ready queue]
-  D --> E[Rebase and refresh build]
-  E --> F[Full application suite]
-  F --> G[TEST and tests]
-  G --> H[Backup]
-  H --> I[PROD and tests]
-  I --> J[Merge and finalize]
+  A[Refresh main and focused local tests] --> B[Incremental immutable build]
+  B --> C[ci-dev: deploy, check, teardown]
+  C --> D[Review and required checks]
+  D --> E[ci-prod: source freshness]
+  E -->|Stale| A
+  E --> F[Full suite then TEST]
+  F --> G[Backup then PROD checks]
+  G --> H[Exact merge, intake and run cleanup]
 ```
+
+Changed candidate source/control inputs repeat build, affected review and DEV.
+Workspace finalization is separate and waits for CI references to close.
 
 ## Daily development
 
@@ -41,9 +42,13 @@ third argument supplies application plugins as `[{"id":"plugin-id","source":"/ab
 Companion builds compose their required plugins and sidecars into the same output.
 Environment configuration, credentials, and writable state stay outside it.
 
-Deploy to DEV with the installed controller's `dev CONFIG REQUEST` command.
-Shared DEV holds only a short lock for deployment and installed checks. Other
-features continue building independently. See [coordination](DEPLOYMENT_COORDINATION.md).
+The low-level builder above is a local engineering tool. For shared deployment,
+use the configured installed build entrypoint, then `ci-dev CANDIDATE OWNER`
+and, after review/checks, `ci-prod CANDIDATE OWNER`; see [triggered
+CI](../release/CI.md). CI holds DEV through deployment, installed checks and
+teardown. Other features continue focused testing and building independently.
+After dispatch, save its IDs and yield to lifecycle events; inspect the exact
+terminal receipt on wake.
 
 DEV and TEST use the same complete output, configuration renderer, service adapter,
 and application preparation and acceptance commands. Change bindings for paths,
@@ -119,10 +124,14 @@ package caches where useful. Protect production state and foreign processes.
 
 ## Adoption
 
-The installed release controller owns DEV, TEST, PROD, and backup replacement.
-Follow the
-[adoption checkpoint](DEPLOYMENT_COORDINATION.md#adoption-checkpoint).
-Existing recovery transactions use [legacy runner commands](LEGACY_README.md),
-[legacy coordination](LEGACY_DEPLOYMENT_COORDINATION.md), and
-[legacy storage](LEGACY_DEVELOPMENT_STORAGE.md). Do not run both controllers
-against the same environments. Recovery cleanup does not reserve the ready queue.
+[Plan 064](../../docs/plans/064-triggered-ci.md) records the completed neutral
+dummy, including the repaired target sandbox gate and terminal cleanup. The
+cleanup tool is installed and predecessor retirement passed on both hosts. All
+four remaining repair checkouts were removed; Fresh target maintenance and final readiness verification passed. Installed CI owns shared DEV and
+TEST/backup/PROD/merge. Follow the current [coordination
+procedure](DEPLOYMENT_COORDINATION.md#current-process), including reference
+checks before workspace finalization. Existing recovery transactions use [legacy
+runner commands](LEGACY_README.md), [legacy
+coordination](LEGACY_DEPLOYMENT_COORDINATION.md), and [legacy
+storage](LEGACY_DEVELOPMENT_STORAGE.md). Do not run both controllers against the
+same environments. Recovery cleanup does not reserve the ready queue.

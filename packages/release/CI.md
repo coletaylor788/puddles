@@ -1,8 +1,11 @@
 # Triggered CI
 
-Implementation and cutover status: [Plan 064](../../docs/plans/064-triggered-ci.md).
-Do not restart feature releases until the live dummy trial in that plan passes.
-The release-manager agent and its heartbeat are retired. Scripts own execution;
+The neutral dummy passed build, DEV, the full suite, TEST, backup, PROD
+including target sandbox acceptance, exact merge, intake reopen and run cleanup.
+The final predecessor retirement passed on both hosts. The final disk,
+maintenance and handoff audit passed. See [Plan
+064](../../docs/plans/064-triggered-ci.md) for current evidence and timings. The
+release-manager agent and its heartbeat are retired. Scripts own execution;
 agents own implementation, focused tests, retained review, and repairs.
 
 ## Application loop
@@ -24,6 +27,15 @@ agents own implementation, focused tests, retained review, and repairs.
    installed tests, holds production intake, replaces and verifies the one backup,
    deploys PROD, runs read-only tests, merges the exact tested PR heads, and resumes
    intake. TEST teardown must finish before a terminal deployment result.
+
+After dispatch returns, record the durable submission and workflow IDs and
+yield. Start and terminal events queue a continuation for the owner; no polling
+agent or heartbeat executes, recovers or cleans the run. On wake, inspect the
+exact terminal deployment receipt. A workflow outcome alone is not cleanup
+proof. Repeated event IDs are the same event. Do not replay an uncertain
+submission or manually rerun an Actions attempt. A busy refusal before any
+submission exists may be retried after contention clears; reconcile a saved or
+uncertain submission first.
 
 Full-suite setup belongs to the maintained application test entrypoint. It creates
 separate service Python environments from hash-locked test tools and frozen runtime
@@ -94,12 +106,18 @@ copies before uploading. Capacity failures report the phase and numeric budgets
 without exposing filesystem paths; the final publication check still runs because
 unrelated disk use can change after admission.
 
-Run records default to a 100 MiB budget, 500 records, and seven-day delivered-result
-retention. Snapshot age defaults to one day. Host configuration sets appropriate
-budgets for real payloads. Undelivered results remain bounded; notification failure
-does not prevent independent artifact cleanup. Keep warm compiler caches bounded
-and register transfer scratch before allocating it. Feature source cleanup still
-uses the existing guarded `finalize`/managed-worktree archive lifecycle.
+Run records default to a 100 MiB budget, 500 records, and seven-day
+delivered-result retention. Snapshot age defaults to one day. Host configuration
+sets appropriate budgets for real payloads. Undelivered results remain bounded;
+notification failure does not prevent independent artifact cleanup. Keep warm
+compiler caches bounded and register transfer scratch before allocating it.
+
+Before archiving source or finalizing its workspace, confirm that CI build and
+controls registrations, retained candidates, active consumers and recovery
+references no longer depend on it. The legacy finalizer alone does not verify
+these CI references. Use maintained lifecycle commands for eligible resources;
+preserve referenced or incompletely owned state and report the hold. Run
+teardown does not authorize deletion of retained source or warm output.
 
 Start and terminal state changes commit their outbox event atomically. Notification
 delivery is at least once: the receiver must use the stable event ID to avoid
@@ -108,3 +126,13 @@ Workflow results and deployment results have distinct scopes: a cancelled Action
 job may leave the local transaction recovering. Only a terminal deployment record
 after cleanup establishes completion. Never put credentials or raw private logs in
 event messages; report the status, build ID, run reference, and owning task.
+
+
+### Target sandbox gate
+
+Every environment imports the frozen candidate sandbox image through the managed
+image path before preparation changes configuration. Installed acceptance
+verifies the runtime archive against an already-present image and exercises a
+cleanup-owned sandbox container. Missing images fail acceptance without an
+implicit load. Recipe and sandbox checks must both pass before the phase receipt
+is recorded.

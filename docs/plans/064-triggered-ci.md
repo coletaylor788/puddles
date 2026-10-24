@@ -1,36 +1,48 @@
 # Triggered development and production CI
 
-Status: Production approved
+Status: Dummy release passed and closed; final readiness verified
 Issue: https://github.com/coletaylor788/puddles/issues/324
-Last updated: 2026-10-21
+Last updated: 2026-10-24
 Owner: Triggered CI implementation
 
 ## Human section
 
 ### Design
 
-Release work currently depends on an agent joining commands, allocations, recovery
-checks, and cleanup into a complete operation. Replace that coordination with
-GitHub Actions and maintained deterministic scripts. Agents implement, test,
-review, and repair features. They call build, DEV CI, and production CI and receive
-start and terminal results in their owning task.
+The former release process depended on an agent joining commands, allocations,
+recovery checks and cleanup into a complete operation. GitHub Actions and
+maintained deterministic scripts now own that coordination. Agents implement,
+test, review, and repair features. They call build, DEV CI, and production CI
+and receive start and terminal results in their owning task.
 
 ```mermaid
 flowchart TD
-  A[Implement, local tests, incremental build] --> B[DEV CI: deploy and installed tests]
-  B --> C[Review and refresh from main]
-  C --> D[Submit frozen candidate]
-  D --> E{Base still current at dequeue?}
-  E -->|No| C
-  E -->|Yes| F[Full application tests]
-  F --> G[Deploy TEST and run installed tests]
-  G --> H[Hold intake and replace verified backup]
-  H --> I[Deploy PROD and run read-only tests]
-  I --> J[Merge exact tested heads]
-  J --> K[Resume intake, cleanup, notify]
-  I -->|Failure| R[Restore backup and verify recovery]
-  R --> K
+  A[Implement and refresh paired source from main] --> B[Local tests and incremental immutable build]
+  B --> C[DEV: deploy, installed tests, teardown]
+  C --> D[Retained review and required checks]
+  D --> E[Submit frozen candidate to PROD CI]
+  E --> F{Base still current at dequeue?}
+  F -->|No| A
+  F -->|Yes| G[Full application suite]
+  G --> H[Deploy TEST and run installed tests]
+  H --> I[Hold intake and replace verified backup]
+  I --> J[Deploy PROD and run read-only tests]
+  J --> K[Merge exact tested heads]
+  K --> L[Resume intake, cleanup, notify]
+  J -->|Acceptance failure| R[Restore backup and verify recovery]
+  R --> L
+  G -->|Failure| X[Stop progression, cleanup, notify owner]
+  H -->|Failure| X
+  X --> A
 ```
+
+Changes to candidate source or control inputs after review return through build
+and affected review/DEV before production submission. Earlier-stage failure
+leaves production unchanged or restores its prior running state through the
+relevant recovery phase. A backup capture failure restarts unchanged production;
+rollback of application bytes is reserved for a deployment that changed
+production. Merge uncertainty remains held for reconciliation and is not
+ordinary rollback.
 
 #### Build and DEV
 
@@ -42,12 +54,14 @@ production CI runs the full application suite before target deployment.
 
 #### Queue and production
 
-GitHub owns the ready queue, with separate DEV and production concurrency groups,
-multiple pending runs, and no cancellation of an active deployment by a newer run.
-Submission and dequeue both validate recorded main bases and exact feature heads.
-A stale candidate leaves the queue, wakes its owner, and must be refreshed before
-rejoining. CI never rebases or repairs source. All production releases use the
-same lane. Main writes must follow this policy, including updates outside CI.
+GitHub owns the ready queue, with separate DEV and production concurrency
+groups, multiple pending runs, and no cancellation of an active deployment by a
+newer run. Submission and dequeue both validate recorded main bases and exact
+feature heads. A stale candidate leaves the queue, wakes its owner, and must be
+refreshed before rejoining. Changed inputs require a new immutable build,
+affected review and DEV validation before another production submission. CI
+never rebases or repairs source. All production releases use the same lane. Main
+writes must follow this policy, including updates outside CI.
 
 The repository owner can authorize their own releases. Retained agent review
 and user approval remain in the task; a GitHub approving review, second account,
@@ -64,6 +78,13 @@ single backup, deploys PROD, and runs read-only acceptance tests. Only then does
 it merge the exact tested heads and reopen intake. Merge uncertainty is resolved
 by querying actual state. A partial paired merge blocks further releases until
 reconciled. Recovery never restores a snapshot over newly accepted live writes.
+
+Readiness checks return as soon as the application is ready. Configure an
+explicit bounded readiness interval for each environment and a longer owned
+command limit; a longer interval does not turn failure into acceptance.
+Maintenance must yield to transfer closure. A resource-budget deferral is
+reported as held, not passed, and its retry interval must prevent continuous
+contention with foreground work.
 
 #### Recovery, cleanup, and results
 
@@ -85,33 +106,40 @@ remains provider-neutral; host bindings and composition live in a private overla
 
 ### Status
 
-The requester approved this design and explicitly authorized implementation,
-shipping, pausing existing workers, retiring the release-manager automation, and
-testing a dummy change through the replacement on 2026-10-21. The approved
+**Approval:** Production approved. **Approval reference:** The requester
+approved implementation, shipping and a dummy trial on 2026-10-21, including
+pausing feature workers and retiring the release-manager automation. Approved
 corrections are fast installed-only DEV CI, full tests in production CI, merge
-after PROD success, freshness checks before queueing and at dequeue, and use of
-the trusted application account on the target host.
-The requester subsequently clarified that this is a single-owner project:
-self-authorization is sufficient, and no branch policies or second GitHub
-account should be required. The implementation follows that correction.
+after PROD success, source freshness before queueing and at dequeue, and the
+trusted application account on the target. This single-owner process requires
+neither branch protection nor a second GitHub account.
 
-Implementation is in isolated paired worktrees and under retained independent
-review. Existing implementers are paused. The release manager confirmed its
-automation was removed and relinquished the role. The new pipeline is not
-activated; a live dummy promotion and actual task wake remain unqualified.
+The neutral dummy passed DEV, the full application suite, TEST, backup
+replacement, PROD acceptance including the installed sandbox gate, exact source
+merge, intake reopening and run cleanup. Actual lifecycle events resumed the
+idle owner. A separate cleanup-tool correction is installed and verified on both
+hosts; predecessor retirement passed on both hosts. The final disk, maintenance
+and retained-resource audit passed. Feature owners stay paused until the
+requester receives the final handoff and restarts them.
 
 ## Agent section
 
 ### State
 
-- Public base: c2293925046120f612da362d18b7e0e125753b2e.
-- Private base and machine bindings remain in the private companion plan.
-- Existing controller is preserved until its active/recovery state is reconciled.
-- This plan supersedes Plan 057's agent-manager orchestration after cutover.
+- The implementation and current repairs cleared retained review and tooling checks.
+  Target image preparation and acceptance now use the managed importer.
+- Final live result: The dummy passed all application and deployment gates, merged,
+  reopened intake and closed source/target cleanup. The cleanup-tool correction
+  is installed and predecessor retirement passed. All four remaining repair checkouts were removed; Fresh target maintenance and final readiness verification passed.
+- Machine bindings, companion source identities and operational receipts remain
+  in the private companion plan.
+- This replaces Plan 057's agent-manager orchestration. Its automation is retired.
+- Feature owners remain paused until the requester restarts them.
+- Refresh source outside the lane; merge only the exact heads accepted in PROD.
 
 ### Scope and acceptance criteria
 
-- Three entrypoints: `puddles build`, `puddles ci-dev BUILD`, `puddles ci-prod BUILD`.
+- Three application-adapter entrypoints: `build`, `ci-dev` and `ci-prod`.
 - Real GitHub dispatch, queueing, exact artifact transfer, and terminal status.
 - DEV teardown holds the slot until no owned test process remains.
 - Stale base, altered artifact, missing checks, and changed PR head refuse release.
@@ -144,20 +172,49 @@ activated; a live dummy promotion and actual task wake remain unqualified.
 
 ### Validation
 
-Run the complete independent release suite and private adapter suite. Exercise
-actual subprocess interruption and durable recovery with fixture services. Verify
-workflow queueing and task delivery before production. Run a dummy application
-change through build, DEV, full suite, TEST, backup, PROD, merge, and cleanup.
-Record actual results here; fixture success is not production acceptance.
+The neutral dummy completed the normal build, DEV and production path. Its
+target preparation imported the candidate-bound sandbox image, and installed
+acceptance required that image to exist before running the owned smoke
+container. The full application suite passed 74 installed checks and both final
+scenarios. TEST and PROD receipts, exact merge verification, intake reopening
+and source/target acknowledgements establish completion; GitHub success alone is
+not that proof.
 
-The public release suite passed 87 Node tests and 384 Vitest tests. Subsequent
-focused source-gate and cancellation tests passed 18 tests. The private adapter
-suite passed 101 tests before later review fixes, with focused suites covering
-those fixes. A target-host run passed 15 isolated recovery tests, including
-process death and rollback. A real SSH outbox bridge probe delivered to a
-recording receiver and acknowledged the remote event. Its temporary directories
-were removed on both hosts. This proves transport and daemon delivery, not an
-actual task wake or application deployment.
+The incremental build reused the application core. Workflow completion and
+durable source/target cleanup are separate intervals; the latter includes
+submission and preflight work before the workflow starts.
+
+| Interval | Measured wall clock |
+| --- | --- |
+| Incremental build through immutable publication | 129.629s |
+| Assembly within that build | 65.340s |
+| DEV workflow, creation through final update | 909s |
+| DEV submission through source/target closure | 936.563s |
+| Full application suite workflow step | 2349s |
+| Underlying application suite command | 2276.530s |
+| Installed application hook within that command | 1323.215s |
+| PROD workflow, creation through final update | 4782s |
+| PROD submission through source/target closure | 4900.544s |
+| Queue wait isolated from scheduling | Not separately measured |
+
+Actual start and terminal events entered the owner's durable queue and resumed
+its task after yielding. This proves the supported idle wake path, not that
+every queued event was visibly rendered. Agents record submission/run IDs,
+yield, and inspect the exact receipt on continuation. They need no polling
+coordinator.
+
+Separate fixtures cover interruption, cancellation, source freshness, duplicate
+delivery, recovery and rollback. Fixture success does not establish a forced
+live rollback. An earlier live trial recovered unchanged production after
+readiness failed before deployment. Its later successful release exposed the
+missing target sandbox check; the current trial qualifies that repair. Earlier
+bootstrap counts and release timings are historical and are not substituted for
+this result.
+
+DEV holds its slot through teardown. Broader tests run in production CI before
+TEST. Per-command hashing, copying and deletion costs were not measured
+separately. Run scratch, test processes and owned containers closed. Predecessor
+retirement passed. Four completed repair checkouts were removed. Fresh target maintenance and final readiness verification passed.
 
 ### Rollout and rollback
 
@@ -170,24 +227,32 @@ transaction and retain only necessary diagnostic/recovery data.
 
 ### Review log
 
-One retained independent reviewer has assessed recovery, source integrity,
-cleanup, workflow cancellation, and event delivery. Public implementation review
-cleared on 2026-10-21; its final focused suite passed all 18 tests and the runtime
-bundle built successfully. Private integration review and live acceptance remain
-pending.
-
-The complete paired implementation subsequently cleared retained review. The
-single-owner correction also cleared that reviewer: explicit frozen checks
-replace policy/review API dependencies, with exact merge identity verified on
-both completion and recovery. Its focused source suite passed seven tests and
-the complete private adapter suite passed 117 tests. Live acceptance is pending.
+The retained independent reviewer assessed the complete implementation and its
+meaningful repairs, including source identity, recovery, cancellation, queues,
+notification delivery and cleanup. Final tooling changes cleared that reviewer
+and applicable checks. Final cleanup dispositions were reviewed against exact
+ownership and preservation proofs. The repaired target gate completed fresh
+qualification. The final cleanup-tool correction is installed and live
+predecessor retirement passed. The final disk and retained-resource audit
+passed. Documentation records these separate evidence states; earlier receipts
+remain historical.
 
 ### Checklist
 
-- [x] Design approved with final corrections.
-- [x] Isolated public/private branches created.
-- [x] Other workers safely paused and release-manager automation removed.
-- [ ] Implementation and retained independent review complete.
-- [ ] Fixture and real GitHub workflow validation complete.
-- [ ] Dummy feature deployed, merged, and cleaned up.
-- [ ] Owning task wakes with result; restart instructions delivered.
+- [x] Approved design, implementation and retained review.
+- [x] Successor immutable build and repaired target gate installed.
+- [x] Successor DEV and full application suite.
+- [x] Successor TEST, backup, PROD acceptance, exact merge and intake reopen.
+- [x] Earlier terminal cleanup and eligible task-resource retirement recorded.
+- [x] Successor terminal run cleanup.
+- [x] Cleanup tool installed and predecessor retirement passed.
+- [x] Four remaining repair checkouts removed through normal Git lifecycle.
+- [x] Fresh target maintenance and final readiness verification.
+- [x] Queue, stale-source, failure/recovery and notification qualification.
+- [x] Complete repaired-target qualification.
+- [x] Final restart guidance prepared; requester controls owner restart.
+
+Documentation-only closeout follows the documented docs-only exception: check
+prose and links, without rebuilding or redeploying unchanged runtime artifacts.
+The rebuild and affected-review/DEV requirement applies to changed candidate
+source or control inputs.

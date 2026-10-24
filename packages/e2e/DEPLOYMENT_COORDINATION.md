@@ -1,26 +1,43 @@
 # Deployment coordination
 
-## Triggered CI cutover
+## Current process
 
-[Plan 064](../../docs/plans/064-triggered-ci.md) replaces the manager with
-[GitHub workflows and a supervised host transaction](../release/CI.md).
-Feature agents remain paused until its live dummy trial passes. Do not start a
-release-manager heartbeat or submit new legacy tickets. Build and refresh from
-main before queueing; DEV CI deploys, checks installed behavior, and tears down.
-Production CI runs the full suite and TEST/backup/PROD/merge sequence. Scripts
-own queuing, recovery, cleanup, and status delivery. A stale candidate returns
-to its owner; no rebase or repair occurs while it holds a deployment lane.
+[Plan 064](../../docs/plans/064-triggered-ci.md) records the completed dummy,
+including target sandbox acceptance, exact merge, intake reopen and run cleanup.
+The final predecessor retirement passed on both hosts. The final disk,
+maintenance and handoff audit passed. Use [triggered CI](../release/CI.md):
+refresh paired source from main, run focused local tests, publish an immutable
+incremental build, then call `ci-dev`. DEV CI owns deployment, installed checks
+and teardown. Complete retained review and required checks before `ci-prod`; it
+runs the full suite, TEST, backup, PROD checks, exact merge, intake reopen and
+cleanup. Stale source returns through refresh, build, affected review and DEV.
+CI never repairs source in the deployment lane.
 
-The remaining text describes the prior controller adoption and retained recovery.
-It does not authorize restarting the retired manager.
+Save submission/run IDs and yield after dispatch. Start and terminal events
+continue the owner. Inspect the exact receipt on wake; no agent polling loop,
+release manager or heartbeat executes or recovers the transaction. The requester
+decides when paused feature owners restart after final handoff.
 
-## Previous process
+Before archiving source or finalizing its workspace, confirm that CI build and
+controls registrations, retained candidates, active consumers and recovery
+references no longer depend on it. The legacy finalizer alone does not verify
+these CI references. Use maintained lifecycle commands for eligible resources;
+preserve referenced or incompletely owned state and report the hold. Run
+teardown does not authorize deletion of retained source or warm output.
+
+## Historical controller process and outstanding recovery
+
+The sections below record the previous controller adoption, not current release
+instructions. Do not enqueue new legacy tickets or restart the retired manager.
+Keep their commands only for identified outstanding recovery.
+
+### Previous process
 
 One release manager owns a FIFO lane from TEST through PROD and merge. DEV stays
 open to feature owners under a short deployment lock. Building, focused tests,
 and review do not reserve TEST or PROD.
 
-## Feature owner
+### Feature owner
 
 1. Work in one owned workspace and reuse its incremental build. Run focused tests
    and installed DEV checks using the same preparation, startup, health, and feature
@@ -38,7 +55,7 @@ in DEV and rejoin the back. A failed final merge holds the ticket and intake unt
 merge succeeds or production is restored. Never restore over new live writes.
 Cleanup failures are retried independently and do not reserve the release lane.
 
-## Manager
+### Manager
 
 Read `status CONFIG`; call `run CONFIG` to finish or recover the active ticket, or
 take the oldest ready feature. Run again for the next ticket. Do not edit queue
@@ -60,7 +77,7 @@ configuration, ticket fields, and direct backup replacement. Install tool update
 only between tickets after the independent tool suite passes. Application releases
 use the installed version and do not rerun its implementation tests.
 
-## Adoption checkpoint
+### Adoption checkpoint
 
 The trial completed through PROD, source merge, and normal intake. The installed
 controller now owns new releases and direct backup replacement. Stable service
