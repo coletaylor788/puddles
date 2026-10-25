@@ -1,8 +1,8 @@
 # Plan 031: Rocket Money MCP and shared browser authentication
 
-**Status:** Saved-login DEV checks and application test repair passed; release pending
+**Status:** Refreshed onto main for triggered CI; fresh build and DEV pending
 **Issue:** [#135](https://github.com/coletaylor788/puddles/issues/135)
-**Last updated:** 2026-10-20
+**Last updated:** 2026-10-24
 
 ## Human section
 
@@ -107,7 +107,7 @@ Cleanup closes the scopes to new launches, joins every registered writer, and th
 
 The shared-session correction is merged. The saved-login timing correction and packaged synthetic check passed retained review and local validation. Renewal waits for delayed redirects and autofill, then verifies the pinned account before financial work. The check requires one connection across two native plugin instances and four calls.
 
-The refreshed candidate passed DEV acceptance. The latest release stopped in the application suite on an Active Memory custom-tool retry test, before TEST or production deployment. Production is unchanged. A test-only repair controls the retry clock and joins cleanup while preserving the configured timeout and success assertions. The repaired case and all 226 tests in its file passed. Refresh the affected source proofs before returning to the release queue. Account readiness remains a separate owner login check.
+The requester resumed this feature under triggered CI. Both source branches are refreshed onto current main. Historical DEV and staging receipts remain evidence for their original inputs, not qualification of the refreshed candidate. The test-only Active Memory retry repair remains included. The installed build entrypoint, ci-dev and ci-prod now own the release path; CI handles tests, deployment, exact merge, recovery and cleanup. Account readiness remains a separate owner login check.
 
 ## Agent section
 
@@ -118,7 +118,7 @@ The refreshed candidate passed DEV acceptance. The latest release stopped in the
 - Main's skill and owner-specific finance rules remain private runtime content, managed outside the repository.
 - Shared-session correction shipped in [PR #261](https://github.com/coletaylor788/puddles/pull/261), merge `5ef80fdc542227803895e19a42f61ca16be5bc4f`. Native plugin runtime stores are scoped to managed instances. Keep the MCP bridge in one process slot, retain per-call authorization and guards, and serialize dispatch, account changes and shutdown. Regression coverage uses distinct native plugin instances and the packaged MCP subprocess.
 - Earlier saved-login DEV attempts exposed process ownership and build discovery defects. Their corrections are reviewed; the process ownership changes are now in main. The refreshed candidate passed DEV. Historical attempts remain consumed; the latest failed release is independently closed with production unchanged.
-- Refreshed public base: `c2293925046120f612da362d18b7e0e125753b2e`. Programmatic-tool patches and tests stay present. The current repair changes only the Active Memory retry fixture and related documentation. Its full test file remains registered in the cumulative application suite.
+- Refreshed public base: `036cd88388955c5ad94e1133e8abf50f16335b69`. Programmatic-tool patches and tests stay present. The Active Memory retry fixture remains registered in the cumulative application suite. Retained review found no material rebase regression. Fresh build and installed DEV acceptance are pending.
 
 ### Scope and acceptance criteria
 
