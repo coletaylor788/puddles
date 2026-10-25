@@ -1,8 +1,8 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; release test clock repair validated, rebuild pending
+**Status:** Production approved; rebased candidate preparing for triggered CI
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
-**Last updated:** 2026-10-19
+**Last updated:** 2026-10-24
 
 ## Human section
 
@@ -75,15 +75,17 @@ extra Household question, require no Main peer reentry, then separately verify a
 user turn after delivery. They do not simulate concurrent user steering or claim
 deterministic prevention of model mistakes.
 
-#### Staging source
+#### CI deployment
 
-Local test runs may create an empty `.cache` parent whose `vitest` child is
-excluded from the prepared-source digest. Staging explicitly prepares that
-parent only when the reviewed plan requires an absent directory with mode 0755.
-It checks source ownership, consumers, the original digest and the absence
-preimage before preparation, then requires the exact final source digest.
-Existing directories, files, symlinks and other permissions are rejected.
-All non-excluded cache children remain part of the integrity check.
+The installed `build` entrypoint freezes the application and a separate bundle
+of reviewed migration and acceptance controls. Those controls verify the current
+configuration and guidance hashes before applying the Household changes. They
+preserve unrelated settings and bind the candidate's packaged sandbox image.
+DEV and TEST use CI-owned disposable slots and recorded external delivery.
+Their real-model qualification reads the existing credential reference in place.
+Production acceptance is read-only. CI owns deployment, tests, rollback, source
+merge and cleanup. The owner dispatches `ci-dev` and then `ci-prod`, yielding
+after each dispatch until the completion event arrives.
 
 ### Status
 
@@ -100,7 +102,13 @@ DEV-only compatibility filter so qualification preserves the programmatic-tool
 settings already released for all tool-enabled agents. Existing agent tool
 permissions and native approvals stay unchanged.
 
-The refreshed artifact passed all 12 managed DEV scenarios. The latest release
+The requester resumed this candidate on 2026-10-24 and directed both repositories
+to use current main and the installed triggered CI process. The original source
+heads are preserved. Both candidates are rebased, and retained review cleared
+the rebased behavior. Fresh CI controls, build and DEV acceptance are pending;
+historical DEV results do not qualify this new output.
+
+Previously, the refreshed artifact passed all 12 managed DEV scenarios. The latest legacy release
 then stopped before deployment on two iMessage test assertions. Both checked
 that at least 14.9 seconds remained in a 15-second buffer after real asynchronous
 ingress work. Message count and content checks passed, but host scheduling used
@@ -114,13 +122,32 @@ updated. All three focused cases and all 64 tests in the affected file passed.
 The failed release is independently
 closed, with production healthy and unchanged.
 
-The prepared source fingerprint changes. Run the affected rows and complete
-file before the supported build refresh. Verify artifact provenance and renew
-DEV qualification for changed output before another full release attempt.
+The legacy release envelopes remain historical evidence. They will not be
+replayed through the new workflow.
 
 ## Agent section
 
 ### State
+
+The active path is the installed `build`, `ci-dev`, and `ci-prod` workflow in
+[triggered CI](../../packages/release/CI.md). Both source branches were rebased
+on current main. The original heads are preserved under a task-owned backup
+branch. Main's newer flag-based readiness helper replaces the candidate's
+superseded readiness repair. All 38 patches apply to the pinned source.
+
+The companion CI entrypoint composes the maintained Household preparation and
+qualification with CI slot lifecycle and baseline acceptance. Frozen predecessor
+digests are checked again during acceptance; current mutable configuration cannot
+serve as its own expectation. The migration uses the candidate sandbox manifest
+before runtime installation. Main qualification accepts the maintained provider
+credential reference and the existing synthetic fixture shape. It does not copy
+credentials into a control bundle or runtime. The dependency closure includes
+dynamic fixture imports and child test scripts. CI owns slot teardown and scratch.
+Focused controls, configuration, guidance and authentication tests precede retained
+review of these integration changes. Build and installed DEV/TEST/PROD checks are
+still required. Record durable dispatch identifiers and yield after submission.
+
+The following paragraphs retain the earlier release evidence.
 
 Full R16 is consumed and independently closed. Its combined OpenClaw group
 reported 225 files passing and one failing, with 7,181 tests passing, two failing
