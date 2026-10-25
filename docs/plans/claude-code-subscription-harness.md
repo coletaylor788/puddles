@@ -159,14 +159,16 @@ and ship” after reviewing the phase-aware native approval design. Native Main,
 Household and Debug and restricted specialists are included. Haiku remains scoped
 to Reader and active-memory recall.
 
-The maintained patch and paired routing configuration have cleared independent
-review and exact-head repository checks. The rebuilt application passes installed
-configuration, session preparation and reviewer-bound approval regressions. The
-live eight-turn subscription check passes: prompt-free workspace writes, warm
-conversation continuity, exact one-time outside approval and denial, protected
-Household isolation, Household workspace behavior and restricted Haiku Reader
-output. Broader sandbox/profile, restart/compaction, model quality and fallback
-continuity remain release gates. Production is unchanged.
+The candidate is rebased onto current main after the requester resumed work on
+2026-10-24. Native profiles now compose with additive Code Mode. Delegated policy
+lookup retains the current conversation for execution and continuation ownership.
+Focused profile, approval, history and delegated-policy regressions pass, and
+retained source review is clear. Earlier
+subscription and boundary results remain historical evidence, not qualification
+of this rebuilt candidate. Shared compaction and idle-memory repairs remain with
+their owner; complete retention, recall and live provider acceptance are pending.
+Production routing is unchanged. Use installed `build`, `ci-dev` and `ci-prod`;
+CI owns deployment, tests, merge, recovery and cleanup.
 
 ## Agent section
 
@@ -183,7 +185,13 @@ carries only the reviewer device from the admitted run into the existing native
 approval request. Installed regression rejects unrelated reviewers and denies
 requests without a capable route. Cleanup is verified. These results do not
 qualify shared DEV, broad sandbox behavior or production.
-The isolated source now contains the implementation. Coordinate public/private main merges and installed slots with the release manager.
+The original feature head is preserved as `codex/claude-harness-pre-ci-20261024`.
+The candidate includes main `036cd88388955c5ad94e1133e8abf50f16335b69`.
+Apply the profile patch after both Code Mode patches. Its preparation intersects
+backend and caller caps before advertising controls and preserves the original
+mediated-tool provenance. New regressions cover native workspace and diagnostic
+node execution plus narrow and empty restricted-profile caps. Shared dependency
+work remains separate until its reviewed handoff is available.
 
 ### Scope and acceptance criteria
 
@@ -349,7 +357,11 @@ application. Installed cold restart and live fallback acceptance remain pending.
 
 Qualify Main first, then Household, Debug and specialists, before enabling their routes.
 Start at idle boundaries and retain conversation records. Release through the
-existing pipeline with tested artifacts and rollback. Rollback restores routing
+installed triggered CI pipeline with tested artifacts and rollback. Refresh main,
+publish an immutable build, dispatch `ci-dev`, save its IDs and yield. Inspect the
+terminal deployment receipt before continuing. Complete retained review and exact
+repository checks before `ci-prod`; CI owns the full suite, TEST, backup, PROD,
+merge and cleanup. Do not restart the retired manager. Rollback restores routing
 and policy without deleting sessions. A failed native boundary test leaves the
 role on its existing route; it does not authorize broader access.
 
