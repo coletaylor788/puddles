@@ -1,0 +1,69 @@
+diff --git a/dist/index.js b/dist/index.js
+index f9c8c7a402738a63de9c56f5851d156446ac095b..b105a47f588fae4d6c8f57be2fe9bd6b2b61d9db 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1658,11 +1658,9 @@ function resolveEnvOverrides(args, config, workspaceDir) {
+   }
+   return env;
+ }
+-function toolResult(text, details) {
+-  return {
+-    content: [{ type: "text", text }],
+-    details
+-  };
++function toolResult(text, details = {}) {
++  const content = [{ type: "text", text }];
++  return { content, details: { ...details, content } };
+ }
+ var index_default = definePluginEntry({
+   id: "apple-pim-cli",
+diff --git a/package.json b/package.json
+index 8112181de173136d7f833b8129bafc8af81a93e8..40d557fab17269fd7c234e5327d2fd43a6c3c974 100644
+--- a/package.json
++++ b/package.json
+@@ -37,6 +37,9 @@
+     "hostTargets": [
+       "darwin-arm64",
+       "darwin-x64"
++    ],
++    "runtimeExtensions": [
++      "./dist/index.js"
+     ]
+   },
+   "files": [
+@@ -82,7 +85,6 @@
+   },
+   "dependencies": {
+     "mailparser": "^3.9.3",
+-    "openclaw": "^2026.3.23",
+     "turndown": "^7.2.2"
+   },
+   "main": "./dist/index.js",
+@@ -91,5 +93,8 @@
+     "@types/node": "^25.5.0",
+     "@types/mailparser": "^3.4.6",
+     "tsup": "^8.5.0"
++  },
++  "peerDependencies": {
++    "openclaw": "*"
+   }
+ }
+diff --git a/src/index.ts b/src/index.ts
+index af01d7ef8c937088f31debb4f63c936385f14154..b7b5ba6665d3d3f38c7484203b23a26aa8312c9a 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -130,11 +130,9 @@ function resolveEnvOverrides(
+ }
+ 
+ /** Build a tool result with the required content + details shape. */
+-function toolResult(text: string, details?: unknown) {
+-  return {
+-    content: [{ type: "text" as const, text }],
+-    details,
+-  };
++function toolResult(text: string, details: Record<string, unknown> = {}) {
++  const content = [{ type: "text" as const, text }];
++  return { content, details: { ...details, content } };
+ }
+ 
+ /**

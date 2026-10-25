@@ -31,6 +31,15 @@ class TestEgress implements EgressHook {
 }
 
 describe("wrapMcpTool", () => {
+  it.each([false, true])("exposes checked content to scripts with backend isError=%s", async (isError) => {
+    const caller = makeCaller();
+    caller.callTool.mockResolvedValue({ content: [{ type: "text", text: "visible" }],
+      isError, structuredContent: { hidden: "RAW_STRUCTURED" }, _meta: { hidden: "RAW_META" } });
+    const result = await wrapMcpTool(tool, caller, { selectHooks: () => ({}) }).execute("c", {});
+    expect(result.details).toEqual({ source: "secure-apple-calendar", isError, content: result.content });
+    expect(JSON.stringify(result.details)).not.toMatch(/RAW_STRUCTURED|RAW_META/);
+  });
+
   it("returns an AnyAgentTool-shaped object", () => {
     const wrapped = wrapMcpTool(tool, makeCaller(), { selectHooks: () => ({}) });
     expect(wrapped.name).toBe("calendar");
@@ -94,6 +103,8 @@ describe("wrapMcpTool", () => {
       "[secure-apple-calendar] blocked calendar (ingress)",
     );
     expect((result.content[0] as { text: string }).text).toContain("injection detected");
+    expect(result.details).toHaveProperty("content", result.content);
+    expect(JSON.stringify(result.details)).not.toContain('"bad"');
   });
 
   it("ingress modify replaces the text content", async () => {
@@ -107,6 +118,8 @@ describe("wrapMcpTool", () => {
     const result = await wrapped.execute("c", { action: "events" });
     expect((result.content[0] as { text: string }).text).toBe("REDACTED");
     expect(result.details).toMatchObject({ modified: true });
+    expect(result.details).toHaveProperty("content", result.content);
+    expect(JSON.stringify(result)).not.toContain("orig");
   });
 
   it("egress block does NOT call the delegate (the whole point of egress)", async () => {
@@ -128,6 +141,7 @@ describe("wrapMcpTool", () => {
       "[secure-apple-calendar] blocked calendar (egress)",
     );
     expect((result.content[0] as { text: string }).text).toContain("Unknown destination");
+    expect(result.details).toHaveProperty("content", result.content);
   });
 
   it("egress allow then ingress allow proceeds normally", async () => {

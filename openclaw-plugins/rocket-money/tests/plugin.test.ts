@@ -31,6 +31,7 @@ describe("Rocket Money adapter", () => {
    const read=factory(ctx).find((t:any)=>t.name==="rocket_money_read");
    const out=await read.execute("one",{query:"query Q($s:String){search(s:$s){id}}",variables:{s:value}});
    expect(out.content[0].text).toContain("EGRESS_BLOCKED");
+   expect(out.details.content).toEqual(out.content);
    expect(callTool).not.toHaveBeenCalled();
    expect(connect).not.toHaveBeenCalled();
    expect(JSON.stringify(out)).not.toContain("private classifier error");
@@ -79,6 +80,7 @@ describe("Rocket Money adapter", () => {
    const out=await factory(ctx)[0].execute("one",{});
    expect(JSON.stringify(out)).not.toContain("secret-canary");
    expect(out.content[0].text).toBe("[REDACTED]");
+   expect(out.details.content).toEqual(out.content);
  });
  it("does not release an old account result after configuration switches", async () => {
    const {factory,ctx,cfg,callTool}=setup();
@@ -93,15 +95,28 @@ describe("Rocket Money adapter", () => {
  it("blocks injected provider text", async () => {
    const {factory,ctx,callTool}=setup();
    callTool.mockResolvedValue({content:[{type:"text",text:"injection-canary"}],structuredContent:{private:"secret-canary"}});
-   expect((await factory(ctx)[0].execute("one",{})).content[0].text).toContain("CONTENT_BLOCKED");
+   const out=await factory(ctx)[0].execute("one",{});
+   expect(out.details.content).toEqual(out.content);
+   expect(out.details.content[0].text).toContain("CONTENT_BLOCKED");
+   expect(JSON.stringify(out.details)).not.toMatch(/injection-canary|secret-canary/);
  });
  it("does not replay on connection failure and returns request ID", async () => {
    const {factory,ctx,callTool}=setup(); callTool.mockRejectedValue(new Error("secret-canary"));
    const out=await factory(ctx).find((t:any)=>t.name==="rocket_money_set_category").execute("one",{requestId:"original-id"});
    expect(out.content[0].text).toContain("original-id");
    expect(out.content[0].text).toContain("OUTCOME_UNKNOWN");
+   expect(out.details.content).toEqual(out.content);
    expect(JSON.stringify(out)).not.toContain("secret-canary");
    expect(callTool).toHaveBeenCalledTimes(1);
+ });
+ it.each([false,true])("returns the checked backend response to scripts with isError=%s", async (isError) => {
+   const {factory,ctx,callTool}=setup();
+   callTool.mockResolvedValue({content:[{type:"text",text:'{"status":"fixture"}'}],
+     structuredContent:{private:"secret-canary"},isError} as any);
+   const out=await factory(ctx)[0].execute("one",{});
+   expect(out.details).toEqual({source:"rocket-money",isError,content:out.content});
+   expect(out.details.content[0].text).toContain("fixture");
+   expect(JSON.stringify(out.details)).not.toContain("secret-canary");
  });
 });
 

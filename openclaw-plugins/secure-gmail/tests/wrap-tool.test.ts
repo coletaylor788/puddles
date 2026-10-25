@@ -26,6 +26,15 @@ function hook(result: HookResult, name = "TestHook"): IngressHook {
 }
 
 describe("wrapMcpTool", () => {
+  it.each([false, true])("exposes checked content to scripts with backend isError=%s", async (isError) => {
+    const caller = makeCaller();
+    caller.callTool.mockResolvedValue({ content: [{ type: "text", text: "visible" }],
+      isError, structuredContent: { hidden: "RAW_STRUCTURED" }, _meta: { hidden: "RAW_META" } });
+    const result = await wrapMcpTool(tool, caller).execute("c", {});
+    expect(result.details).toEqual({ source: "secure-gmail", isError, content: result.content });
+    expect(JSON.stringify(result.details)).not.toMatch(/RAW_STRUCTURED|RAW_META/);
+  });
+
   it("returns an AnyAgentTool-shaped object", () => {
     const wrapped = wrapMcpTool(tool, makeCaller());
     expect(wrapped.name).toBe("get_email");
@@ -79,6 +88,8 @@ describe("wrapMcpTool", () => {
     expect(text).toContain("prompt injection detected");
     expect(text).not.toContain("evil");
     expect(result.details).toMatchObject({ blocked: true });
+    expect(result.details).toHaveProperty("content", result.content);
+    expect(JSON.stringify(result.details)).not.toContain("evil");
   });
 
   it("never reveals raw content if any hook blocks (even if another modifies)", async () => {
@@ -103,6 +114,8 @@ describe("wrapMcpTool", () => {
     const text = (result.content[0] as { type: "text"; text: string }).text;
     expect(text).toBe("the code is [REDACTED]");
     expect(result.details).toMatchObject({ modified: true });
+    expect(result.details).toHaveProperty("content", result.content);
+    expect(JSON.stringify(result.details)).not.toContain("123456");
   });
 
   it("composes multiple modify verdicts (last write wins)", async () => {

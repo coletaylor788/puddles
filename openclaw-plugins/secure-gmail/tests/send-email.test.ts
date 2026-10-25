@@ -17,6 +17,7 @@ describe("approved Gmail execution", () => {
     const { tool, bridge, guard } = setup();
     const output = await tool.execute("call", email);
     expect(output.details).toMatchObject({ status: "sent", id: "abc" });
+    expect(output.details).toHaveProperty("content", output.content);
     expect(guard.check).toHaveBeenCalledWith("send_email", JSON.stringify(email), email);
     expect(bridge.callTool).toHaveBeenCalledExactlyOnceWith("send_email", email, undefined);
   });
@@ -42,6 +43,7 @@ describe("approved Gmail execution", () => {
     const bridge = { callTool: vi.fn(async () => receipt) };
     const output = await createSendTool({ guard, bridge }).execute("call", email);
     expect(output.details).toMatchObject({ status: "blocked" });
+    expect(output.details).toHaveProperty("content", output.content);
     expect(JSON.stringify(output)).not.toContain("PRIVATE_EMAIL_ECHO");
     expect(bridge.callTool).not.toHaveBeenCalled();
   });
@@ -56,6 +58,8 @@ describe("approved Gmail execution", () => {
     bridge.callTool.mockRejectedValue(new Error("PRIVATE_EMAIL_ECHO"));
     const output = await tool.execute("call", email);
     expect(output.details).toMatchObject({ status: "unknown" });
+    expect(output.details).toHaveProperty("content", output.content);
+    expect(JSON.stringify(output.details)).toContain("Do not retry automatically");
     expect(bridge.callTool).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(output)).not.toContain("PRIVATE_EMAIL_ECHO");
   });

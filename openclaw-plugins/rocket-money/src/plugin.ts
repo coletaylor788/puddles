@@ -42,7 +42,8 @@ function configuration(api: OpenClawPluginApi, ctx: OpenClawPluginToolContext): 
 }
 
 function result(value: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(value) }], details: { source: "rocket-money" } };
+  const content = [{ type: "text" as const, text: JSON.stringify(value) }];
+  return { content, details: { source: "rocket-money", content } };
 }
 
 export function createBridgeRuntime() {
@@ -123,7 +124,8 @@ export function createPlugin(connector: typeof connect = connect, runtime = shar
                 if (!current || JSON.stringify([current.command, current.stateDir, current.chromeExecutable]) !== key) {
                   return result({ status: "error", error: { code: "ACCESS_DENIED" } });
                 }
-                return { content: [{ type: "text" as const, text: checked }], details: { source: "rocket-money", isError: raw.isError === true } };
+                const content = [{ type: "text" as const, text: checked }];
+                return { content, details: { source: "rocket-money", isError: raw.isError === true, content } };
               } catch {
                 await close();
                 // A lost write response is uncertain. Keep its ID available for reconciliation.
