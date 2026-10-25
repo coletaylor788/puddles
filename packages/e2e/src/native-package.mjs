@@ -63,8 +63,17 @@ function materializeSelectedRuntime(source, destination, pack) {
   const manifest = JSON.parse(readFileSync(join(source, "package.json"), "utf8"));
   // Copy exactly the production graph by resolving from the root package.
   for (const name of Object.keys({ ...manifest.dependencies, ...manifest.optionalDependencies })) {
-    const from = join(source, "node_modules", name);
-    if (!existsSync(from)) {
+    // Registry packages in pnpm's virtual store have sibling dependencies.
+    // Resolve from the real package location, as for transitive packages above.
+    let current = realpathSync(source);
+    let from;
+    while (true) {
+      const candidate = join(current, "node_modules", name);
+      if (existsSync(candidate)) { from = realpathSync(candidate); break; }
+      if (dirname(current) === current) break;
+      current = dirname(current);
+    }
+    if (!from) {
       if (Object.hasOwn(manifest.optionalDependencies ?? {}, name)) continue;
       throw new Error(`Missing production dependency: ${name}`);
     }

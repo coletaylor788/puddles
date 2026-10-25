@@ -34,7 +34,10 @@ Correct both published source and compiled entry. Use the host OpenClaw SDK as a
 peer and select the compiled runtime entry. The companion build packages this
 plugin and selects it through normal configuration, ahead of the older global
 install. Tool names, schemas, handlers and data markings remain unchanged.
-This does not patch OpenClaw core or add another runtime adapter.
+The application packager resolves dependencies from the real pnpm package
+location, including sibling virtual-store dependencies. It still excludes the
+root plugin’s host SDK peer. This does not patch OpenClaw core or add another
+runtime adapter.
 
 ### Status
 
@@ -90,7 +93,8 @@ content, backend errors, redaction, guard blocks and uncertain writes.
 Native QuickJS regression passed against the composed pinned runtime. Companion
 configuration and CI-control suites passed 39 tests. The compiled four-plugin
 scenario passed with local fixtures and no external writes. Both new regressions
-are registered in the maintained application test inventories. Retained review
+are registered in the maintained application test inventories. Four package
+selection tests pass, including a pnpm sibling-dependency regression. Retained review
 identified and resolved the missing registrations; retained review is clear. CI owns installed DEV and production qualification.
 
 ### Rollout and rollback
@@ -105,7 +109,9 @@ require a new build and DEV run. CI owns recovery and cleanup.
 
 Retained reviewer found missing cumulative test registrations in both repositories.
 Both are fixed and independently verified. Final result: CLEAR. Complete packaged
-artifact qualification remains a build and CI gate.
+artifact qualification remains a build and CI gate. The first build exposed the
+packager’s direct-child-only dependency lookup; root lookup now matches the
+existing transitive lookup. Retained review independently passed all four package tests and cleared the repair.
 
 ### Checklist
 
