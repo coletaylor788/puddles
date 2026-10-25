@@ -149,7 +149,7 @@ boundaries without duplicating the pipeline or its completed proofs.
 The owner keeps the requested code, focused tests, committed regression, related
 documentation, and retained adversarial review coherent. Iterate with the fast
 local and DEV loop below. Refresh from main before queueing, then rebuild and
-repeat affected review and DEV checks. Reviewed frozen candidates enter GitHub
+repeat affected review and DEV checks. Reviewed output references enter the single release queue and GitHub
 CI after focused and required repository checks. CI rejects stale bases at
 dequeue and runs the full application suite, TEST, backup, PROD checks, and exact
 PR merge. Follow [triggered CI](../../../packages/release/CI.md). A correction
@@ -421,11 +421,13 @@ investigating instead of asking.
 3. **Implement through the fast local and DEV loop**
    - The implementer iterates locally using the repository's established
      development workflow and runs focused tests that cover the changed
-     behavior. Reuse one incremental workspace. Publish a frozen candidate with
+     behavior. Reuse one incremental workspace per feature; independent worktrees
+     build concurrently. Register the output reference with
      the installed build entrypoint; use `ci-dev` for shared target deployment,
      installed checks and teardown. Complete retained review and required checks
-     before `ci-prod`. Production CI runs the full suite on that same immutable
-     artifact before TEST. Focused local tests do not require deployment.
+     before `ci-prod`. Leave queued output idle until the submission closes.
+     Production CI runs the full suite on that same output before TEST.
+     CI owns one DEV/PROD queue and removes temporary Mini payloads after closure. Focused local tests do not require deployment.
    - Use mocks or fakes for local testing and iteration when exercising a live
      dependency is unnecessary.
    - Route external writes and delivery in tests through deny-by-default mocks

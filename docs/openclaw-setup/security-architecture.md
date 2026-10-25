@@ -143,13 +143,14 @@ flowchart TB
 - **Test isolation:** build tests, DEV, and TEST use separate state and processes.
   External calls use recording adapters. Tests cannot change PROD or live accounts.
 - **Production artifacts:** deploy reviewed artifacts that passed release checks.
-  TEST and PROD use the same verified bytes, independent of mutable build stores.
+  TEST and PROD use the same transferred output. Its trusted owner leaves the
+  source output idle until the release closes.
 
 Artifact hashes detect changed bytes; they do not protect against a compromised
 builder.
 
 [Triggered CI](../../packages/release/CI.md) moves queueing, deployment, recovery,
-and cleanup into deterministic services. Agents submit frozen candidate IDs and
+and cleanup into deterministic services. Agents submit build-output references and
 receive status; they do not own an environment while waiting for another agent.
 Private dispatch workflows use installed tools on trusted hosts. They must not
 execute fork-provided workflow code or accept a caller-supplied shell command.

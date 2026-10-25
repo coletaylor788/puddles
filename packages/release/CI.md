@@ -1,35 +1,36 @@
 # Triggered CI
 
-The neutral dummy passed build, DEV, the full suite, TEST, backup, PROD
-including target sandbox acceptance, exact merge, intake reopen and run cleanup.
-The final predecessor retirement passed on both hosts. The final disk,
-maintenance and handoff audit passed. See [Plan
-064](../../docs/plans/064-triggered-ci.md) for current evidence and timings. The
-release-manager agent and its heartbeat are retired. Scripts own execution;
+The initial dummy completed the deployment path. Multi-feature operation then
+exposed build contention and retained-payload capacity problems. The approved
+output queue correction is tracked in [Plan 065](../../docs/plans/065-output-release-queue.md).
+The release-manager agent and its heartbeat remain retired. Scripts own execution;
 agents own implementation, focused tests, retained review, and repairs.
 
 ## Application loop
 
 1. Build incrementally in the feature's existing development-host workspace.
-   Publish a digest-addressed copy of the complete output. A later edit cannot
-   change the submitted runtime. Keep private build paths out of GitHub inputs.
+   The build registers a small reference to its output and controls; it does not
+   create another full copy. Different worktrees can build concurrently. Leave
+   the submitted output unchanged until CI closes. Private paths stay on the hosts.
 2. Call DEV CI with that build ID. It deploys and runs installed checks while
    holding DEV, then stops test processes and cleans the environment. Broad
    source tests belong to implementation and production CI, not the DEV slot.
 3. Complete review and repository checks. Before submitting production CI, merge
    or rebase current main into each feature branch; rebuild and repeat affected
-   review and DEV checks whenever inputs change. Submit the resulting frozen ID.
-4. GitHub schedules the workflow using a separate DEV or production concurrency
-   group, `queue: max`, and `cancel-in-progress: false`. At dequeue, stale bases
-   fail and notify the owner. No source editing occurs while holding the lane.
+   review and DEV checks whenever inputs change. Submit the resulting build ID.
+4. The source service queues small references in one FIFO for DEV and production.
+   It admits one workflow after the previous transaction, callbacks and cleanup
+   close. GitHub uses one shared concurrency group as an additional guard. At
+   dequeue, stale bases fail and notify the owner; insufficient space holds the
+   waiting request with a reason before expensive testing or transfer begins.
 5. Production CI runs the full application suite on the development host, checks
    the bound result on the target, and deploys the same output to TEST. It runs
    installed tests, holds production intake, replaces and verifies the one backup,
    deploys PROD, runs read-only tests, merges the exact tested PR heads, and resumes
    intake. TEST teardown must finish before a terminal deployment result.
 
-After dispatch returns, record the durable submission and workflow IDs and
-yield. Start and terminal events queue a continuation for the owner; no polling
+Submission returns promptly with a durable queued submission ID. Record it and
+yield; the workflow ID is attached when admitted. Start and terminal events queue a continuation for the owner; no polling
 agent or heartbeat executes, recovers or cleans the run. On wake, inspect the
 exact terminal deployment receipt. A workflow outcome alone is not cleanup
 proof. Repeated event IDs are the same event. Do not replay an uncertain
@@ -94,20 +95,23 @@ the existing backup recovery state machine. Cleanup failure retains environment
 ownership; a later run cannot occupy a slot that an old cleanup can still stop.
 Host restart resumes registration, interrupted execution, and unfinished cleanup.
 
-Every snapshot includes the complete input manifest, source heads/bases/trees, and
-content digests. Loading verifies its identity and runtime bytes. Mutable DEV and
-application-suite receipts bind to that identity. Active consumers pin snapshots.
-Collection removes only recognized expired unreferenced objects. Registry byte
-budgets and disk reserve checks reject admission before space is exhausted.
-Admission distinguishes the logical registry quota from the temporary physical
-space required while copying. Publication includes destination allocation rounding
-and directory metadata. Transfer adapters must reserve both incoming and published
-copies before uploading. Capacity failures report the phase and numeric budgets
-without exposing filesystem paths; the final publication check still runs because
-unrelated disk use can change after admission.
+Each registration retains source heads/bases/trees and content digests. The
+source references its implementer's output; trust and exclusive ownership replace
+an extra source snapshot. The Mini receives the selected payload and checks that
+transfer. After terminal closure CI removes its payload and controls, retaining
+small manifest and DEV gate records. A later production request retransfers the
+same output and reuses its DEV receipt. Released payloads cannot be deployed
+until retransfer completes. Cleanup resumes after interruption.
+
+Active submissions pin metadata. Capacity preflight accounts for transfer copies,
+installed runtime and a missing sandbox image before the full suite. Final
+allocation checks still apply because unrelated disk use can change. Failure
+receipts retain bounded child-output diagnostics before removing test scratch.
+A held request can be cancelled with the adapter's `cancel-queued SUBMISSION`
+command; active workflows use GitHub cancellation and normal recovery.
 
 Run records default to a 100 MiB budget, 500 records, and seven-day
-delivered-result retention. Snapshot age defaults to one day. Host configuration
+delivered-result retention. Unpinned metadata age defaults to one day. Host configuration
 sets appropriate budgets for real payloads. Undelivered results remain bounded;
 notification failure does not prevent independent artifact cleanup. Keep warm
 compiler caches bounded and register transfer scratch before allocating it.
