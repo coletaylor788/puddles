@@ -43,3 +43,13 @@ file writer, path classifier, approval service or transcript converter is added.
 Registered regressions cover phase opt-in, rewrites, one-time approval, legacy
 behavior, restricted caps, inherited credentials and profile/version selection.
 The plan tracks installed sandbox, approval, exact-model and continuity gates.
+
+## Code Mode composition
+
+Apply this patch after `code-mode-additive-surface` and `claude-code-mode-mcp`.
+Preparation intersects backend profile limits with caller limits before Code Mode
+advertises its controls. The underlying grant retains the original execution
+provenance, so a node-only `exec` cannot become gateway execution when names are
+frozen. Native file tools stay outside the script catalog. Empty MCP limits add
+no controls. Registered preparation tests exercise workspace, diagnostic and
+restricted profiles with direct and scripted calls and disconnected nodes.

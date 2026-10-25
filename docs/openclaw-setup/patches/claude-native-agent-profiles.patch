@@ -1449,10 +1449,23 @@ index 07ba2e88169..24ea5df03d3 100644
          }
        }
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 91e25c5da42..02310e299b9 100644
+index 91e25c5da42..b59e5dd977c 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
-@@ -901,6 +901,7 @@ describe("prepareCliRunContext", () => {
+@@ -206,6 +206,12 @@ const ensureSandboxWorkspaceForSessionMock = vi.hoisted(() =>
+ );
+ vi.mock("../../config/config.js", async () => ({
+   getRuntimeConfig: getRuntimeConfigMock,
++  selectApplicableRuntimeConfig: (await import("../../config/runtime-snapshot.js"))
++    .selectApplicableRuntimeConfig,
++  getRuntimeConfigSourceSnapshot: (await import("../../config/runtime-snapshot.js"))
++    .getRuntimeConfigSourceSnapshot,
++  getRuntimeConfigSnapshot: (await import("../../config/runtime-snapshot.js"))
++    .getRuntimeConfigSnapshot,
+   resolveGatewayPort: (await import("../../config/paths.js")).resolveGatewayPort,
+ }));
+ 
+@@ -901,6 +907,7 @@ describe("prepareCliRunContext", () => {
      expect(normalizeConfig).toHaveBeenCalledWith(expect.any(Object), {
        backendId: "test-cli",
        agentId: "arthur",
@@ -1460,7 +1473,15 @@ index 91e25c5da42..02310e299b9 100644
        config,
      });
      expect(context.params.agentId).toBe("arthur");
-@@ -4507,6 +4508,55 @@ describe("prepareCliRunContext", () => {
+@@ -4213,6 +4220,7 @@ describe("prepareCliRunContext", () => {
+         admittedRunContext: context.params.admittedRunContext,
+         messageActionTurnCapability,
+         bindQuestionAnswerAuthority: expect.any(Function),
++        codeModeSkills: [],
+         toolAuth: {
+           agentDir: expect.any(String),
+           store: expect.objectContaining({ version: 1, profiles: {} }),
+@@ -4507,6 +4515,55 @@ describe("prepareCliRunContext", () => {
      expect(getActiveMcpLoopbackRuntime).not.toHaveBeenCalled();
    });
  
@@ -1516,7 +1537,7 @@ index 91e25c5da42..02310e299b9 100644
    it("materializes runtime toolsAllow for selectable backends without bundle MCP", async () => {
      const resolveExecutionArgs = vi.fn((context: { baseArgs: readonly string[] }) => [
        ...context.baseArgs,
-@@ -6215,6 +6265,57 @@ describe("prepareCliRunContext", () => {
+@@ -6215,6 +6272,57 @@ describe("prepareCliRunContext", () => {
      });
    });
  
@@ -1575,10 +1596,10 @@ index 91e25c5da42..02310e299b9 100644
      "stops CLI skill preparation before sandbox materialization when %s authority is revoked",
      async (phase) => {
 diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index 656740e1686..adc967b2e23 100644
+index 569e0fb5b33..0b0bfed13e1 100644
 --- a/src/agents/cli-runner/prepare.ts
 +++ b/src/agents/cli-runner/prepare.ts
-@@ -621,6 +621,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -646,6 +646,7 @@ async function prepareCliRunContextWithinReadFence(
    // config and managed process reuse must key from the resolved session owner.
    const backendResolved = resolveCliBackendConfig(params.provider, params.config, {
      agentId: workspaceResolution.agentId,
@@ -1586,7 +1607,7 @@ index 656740e1686..adc967b2e23 100644
    });
    if (!backendResolved) {
      throw new Error(`Unknown CLI backend: ${params.provider}`);
-@@ -645,6 +646,21 @@ async function prepareCliRunContextWithinReadFence(
+@@ -670,6 +671,21 @@ async function prepareCliRunContextWithinReadFence(
          workspaceDir,
          cwd,
        });
@@ -1608,7 +1629,7 @@ index 656740e1686..adc967b2e23 100644
    let runtimeToolsAllowPolicy: string[] | undefined;
    const rootedToolsAllow = params.rootedExecution
      ? params.cliToolAvailability?.openClaw
-@@ -1241,7 +1257,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1266,7 +1282,7 @@ async function prepareCliRunContextWithinReadFence(
      params.disableTools !== true &&
      params.skillLibraryAuthoring !== undefined;
    const shouldMaterializeRuntimePolicy =
@@ -1617,8 +1638,8 @@ index 656740e1686..adc967b2e23 100644
      !nodeClaudePlacement &&
      !skipsTurnPreparation &&
      !systemAgentMcpConfig &&
-@@ -1300,7 +1316,10 @@ async function prepareCliRunContextWithinReadFence(
-       : [];
+@@ -1324,7 +1340,10 @@ async function prepareCliRunContextWithinReadFence(
+   const projectedToolsBeforePromptBuild = projectedToolScope?.tools ?? [];
    params.assertCurrent?.();
    const hookFilteredProjectedTools = applyEmbeddedAttemptToolsAllow(
 -    projectedToolsBeforePromptBuild,
@@ -1629,7 +1650,7 @@ index 656740e1686..adc967b2e23 100644
      promptBuildToolsAllow,
    );
    if (
-@@ -1345,6 +1364,12 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1369,6 +1388,12 @@ async function prepareCliRunContextWithinReadFence(
      hookFilteredProjectedTools,
      params.cliToolAvailability?.openClaw,
    );
@@ -1639,10 +1660,10 @@ index 656740e1686..adc967b2e23 100644
 +      cliToolAvailability: { native: [], openClaw: projectedTools.map((tool) => tool.name) },
 +    };
 +  }
-   const nodeSkillWorkshop = nodeWorkshopEnabled
-     ? projectedTools.find((tool) => tool.name === "skill_workshop")
-     : undefined;
-@@ -1651,6 +1676,7 @@ async function prepareCliRunContextWithinReadFence(
+   // Preview only. The executable runtime belongs to the minted grant in the MCP server.
+   const codeModeSkills: CodeModeSkill[] = [];
+   const codeModePreview =
+@@ -1707,6 +1732,7 @@ async function prepareCliRunContextWithinReadFence(
          : undefined;
      cleanupPreparedResources = cleanupPreparedBackend;
      const prepareExecutionContext = {
@@ -1650,7 +1671,7 @@ index 656740e1686..adc967b2e23 100644
        config: params.config,
        workspaceDir,
        agentDir,
-@@ -1885,11 +1911,15 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1941,11 +1967,15 @@ async function prepareCliRunContextWithinReadFence(
        !nodeClaudePlacement &&
        candidateClaudeCliSessionId !== undefined &&
        isClaudeCliBackendId(params.provider);
@@ -1666,7 +1687,7 @@ index 656740e1686..adc967b2e23 100644
        }));
      const managedClaudeLiveSessionGeneration =
        claudeCliTranscriptMissing &&
-@@ -1913,6 +1943,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1969,6 +1999,7 @@ async function prepareCliRunContextWithinReadFence(
        (await prepareDeps.claudeCliSessionTranscriptHasOrphanedToolUse({
          sessionId: candidateClaudeCliSessionId,
          workspaceDir: cwd,
@@ -1674,6 +1695,240 @@ index 656740e1686..adc967b2e23 100644
        }));
      const claudeCliInvalidatedReason: "missing-transcript" | "orphaned-tool-use" | undefined =
        claudeCliTranscriptMissing && !hasManagedClaudeLiveSession
+diff --git a/src/agents/cli-runner/prepare.web-search.test.ts b/src/agents/cli-runner/prepare.web-search.test.ts
+index 98213c27a12..68c1d3c4b50 100644
+--- a/src/agents/cli-runner/prepare.web-search.test.ts
++++ b/src/agents/cli-runner/prepare.web-search.test.ts
+@@ -23,7 +23,9 @@ import {
+ } from "./prepare.test-support.js";
+ 
+ const { buildAnthropicCliBackend } = await loadBundledPluginFacade<{
+-  buildAnthropicCliBackend: () => CliBackendPlugin;
++  buildAnthropicCliBackend: (options?: {
++    resolveVersion?: () => Promise<string>;
++  }) => CliBackendPlugin;
+ }>({ pluginId: "anthropic", artifactBasename: "api.js" });
+ 
+ const searchTool = {
+@@ -89,7 +91,12 @@ beforeEach(() => {
+   nodeConnected = true;
+   cliBackendsTesting.setDepsForTest({
+     resolvePluginSetupCliBackend: () => undefined,
+-    resolveRuntimeCliBackends: () => [{ ...buildAnthropicCliBackend(), pluginId: "anthropic" }],
++    resolveRuntimeCliBackends: () => [
++      {
++        ...buildAnthropicCliBackend({ resolveVersion: async () => "2.1.301" }),
++        pluginId: "anthropic",
++      },
++    ],
+   });
+   setCliRunnerPrepareTestDeps({
+     isWorkspaceBootstrapPending: async () => false,
+@@ -265,80 +272,139 @@ describe("Claude additive Code Mode preparation", () => {
+ });
+ 
+ describe("Code Mode preserves the original CLI execution surface", () => {
+-  it.each([false, true])(
+-    "keeps exec constructor provenance for exact cap=%s",
+-    async (restricted) => {
+-      const cfg: OpenClawConfig = {
+-        tools: {
+-          codeMode: { enabled: true, surface: "additive", executor: "quickjs" },
+-          allow: ["exec"],
+-          exec: { host: "auto", mode: "full" },
+-        },
+-      };
+-      const prepared = await fixture.prepare({
+-        provider: "claude-cli",
+-        model: "fixture-model",
+-        config: cfg,
+-        senderIsOwner: true,
+-        ...(restricted ? { cliToolAvailability: { native: [], openClaw: ["exec"] } } : {}),
+-      });
+-      try {
+-        const context = mintMcpLoopbackClientGrant.mock.calls[0]![0].context;
+-        expect(context.toolsAllow).toEqual(["exec"]);
+-        expect(context.codeModeMediatedTools).toEqual(restricted ? ["exec"] : []);
+-        const scoped = await resolveMcpLoopbackScopedTools({
+-          cfg,
+-          context,
+-          isGrantCurrent: () => true,
+-        });
+-        const exec = scoped.tools.find((tool) => tool.name === "exec")!;
+-        expect(exec.parameters).toMatchObject({
+-          properties: {
+-            host: {
+-              enum: restricted ? expect.arrayContaining(["gateway"]) : ["node"],
+-            },
++  it.each([undefined, "workspace", "diagnostic"] as const)(
++    "keeps exec constructor provenance for profile=%s",
++    async (mode) => {
++      for (const restricted of [false, true]) {
++        mintMcpLoopbackClientGrant.mockClear();
++        nodeExecution.mockClear();
++        nodeConnected = true;
++        const cfg: OpenClawConfig = {
++          ...(mode
++            ? {
++                plugins: {
++                  entries: {
++                    anthropic: {
++                      config: {
++                        cliConfigDir: "/fixture/claude-login",
++                        cliProfiles: { main: { mode } },
++                      },
++                    },
++                  },
++                },
++              }
++            : {}),
++          tools: {
++            codeMode: { enabled: true, surface: "additive", executor: "quickjs" },
++            allow: ["exec"],
++            exec: { host: "auto", mode: "full" },
+           },
+-        });
+-        if (restricted) return;
+-        const direct = await exec.execute("direct-node", { command: "direct-proof" });
+-        expect(direct).toEqual({ content: [{ type: "text", text: "node execution" }] });
+-        const surface = createMcpCodeModeToolSurface({
++        };
++        const prepared = await fixture.prepare({
++          provider: "claude-cli",
++          model: "fixture-model",
+           config: cfg,
+-          context,
+-          tools: scoped.tools,
+-          executeTool: async ({ originalTool, toolCallId, input, signal }) =>
+-            originalTool.execute!(toolCallId, input, signal),
++          senderIsOwner: true,
++          ...(restricted ? { cliToolAvailability: { native: [], openClaw: ["exec"] } } : {}),
+         });
+         try {
+-          const codeExec = surface.tools.find((tool) => tool.name === "code_exec")!;
+-          const result = await codeExec.execute("script-node", {
+-            code: 'return await exec({command:"nested-proof"});',
++          const context = mintMcpLoopbackClientGrant.mock.calls[0]![0].context;
++          expect(context.toolsAllow).toEqual(["exec"]);
++          expect(context.codeModeMediatedTools).toEqual(restricted ? ["exec"] : []);
++          const scoped = await resolveMcpLoopbackScopedTools({
++            cfg,
++            context,
++            isGrantCurrent: () => true,
++          });
++          const exec = scoped.tools.find((tool) => tool.name === "exec")!;
++          expect(exec.parameters).toMatchObject({
++            properties: {
++              host: {
++                enum: restricted ? expect.arrayContaining(["gateway"]) : ["node"],
++              },
++            },
++          });
++          if (restricted) continue;
++          const direct = await exec.execute("direct-node", { command: "direct-proof" });
++          expect(direct).toEqual({ content: [{ type: "text", text: "node execution" }] });
++          const surface = createMcpCodeModeToolSurface({
++            config: cfg,
++            context,
++            tools: scoped.tools,
++            executeTool: async ({ originalTool, toolCallId, input, signal }) =>
++              originalTool.execute!(toolCallId, input, signal),
+           });
+-          expect(result.details, JSON.stringify(result)).toMatchObject({ status: "completed" });
+-          expect(nodeExecution.mock.calls.map((call) => call[1])).toEqual([
+-            { command: "direct-proof" },
+-            { command: "nested-proof" },
+-          ]);
+-          for (const call of nodeExecution.mock.calls)
+-            expect(call[0]).toMatchObject({ host: "node" });
+-          const refused = await codeExec.execute("script-gateway", {
+-            code: 'return await exec({command:"forbidden",host:"gateway"});',
++          try {
++            const codeExec = surface.tools.find((tool) => tool.name === "code_exec")!;
++            const result = await codeExec.execute("script-node", {
++              code: 'return await exec({command:"nested-proof"});',
++            });
++            expect(result.details, JSON.stringify(result)).toMatchObject({ status: "completed" });
++            expect(nodeExecution.mock.calls.map((call) => call[1])).toEqual([
++              { command: "direct-proof" },
++              { command: "nested-proof" },
++            ]);
++            for (const call of nodeExecution.mock.calls)
++              expect(call[0]).toMatchObject({ host: "node" });
++            const refused = await codeExec.execute("script-gateway", {
++              code: 'return await exec({command:"forbidden",host:"gateway"});',
++            });
++            expect(JSON.stringify(refused)).toContain("exec host not allowed");
++            expect(nodeExecution).toHaveBeenCalledTimes(2);
++          } finally {
++            surface.cleanup();
++          }
++          nodeConnected = false;
++          const disconnected = await resolveMcpLoopbackScopedTools({
++            cfg,
++            context,
++            isGrantCurrent: () => true,
+           });
+-          expect(JSON.stringify(refused)).toContain("exec host not allowed");
+-          expect(nodeExecution).toHaveBeenCalledTimes(2);
++          expect(disconnected.tools.some((tool) => tool.name === "exec")).toBe(false);
+         } finally {
+-          surface.cleanup();
++          await prepared.preparedBackend.cleanup?.();
+         }
+-        nodeConnected = false;
+-        const disconnected = await resolveMcpLoopbackScopedTools({
+-          cfg,
+-          context,
+-          isGrantCurrent: () => true,
+-        });
+-        expect(disconnected.tools.some((tool) => tool.name === "exec")).toBe(false);
+-      } finally {
+-        await prepared.preparedBackend.cleanup?.();
+       }
+     },
+   );
+ });
++
++describe("restricted Claude profile with additive Code Mode", () => {
++  it.each([
++    { allowed: ["web_search", "message", "exec"], expected: ["web_search", "message"] },
++    { allowed: ["web_search"], expected: ["web_search"] },
++    { allowed: [], expected: [] },
++  ])("intersects the profile and caller cap $allowed", async ({ allowed, expected }) => {
++    const context = await fixture.prepare({
++      provider: "claude-cli",
++      model: "fixture-model",
++      config: {
++        plugins: {
++          entries: {
++            anthropic: {
++              config: {
++                cliConfigDir: "/fixture/claude-login",
++                cliProfiles: { main: { mode: "restricted" } },
++              },
++            },
++          },
++        },
++        agents: { entries: { main: { tools: { allow: ["web_search", "message"] } } } },
++        tools: { codeMode: { enabled: true, surface: "additive", executor: "quickjs" } },
++      },
++      cliToolAvailability: { native: ["Write"], openClaw: allowed },
++    });
++    try {
++      const grant = mintMcpLoopbackClientGrant.mock.calls[0]?.[0]?.context;
++      expect(grant?.toolsAllow).toEqual(expected);
++      const names = context.systemPromptReport.tools.entries.map((tool) => tool.name);
++      expect(names).not.toContain("exec");
++      expect(names).not.toContain("Write");
++      expect(names.includes("code_exec")).toBe(expected.length > 0);
++      expect(names.includes("code_wait")).toBe(expected.length > 0);
++      expect(context.params.cliToolAvailability?.native).toEqual([]);
++    } finally {
++      await context.preparedBackend.cleanup?.();
++    }
++  });
++});
 diff --git a/src/agents/command/attempt-execution.helpers.ts b/src/agents/command/attempt-execution.helpers.ts
 index d2907ee8320..0e24e8338b6 100644
 --- a/src/agents/command/attempt-execution.helpers.ts
