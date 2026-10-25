@@ -223,7 +223,8 @@
     "src/agents/cli-runner/history-boundary.test.ts": "infra",
     "src/tui/embedded-backend.test.ts": "tui",
     "src/agents/tools/embedded-gateway-stub.history.test.ts": "agents-tools",
-    "src/commands/doctor-claude-cli.test.ts": "commands"
+    "src/commands/doctor-claude-cli.test.ts": "commands",
+    "src/gateway/mcp-http.code-mode.test.ts": "gateway-core"
   },
   "patches": [
     {
@@ -609,7 +610,9 @@
         "src/gateway/mcp-http.handlers.network-error.test.ts",
         "src/gateway/mcp-http.runtime.test.ts",
         "src/gateway/mcp-http.test.ts",
-        "src/gateway/mcp-grant-store.test.ts"
+        "src/gateway/mcp-grant-store.test.ts",
+        "src/gateway/mcp-http.code-mode.test.ts",
+        "src/agents/harness/tool-surface-bridge.test.ts"
       ]
     },
     {
@@ -662,7 +665,8 @@
         "src/agents/cli-runner/cli-run-settlement.test.ts",
         "src/tui/embedded-backend.test.ts",
         "src/agents/tools/embedded-gateway-stub.history.test.ts",
-        "src/commands/doctor-claude-cli.test.ts"
+        "src/commands/doctor-claude-cli.test.ts",
+        "src/agents/cli-runner/prepare.web-search.test.ts"
       ]
     }
   ],
