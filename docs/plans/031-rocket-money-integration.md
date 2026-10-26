@@ -107,7 +107,7 @@ Cleanup closes the scopes to new launches, joins every registered writer, and th
 
 The shared-session correction is merged. The saved-login timing correction and packaged synthetic check passed retained review and local validation. Renewal waits for delayed redirects and autofill, then verifies the pinned account before financial work. The check requires one connection across two native plugin instances and four calls.
 
-The requester resumed this feature under triggered CI. Both source branches are refreshed onto current main. Historical DEV and staging receipts remain evidence for their original inputs, not qualification of the refreshed candidate. The test-only Active Memory retry repair remains included. The installed build entrypoint, ci-dev and ci-prod now own the release path; CI handles tests, deployment, exact merge, recovery and cleanup. Account readiness remains a separate owner login check.
+The requester resumed this feature after the output queue passed production acceptance. Both source branches are refreshed onto current main. CI queues a reference to the owned incremental output, which stays unchanged until submission closure. Historical DEV and staging receipts remain evidence for their original inputs, not qualification of the refreshed candidate. The test-only Active Memory retry repair remains included. The installed build entrypoint, ci-dev and ci-prod now own the release path; CI handles tests, deployment, exact merge, recovery and cleanup. Account readiness remains a separate owner login check.
 
 ## Agent section
 
@@ -118,7 +118,7 @@ The requester resumed this feature under triggered CI. Both source branches are 
 - Main's skill and owner-specific finance rules remain private runtime content, managed outside the repository.
 - Shared-session correction shipped in [PR #261](https://github.com/coletaylor788/puddles/pull/261), merge `5ef80fdc542227803895e19a42f61ca16be5bc4f`. Native plugin runtime stores are scoped to managed instances. Keep the MCP bridge in one process slot, retain per-call authorization and guards, and serialize dispatch, account changes and shutdown. Regression coverage uses distinct native plugin instances and the packaged MCP subprocess.
 - Earlier saved-login DEV attempts exposed process ownership and build discovery defects. Their corrections are reviewed; the process ownership changes are now in main. The refreshed candidate passed DEV. Historical attempts remain consumed; the latest failed release is independently closed with production unchanged.
-- Refreshed public base: `036cd88388955c5ad94e1133e8abf50f16335b69`. Programmatic-tool patches and tests stay present. The Active Memory retry fixture remains registered in the cumulative application suite. Retained review found no material rebase regression. Fresh build and installed DEV acceptance are pending.
+- Refreshed public base: `0a95d50ec81e8c81948e2427a8acd917bd3e6bbf`. Programmatic-tool patches and tests stay present. The Active Memory retry fixture remains registered in the cumulative application suite. Retained review found no material rebase regression. Fresh build and installed DEV acceptance are pending.
 
 ### Scope and acceptance criteria
 
