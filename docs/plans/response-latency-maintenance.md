@@ -2,7 +2,7 @@
 
 Status: Production approved, CI preparation
 Issue: To be linked
-Last updated: 2026-10-24
+Last updated: 2026-10-26
 Owner: Latency feature owner
 
 ## Human section
@@ -37,13 +37,13 @@ Retire blocking-gather and durable-handoff customizations together. Native paren
 
 **Approval:** Production approved. **Approval reference:** The requester approved implementation and shipping on October 18, approved shared code and Claude publication, then resumed work on October 24 using build, ci-dev and ci-prod. Public changes exclude other provider integrations.
 
-The preserved candidate is rebased onto current main. The optional-policy snapshot serialization repair and native idle scheduling repair are implemented. Historical focused checks passed; current CI acceptance is pending. The first DEV run will cover native manual compaction, one independent memory save and recall after restart. Actual fifteen-minute idle and cancellation acceptance remain required before production. No deployed latency improvement is claimed.
+The preserved candidate is rebased onto current main. The optional-policy snapshot serialization repair and native idle scheduling repair are implemented. Historical focused checks passed; current CI acceptance is pending. The next DEV run will cover native manual compaction, one independent memory save and recall after restart. Actual fifteen-minute idle and cancellation acceptance remain required before production. No deployed latency improvement is claimed.
 
 ## Agent section
 
 ### State
 
-Refreshed public base: `036cd88388955c5ad94e1133e8abf50f16335b69`. Preserved pre-rebase candidate: `db06e3f3930f8fd28fe7c2b900df469f34960b19`. Pinned OpenClaw: `eb377ac59e6c9fd6c7705028034812becf00271b` (2026.9.6). Publish from a clean feature branch based on the public base. Earlier unpublished investigation commits are retained outside the public branch. Public tests use a synthetic harness identity and Claude Code. Companion patches supply other native adapters and their specific regression bindings. Public CI requires no companion repository or deployment configuration.
+Refreshed public base: `0a95d50ec81e8c81948e2427a8acd917bd3e6bbf`. Preserved pre-rebase candidate: `db06e3f3930f8fd28fe7c2b900df469f34960b19`. Pinned OpenClaw: `eb377ac59e6c9fd6c7705028034812becf00271b` (2026.9.6). Publish from a clean feature branch based on the public base. Earlier unpublished investigation commits are retained outside the public branch. Public tests use a synthetic harness identity and Claude Code. Companion patches supply other native adapters and their specific regression bindings. Public CI requires no companion repository or deployment configuration.
 
 ### Scope and acceptance criteria
 
@@ -77,7 +77,7 @@ Use the installed build entrypoint and submit its frozen candidate through ci-de
 
 ### Review log
 
-The retained reviewer previously cleared snapshot ownership, native callback routing, idle admission, optional-policy serialization and native parent continuation. The current rebase and CI integration are awaiting the same reviewer's recheck.
+The retained reviewer previously cleared snapshot ownership, native callback routing, idle admission, optional-policy serialization and native parent continuation. The previous CI integration and diagnostic repair are clear. The current rebase preserves all maintained patches; refreshed controls retain the same reviewer.
 
 ### Checklist
 
