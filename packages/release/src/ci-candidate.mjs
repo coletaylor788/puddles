@@ -80,7 +80,21 @@ export async function publishCandidate(root, source, inputs, policy, controls, f
     const id = digest({ artifactDigest, inputsDigest });
     const destination = join(root, id);
     assertCandidateAvailable(root, id);
-    if (existsSync(destination)) return loadCandidate(root, id).manifest;
+    if (existsSync(destination)) {
+      const existing = loadCandidate(root, id, { metadataOnly: true });
+      if (!existing.payloadReleased) return loadCandidate(root, id).manifest;
+      const footprint = storageFootprint(source, statfsSync(root).bsize);
+      capacity(root, policy, footprint.logicalBytes + (controls ? bytes(controls) : 0), {
+        phase: 'publication', physicalAdditional: footprint.physicalBytes + (controls ? storageFootprint(controls, statfsSync(root).bsize).physicalBytes : 0),
+      });
+      for (const name of ['artifact', 'controls']) rmSync(join(destination, name), { recursive: true, force: true });
+      copy(source, join(destination, 'artifact'));
+      if (controls) copy(controls, join(destination, 'controls'));
+      if (treeHash(join(destination, 'artifact')) !== artifactDigest || controls && treeHash(join(destination, 'controls')) !== inputs.controlsDigest) throw Error('Transferred output differs');
+      const { payloadReleased, ...owner } = readJson(join(destination, 'owner.json'));
+      atomicJson(join(destination, 'owner.json'), owner);
+      return existing.manifest;
+    }
     const allocationUnit = statfsSync(root).bsize;
     const footprints = [storageFootprint(source, allocationUnit), ...(controls ? [storageFootprint(controls, allocationUnit)] : [])];
     capacity(root, policy, footprints.reduce((n, value) => n + value.logicalBytes, 0), {
@@ -104,22 +118,81 @@ export async function publishCandidate(root, source, inputs, policy, controls, f
     throw error;
   } finally { journal?.close(); unlock(); }
 }
-export function loadCandidate(root, id) {
+// Trusted source builds stay in their owner's workspace. Only small metadata
+// enters this registry. The owner keeps the output idle until submission closes.
+export async function registerBuildReference(root, source, inputs, policy, controls) {
+  separate([root, source, ...(controls ? [controls] : [])]);
+  canonical(source); if (controls) canonical(controls);
+  if (controls) inputs = { ...inputs, controlsDigest: treeHash(controls) };
+  const artifactDigest = treeHash(source), inputsDigest = digest(inputs);
+  const id = digest({ artifactDigest, inputsDigest });
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  const unlock = await admissionLock(join(root, '.registry.lock'));
+  let journal, allocated;
+  try {
+    journal = registryJournal(root);
+    assertCandidateAvailable(root, id);
+    const directory = join(root, id);
+    if (existsSync(directory)) {
+      const existing = loadCandidate(root, id);
+      if (!existing.reference || existing.artifact !== source || existing.controls !== controls) throw Error('Build reference belongs to a different output workspace');
+      return existing.manifest;
+    }
+    capacity(root, policy, 64 * 1024, { phase: 'build-reference' });
+    const manifest = validateCandidate({ version: 1, id, artifactDigest, inputsDigest, inputs, repositories: inputs.repositories, createdAt: Date.now() });
+    journal.allocate(id, { version: 1, id, state: 'publishing', createdAt: manifest.createdAt,
+      reference: { artifact: source, ...(controls ? { controls } : {}) } });
+    allocated = id;
+    atomicJson(join(directory, 'manifest.json'), manifest);
+    atomicJson(join(directory, 'owner.json'), { version: 1, id, state: 'published', createdAt: manifest.createdAt,
+      reference: { artifact: source, ...(controls ? { controls } : {}) } });
+    return manifest;
+  } catch (error) {
+    if (allocated) journal.retire(allocated);
+    throw error;
+  } finally { journal?.close(); unlock(); }
+}
+// Caller establishes transaction/receiver closure. Persist intent before removing
+// payload so interrupted cleanup resumes without deleting manifest or DEV gates.
+export function releaseCandidatePayload(root, id) {
+  const unlock = lock(join(root, '.registry.lock'));
+  try {
+    identifier(id); assertCandidateAvailable(root, id);
+    const directory = canonical(join(root, id)), owner = readJson(join(directory, 'owner.json'));
+    validateCandidate(readJson(join(directory, 'manifest.json')));
+    if (owner.id !== id || owner.state !== 'published' || owner.reference) throw Error('Not an owned target payload');
+    if (existsSync(join(directory, 'consumers')) && readdirSync(join(directory, 'consumers')).length) throw Error('Candidate still in use');
+    atomicJson(join(directory, 'owner.json'), { ...owner, payloadReleased: true });
+    for (const name of ['artifact', 'controls']) rmSync(join(directory, name), { recursive: true, force: true });
+    return { candidate: id, released: true };
+  } finally { unlock(); }
+}
+export function loadCandidate(root, id, { metadataOnly = false } = {}) {
   canonical(root); identifier(id);
   assertCandidateAvailable(root, id);
   const directory = canonical(join(root, id));
   const manifest = validateCandidate(readJson(join(directory, 'manifest.json')));
-  if (manifest.id !== id || readJson(join(directory, 'owner.json')).state !== 'published' ||
-      treeHash(join(directory, 'artifact')) !== manifest.artifactDigest) throw new Error('Frozen candidate changed');
-  const controls = manifest.inputs.controlsDigest ? join(directory, 'controls') : undefined;
-  if (controls && treeHash(controls) !== manifest.inputs.controlsDigest) throw new Error('Frozen application controls changed');
-  return { manifest, directory, artifact: join(directory, 'artifact'), ...(controls ? { controls } : {}) };
+  const owner = readJson(join(directory, 'owner.json'));
+  if (manifest.id !== id || owner.id !== id || owner.state !== 'published') throw Error('Candidate ownership changed');
+  const artifact = owner.reference?.artifact ?? join(directory, 'artifact');
+  const controls = manifest.inputs.controlsDigest ? owner.reference?.controls ?? join(directory, 'controls') : undefined;
+  if (owner.payloadReleased && !metadataOnly) throw Error('Candidate payload was released; transfer the output before use');
+  if (metadataOnly) { /* Receipts and pins survive release of the target payload. */ }
+  else if (owner.reference) {
+    canonical(artifact); if (controls) canonical(controls);
+    separate([directory, artifact, ...(controls ? [controls] : [])]);
+  } else if (!owner.payloadReleased) {
+    if (treeHash(artifact) !== manifest.artifactDigest) throw Error('Frozen candidate changed');
+    if (controls && treeHash(controls) !== manifest.inputs.controlsDigest) throw Error('Frozen application controls changed');
+  }
+  return { manifest, directory, artifact, ...(controls ? { controls } : {}),
+    ...(owner.reference ? { reference: true } : {}), ...(owner.payloadReleased ? { payloadReleased: true } : {}) };
 }
 export async function pinCandidate(root, id, consumer, admission = {}) {
   identifier(consumer);
   const unlock = await admissionLock(join(root, '.registry.lock'), admission);
   try {
-    const value = loadCandidate(root, id);
+    const value = loadCandidate(root, id, { metadataOnly: true });
     atomicJson(join(value.directory, 'consumers', consumer + '.json'), { consumer, id });
     return value;
   } finally { unlock(); }
@@ -141,7 +214,7 @@ export async function recordGate(root, id, name, evidence, admission = {}) {
 }
 export function requireGate(root, id, name, expected) {
   identifier(name);
-  const { manifest, directory } = loadCandidate(root, id);
+  const { manifest, directory } = loadCandidate(root, id, { metadataOnly: true });
   const evidence = readJson(join(directory, 'gates', name + '.json'));
   if (evidence.candidate !== id || evidence.artifactDigest !== manifest.artifactDigest ||
       evidence.inputsDigest !== manifest.inputsDigest || evidence.status !== 'passed' ||

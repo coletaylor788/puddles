@@ -133,6 +133,8 @@ a missing worker reply alone does not prevent it. Independent CI runs do not
 reserve a shared deployment environment.
 
 Each feature owns one reusable workspace and one incremental application build.
+Builds in separate worktrees may run concurrently. CI queues output references;
+leave a submitted output untouched until its submission closes.
 Use the shared package store, with separate writable output, state, ports, and
 processes. Use the installed build entrypoint and `ci-dev` for shared target
 deployment, installed checks and teardown. Focused local tests remain
@@ -143,7 +145,8 @@ GitHub CI and the installed host service own deployment execution. Follow
 manager and its automation are retired; do not recreate them. Refresh paired
 branches from main before queueing, rebuild changed inputs, and repeat affected
 review and DEV checks. CI rejects stale candidates at dequeue. It runs the full
-suite, TEST, backup, PROD checks, and exact PR merge on one frozen output.
+suite, TEST, backup, PROD checks, and exact PR merge on the submitted output.
+One source queue admits DEV or PROD only after the previous run and cleanup close.
 DEV CI runs only deployment-dependent checks and holds its slot through teardown.
 
 A failed feature recovers and leaves the lane. Its owner fixes it in DEV and
