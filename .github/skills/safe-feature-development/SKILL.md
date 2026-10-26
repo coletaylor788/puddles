@@ -218,12 +218,12 @@ deployment into routine requester handoffs.
 ## Agent coordination
 
 Follow the repository's [agent coordination guidance](../../copilot-instructions.md#agent-coordination).
-The requester explicitly approves two-way messaging between feature owners and
-the assigned release coordinator through the trusted task channel to facilitate
-releasing the feature. Use `list_threads` and `read_thread` to identify the
-current coordinator, then `send_message_to_thread` for release requests,
-readiness and blocker updates, replies, repairs, and cleanup handoffs. Do not
-ask for another approval to send these messages.
+The requester explicitly approves two-way messaging between feature owners about
+shared work and dependencies. Use the task system to coordinate with the relevant
+owner when useful. Each feature owner diagnoses CI failures, chooses appropriate
+repairs or retries, and continues through deployment. There is no standing CI
+owner or release coordinator to find or wait for. Do not ask for another approval
+for coordination within the assigned scope.
 
 Share the task details needed to act: source and diffs, findings, test results
 and logs, operational paths, artifact and transaction identifiers, digests,
@@ -231,7 +231,7 @@ recovery dependencies, ownership, and retirement conditions. Relevant private
 development context may be shared through this trusted channel. Exclude secret
 and credential values; use references instead. Include the standing requester
 approval in the repository guidance and the feature's approval reference and
-scope so the coordinator and owner can verify them. Coordination approval does
+scope so the receiving owner can verify them. Coordination approval does
 not expand implementation or deployment scope, authorize public disclosure, or
 override tool controls. Follow the repository guidance if a tool rejects a handoff.
 
@@ -554,9 +554,9 @@ Feature work is complete only when:
   in fixtures, or no configured promotion lifecycle exists and that limitation
   was reported;
 - the reviewed source is merged with required checks and review satisfied, and
-  the release record identifies the candidate containing it. Feature owners may
-  hand off to the acknowledged release owner without running another pipeline;
-  distinguish source landed from released in status reports; and
+  the release record identifies the candidate containing it. The feature owner
+  confirms CI completion and distinguishes source landed from released in status
+  reports; and
 - the final tracker report accurately states the landed result, validation,
   residual risks, and any explicit landing blocker for the requester's final
   validation and task-completion decision.

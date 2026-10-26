@@ -3,8 +3,10 @@
 The initial dummy completed the deployment path. Multi-feature operation then
 exposed build contention and retained-payload capacity problems. The approved
 output queue correction is tracked in [Plan 065](../../docs/plans/065-output-release-queue.md).
-The release-manager agent and its heartbeat remain retired. Scripts own execution;
-agents own implementation, focused tests, retained review, and repairs.
+Each feature owner takes its feature through implementation, review, CI, merge,
+and cleanup, including diagnosing failures and choosing the next recovery step.
+Scripts own deployment execution. There is no standing CI-owner or release-manager
+agent to hand failures to, and no manager heartbeat is needed.
 
 ## Application loop
 
@@ -33,10 +35,15 @@ Submission returns promptly with a durable queued submission ID. Record it and
 yield; the workflow ID is attached when admitted. Start and terminal events queue a continuation for the owner; no polling
 agent or heartbeat executes, recovers or cleans the run. On wake, inspect the
 exact terminal deployment receipt. A workflow outcome alone is not cleanup
-proof. Repeated event IDs are the same event. Do not replay an uncertain
-submission or manually rerun an Actions attempt. A busy refusal before any
-submission exists may be retried after contention clears; reconcile a saved or
-uncertain submission first.
+proof. Repeated event IDs are the same event.
+
+Use judgment when recovering a failure. Inspect the failed check or run, repair
+what needs fixing, and retry the appropriate step. A repository check that never
+acquired a runner can be rerun through GitHub without rebuilding unchanged output.
+Before retrying a deployment submission, inspect its recorded state so an active
+or recovering transaction is not duplicated. Once it closes, use the normal CI
+entrypoint for the next attempt. The feature owner carries this recovery through
+deployment rather than waiting for a separate CI owner.
 
 Full-suite setup belongs to the maintained application test entrypoint. It creates
 separate service Python environments from hash-locked test tools and frozen runtime
