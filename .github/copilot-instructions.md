@@ -99,12 +99,12 @@ and deployment gates still apply.
 
 ## Agent coordination
 
-The requester explicitly authorizes feature owners and the assigned release
-coordinator to message each other through the task system to facilitate the
-feature's release. This is a trusted coordination channel. That standing
-approval covers release requests, replies, readiness and blocker updates,
-review and repair coordination, and release and cleanup handoffs. Do not ask
-for separate permission to contact the coordinator or reply to a feature owner.
+The requester explicitly authorizes feature owners to message each other through
+the task system about shared work and dependencies. This is a trusted coordination
+channel for readiness, findings, repairs, and replies. Each feature owner remains
+responsible for using CI to deliver its feature and resolving its failures. There
+is no standing CI owner or release coordinator to find or wait for. Do not ask
+for separate permission for coordination within the assigned scope.
 
 Human authorization to coordinate assigned agents includes sharing the information
 they need to complete that work. Use the task system to exchange relevant source,
