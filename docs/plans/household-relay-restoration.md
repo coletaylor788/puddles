@@ -1,8 +1,8 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; rebased candidate preparing for triggered CI
+**Status:** Production approved; DEV qualification deadline repaired, new CI run pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
-**Last updated:** 2026-10-24
+**Last updated:** 2026-10-26
 
 ## Human section
 
@@ -125,9 +125,29 @@ closed, with production healthy and unchanged.
 The legacy release envelopes remain historical evidence. They will not be
 replayed through the new workflow.
 
+The first triggered DEV run completed with a qualification timeout. The serial
+suite permits four minutes per case but its overall deadline allowed only 15
+minutes for all 12 cases. The overall deadline now covers every bounded case
+plus startup and cleanup. Individual case and provider limits remain unchanged.
+CI completed teardown and production was not reached. Both branches are refreshed
+for the installed output queue, which owns the next DEV attempt and its cleanup.
+
 ## Agent section
 
 ### State
+
+DEV `gh-40155125218-1` failed at `dev-tests` with the 900000 ms qualification
+deadline. Its terminal receipt is `failed`, `phase=complete`, `child=null`;
+the source submission has `queueClosedAt=1792975218717`. The DEV owner and slot
+are absent and transfer cleanup is already clean. A delayed workflow-started
+notification does not authorize replay of that candidate.
+
+The shared qualification plan retains 12 routes at 240000 ms each. Its process
+deadline is 2940000 ms, including 60000 ms startup/teardown allowance, and the
+parent deadline is 2970000 ms to allow process-group shutdown first. Both fit
+within the installed CI phase limit. Regression checks cover the serial budget,
+bounded overrides and failure/timeout/signal/worker-exit cleanup. Fresh installed
+qualification remains required; no test assertion or native access rule changes.
 
 The active path is the installed `build`, `ci-dev`, and `ci-prod` workflow in
 [triggered CI](../../packages/release/CI.md). Both source branches were rebased
