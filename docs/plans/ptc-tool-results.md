@@ -1,8 +1,8 @@
 # Script-compatible tool results
 
-Status: Implementation in progress
+Status: Implemented, deployment qualification pending
 Issue: https://github.com/coletaylor788/puddles/issues/336
-Last updated: 2026-10-24
+Last updated: 2026-10-26
 Owner: PTC tool repair
 
 ## Human section
@@ -49,14 +49,15 @@ included. The unrelated old artifact retention repair remains parked.
 
 The requester directed delivery through `build`, `ci-dev` and `ci-prod`, with
 CI owning deployment, tests, merge, rollback and cleanup. Yield after dispatch
-and resume on the durable lifecycle event.
+and resume on the durable lifecycle event. Implementation and local packaged
+qualification pass; refreshed deployment qualification is next.
 
 ## Agent section
 
 ### State
 
 Public branch `codex/ptc-tool-results` rebased from main
-`036cd88388955c5ad94e1133e8abf50f16335b69`.
+`0a95d50ec81e8c81948e2427a8acd917bd3e6bbf`.
 Paired private state records companion paths and base. Existing work was preserved.
 
 ### Scope and acceptance criteria
@@ -100,16 +101,17 @@ identified and resolved the missing registrations; retained review is clear. CI 
 ### Rollout and rollback
 
 Refresh both main bases before submission. Commit and review paired heads,
-freeze one application with the installed `build` entry point, dispatch
+register the incremental application with the installed `build` entry point, dispatch
 `ci-dev`, and yield. On its terminal receipt, dispatch the same frozen candidate
-through `ci-prod` after required checks and freshness validation. Changed inputs
+through `ci-prod` after required checks and freshness validation. Leave submitted
+output unchanged until its source submission has `queueClosedAt`. Changed inputs
 require a new build and DEV run. CI owns recovery and cleanup.
 
 ### Review log
 
 Retained reviewer found missing cumulative test registrations in both repositories.
-Both are fixed and independently verified. Final result: CLEAR. Complete packaged
-artifact qualification remains a build and CI gate. The first build exposed the
+Both are fixed and independently verified. Final result: CLEAR. The complete packaged four-tool QuickJS scenario passed. Installed DEV and
+production qualification remain CI gates. The first build exposed the
 packager’s direct-child-only dependency lookup; root lookup now matches the
 existing transitive lookup. Retained review independently passed all four package tests and cleared the repair.
 
