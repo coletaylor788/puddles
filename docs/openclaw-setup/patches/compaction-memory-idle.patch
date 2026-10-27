@@ -599,149 +599,6 @@ index 90ce62d8683..db24200677b 100644
      ...(params.runtimePolicyAgentId ? { runtimePolicyAgentId: params.runtimePolicyAgentId } : {}),
      agentId: params.agentId,
      sessionId: normalizeOptionalMcpContextValue(params.run.sessionId),
-diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 91e25c5da42..4858a5d5090 100644
---- a/src/agents/cli-runner/prepare.test.ts
-+++ b/src/agents/cli-runner/prepare.test.ts
-@@ -206,6 +206,7 @@ const ensureSandboxWorkspaceForSessionMock = vi.hoisted(() =>
- );
- vi.mock("../../config/config.js", async () => ({
-   getRuntimeConfig: getRuntimeConfigMock,
-+  ...(await import("../../config/runtime-snapshot.js")),
-   resolveGatewayPort: (await import("../../config/paths.js")).resolveGatewayPort,
- }));
- 
-@@ -729,6 +730,74 @@ describe("prepareCliRunContext", () => {
-     await fixture.cleanup();
-   });
- 
-+  it("restricts internal memory saving to mediated read and append-only write", async () => {
-+    const project = vi.fn(() => ({
-+      agentId: "main",
-+      tools: [
-+        {
-+          name: "read",
-+          description: "read",
-+          parameters: { type: "object", properties: {} },
-+          execute: vi.fn(),
-+        },
-+        {
-+          name: "write",
-+          description: "append",
-+          parameters: { type: "object", properties: {} },
-+          execute: vi.fn(),
-+        },
-+      ],
-+    }));
-+    setCliRunnerPrepareTestDeps({
-+      resolveMcpLoopbackScopedTools: project,
-+      resolveMcpLoopbackPolicyTools: project,
-+      getActiveMcpLoopbackRuntime: vi.fn(() => ({
-+        port: 31783,
-+        ownerToken: "test-owner",
-+        nonOwnerToken: "test-non-owner",
-+      })),
-+    });
-+    setRawCliBackendForPrepareTest({
-+      id: "native-cli",
-+      pluginId: "native-plugin",
-+      bundleMcp: true,
-+      bundleMcpMode: "claude-config-file",
-+      nativeToolMode: "selectable",
-+      toolAvailabilityEnforcement: "execution-args",
-+      resolveExecutionArgs: ({ baseArgs }) => baseArgs,
-+      config: createJsonlStdinBackendConfig("native-cli"),
-+    });
-+    const context = await fixture.prepare({
-+      provider: "native-cli",
-+      model: "test-model",
-+      config: {},
-+      trigger: "memory",
-+      memoryFlushWritePath: "memory/2026-01-01.md",
-+      initialTurnTainted: true,
-+      runtimePolicySessionKey: "agent:main:source",
-+      conversationToolPolicy: { deny: ["exec"] },
-+      sessionManager: SessionManager.fromEntries([], fixture.session.dir),
-+    });
-+    expect(context.params.cliToolAvailability).toEqual({ native: [], openClaw: ["read", "write"] });
-+    expect(project).toHaveBeenCalledWith(
-+      expect.objectContaining({
-+        context: expect.objectContaining({
-+          trigger: "memory",
-+          memoryFlushWritePath: "memory/2026-01-01.md",
-+          runtimePolicySessionKey: "agent:main:source",
-+          initialTurnTainted: true,
-+          conversationToolPolicy: { deny: ["exec"] },
-+        }),
-+      }),
-+    );
-+  });
-+
-+  it("refuses memory saving without a host-owned append destination", async () => {
-+    await expect(fixture.prepare({ trigger: "memory" })).rejects.toThrow(
-+      "host-owned append target",
-+    );
-+  });
-+
-   it.each(["process", "plugin"] as const)(
-     "carries silent heartbeat outcome in late %s user input without rebinding",
-     async (targetKind) => {
-@@ -4154,6 +4223,7 @@ describe("prepareCliRunContext", () => {
-         messageActionTurnCapability,
-       );
-       expect(mintMcpLoopbackClientGrant).toHaveBeenCalledWith({
-+        codeModeSkills: [],
-         context: {
-           sessionKey: "agent:main:telegram:group:chat123",
-           runtimePolicySessionKey: "agent:worker:discord:default:direct:canonical-sender",
-diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index 656740e1686..f628572badd 100644
---- a/src/agents/cli-runner/prepare.ts
-+++ b/src/agents/cli-runner/prepare.ts
-@@ -774,6 +774,22 @@ async function prepareCliRunContextWithinReadFence(
-       `CLI backend "${backendResolved.id}" cannot enforce this run's tool cap. Upgrade its plugin and retry; if current, ask its maintainer to add exact-cap support. OpenClaw did not start the run.`,
-     );
-   }
-+  if (params.trigger === "memory") {
-+    if (
-+      !params.memoryFlushWritePath ||
-+      !canEnforceExactToolAvailability ||
-+      !backendResolved.bundleMcp ||
-+      nodeClaudePlacement ||
-+      params.disableTools
-+    ) {
-+      throw new Error("Memory saving requires a host-owned append target and exact mediated tools");
-+    }
-+    params = {
-+      ...params,
-+      disableCliLiveSession: true,
-+      cliToolAvailability: { native: [], openClaw: ["read", "write"] },
-+    };
-+  }
-   const sideQuestionDisablesNativeTools =
-     isSideQuestion && backendResolved.sideQuestionToolMode === "disabled";
-   const requestedNoNativeTools = params.cliToolAvailability?.native.length === 0;
-@@ -2034,6 +2050,8 @@ async function prepareCliRunContextWithinReadFence(
-         : await loadCliSessionPromptContext({
-             abortSignal: params.abortSignal,
-             sessionManager: params.sessionManager,
-+            requireCompleteHistory:
-+              params.trigger === "memory" && params.sessionManager !== undefined,
-             sessionTarget: params.sessionTarget,
-             allowRawTranscriptReseed,
-             rawTranscriptReseedReason,
-@@ -2136,7 +2154,10 @@ async function prepareCliRunContextWithinReadFence(
-       ? buildCliSessionHistoryPrompt({
-           messages: sessionPromptContext?.reseedMessages ?? [],
-           prompt: historyPromptCurrentTurn,
--          maxHistoryChars: autoReseedHistoryChars,
-+          maxHistoryChars:
-+            params.trigger === "memory" && params.sessionManager !== undefined
-+              ? Number.MAX_SAFE_INTEGER
-+              : autoReseedHistoryChars,
-         })
-       : undefined;
-     const systemPromptWithReplacements = skipsTurnPreparation
 diff --git a/src/agents/cli-runner/session-history.test.ts b/src/agents/cli-runner/session-history.test.ts
 index 89b752d472b..f5ec84037dc 100644
 --- a/src/agents/cli-runner/session-history.test.ts
@@ -5189,3 +5046,422 @@ diff --git a/src/agents/cli-runner/execution-target.ts b/src/agents/cli-runner/e
      ? { kind: "plugin", execute: context.execute }
      : { kind: "process" };
  }
+diff --git a/src/agents/command/claude-cli-project-dir.ts b/src/agents/command/claude-cli-project-dir.ts
+index f3bf78d..bca36cb 100644
+--- a/src/agents/command/claude-cli-project-dir.ts
++++ b/src/agents/command/claude-cli-project-dir.ts
+@@ -6,7 +6,18 @@ import os from "node:os";
+ import path from "node:path";
+ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+ 
+-const CLAUDE_PROJECTS_DIRNAME = path.join(".claude", "projects");
++/** Resolve the same account directory used by the native CLI process. */
++export function resolveClaudeCliProjectsDir(params: {
++  homeDir?: string;
++  configDir?: string;
++}): string {
++  const configDir =
++    normalizeOptionalString(params.configDir) ??
++    normalizeOptionalString(process.env.CLAUDE_CONFIG_DIR);
++  if (configDir) return path.join(path.resolve(configDir), "projects");
++  const homeDir = normalizeOptionalString(params.homeDir) || process.env.HOME || os.homedir();
++  return path.join(homeDir, ".claude", "projects");
++}
+ const MAX_SANITIZED_PROJECT_LENGTH = 200;
+ 
+ // Claude CLI stores project state under a sanitized workspace key. Add a stable
+@@ -42,12 +53,11 @@ function canonicalizeWorkspaceDir(workspaceDir: string): string {
+ export function resolveClaudeCliProjectDirForWorkspace(params: {
+   workspaceDir: string;
+   homeDir?: string;
++  configDir?: string;
+ }): string {
+-  const homeDir = normalizeOptionalString(params.homeDir) || process.env.HOME || os.homedir();
+   const canonicalWorkspaceDir = canonicalizeWorkspaceDir(params.workspaceDir);
+   return path.join(
+-    homeDir,
+-    CLAUDE_PROJECTS_DIRNAME,
++    resolveClaudeCliProjectsDir(params),
+     sanitizeClaudeCliProjectKey(canonicalWorkspaceDir),
+   );
+ }
+diff --git a/src/agents/command/attempt-execution.helpers.ts b/src/agents/command/attempt-execution.helpers.ts
+index d2907ee..356bbfc 100644
+--- a/src/agents/command/attempt-execution.helpers.ts
++++ b/src/agents/command/attempt-execution.helpers.ts
+@@ -126,6 +126,7 @@ function claudeCliSessionTranscriptPath(params: {
+   sessionId: string | undefined;
+   workspaceDir: string | undefined;
+   homeDir?: string;
++  configDir?: string;
+ }): string | null {
+   const sessionId = normalizeClaudeCliSessionId(params.sessionId);
+   if (!sessionId) {
+@@ -139,6 +140,7 @@ function claudeCliSessionTranscriptPath(params: {
+     resolveClaudeCliProjectDirForWorkspace({
+       workspaceDir,
+       homeDir: params.homeDir,
++      configDir: params.configDir,
+     }),
+     `${sessionId}.jsonl`,
+   );
+diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
+index 569e0fb..ee7da37 100644
+--- a/src/agents/cli-runner/prepare.ts
++++ b/src/agents/cli-runner/prepare.ts
+@@ -799,6 +799,22 @@ async function prepareCliRunContextWithinReadFence(
+       `CLI backend "${backendResolved.id}" cannot enforce this run's tool cap. Upgrade its plugin and retry; if current, ask its maintainer to add exact-cap support. OpenClaw did not start the run.`,
+     );
+   }
++  if (params.trigger === "memory") {
++    if (
++      !params.memoryFlushWritePath ||
++      !canEnforceExactToolAvailability ||
++      !backendResolved.bundleMcp ||
++      nodeClaudePlacement ||
++      params.disableTools
++    ) {
++      throw new Error("Memory saving requires a host-owned append target and exact mediated tools");
++    }
++    params = {
++      ...params,
++      disableCliLiveSession: true,
++      cliToolAvailability: { native: [], openClaw: ["read", "write"] },
++    };
++  }
+   const sideQuestionDisablesNativeTools =
+     isSideQuestion && backendResolved.sideQuestionToolMode === "disabled";
+   const requestedNoNativeTools = params.cliToolAvailability?.native.length === 0;
+@@ -1941,11 +1957,15 @@ async function prepareCliRunContextWithinReadFence(
+       !nodeClaudePlacement &&
+       candidateClaudeCliSessionId !== undefined &&
+       isClaudeCliBackendId(params.provider);
++    const claudeConfigDir =
++      preparedBackendFinal.env?.CLAUDE_CONFIG_DIR ??
++      preparedBackendFinal.backend.env?.CLAUDE_CONFIG_DIR;
+     const claudeCliTranscriptMissing =
+       hasClaudeCliCandidate &&
+       !(await prepareDeps.claudeCliSessionTranscriptHasContent({
+         sessionId: candidateClaudeCliSessionId,
+         workspaceDir: cwd,
++        ...(claudeConfigDir ? { configDir: claudeConfigDir } : {}),
+       }));
+     const managedClaudeLiveSessionGeneration =
+       claudeCliTranscriptMissing &&
+@@ -1969,6 +1989,7 @@ async function prepareCliRunContextWithinReadFence(
+       (await prepareDeps.claudeCliSessionTranscriptHasOrphanedToolUse({
+         sessionId: candidateClaudeCliSessionId,
+         workspaceDir: cwd,
++        ...(claudeConfigDir ? { configDir: claudeConfigDir } : {}),
+       }));
+     const claudeCliInvalidatedReason: "missing-transcript" | "orphaned-tool-use" | undefined =
+       claudeCliTranscriptMissing && !hasManagedClaudeLiveSession
+@@ -2105,6 +2126,8 @@ async function prepareCliRunContextWithinReadFence(
+         : await loadCliSessionPromptContext({
+             abortSignal: params.abortSignal,
+             sessionManager: params.sessionManager,
++            requireCompleteHistory:
++              params.trigger === "memory" && params.sessionManager !== undefined,
+             sessionTarget: params.sessionTarget,
+             allowRawTranscriptReseed,
+             rawTranscriptReseedReason,
+@@ -2207,7 +2230,10 @@ async function prepareCliRunContextWithinReadFence(
+       ? buildCliSessionHistoryPrompt({
+           messages: sessionPromptContext?.reseedMessages ?? [],
+           prompt: historyPromptCurrentTurn,
+-          maxHistoryChars: autoReseedHistoryChars,
++          maxHistoryChars:
++            params.trigger === "memory" && params.sessionManager !== undefined
++              ? Number.MAX_SAFE_INTEGER
++              : autoReseedHistoryChars,
+         })
+       : undefined;
+     const systemPromptWithReplacements = skipsTurnPreparation
+diff --git a/src/agents/cli-runner.ts b/src/agents/cli-runner.ts
+index 519ba86..8c68a9e 100644
+--- a/src/agents/cli-runner.ts
++++ b/src/agents/cli-runner.ts
+@@ -111,7 +111,7 @@ export async function isCliBindingFlushed(
+   sessionId: string | undefined,
+   provider: string | undefined,
+   workspaceDir?: string,
+-  options?: { skipTranscriptProbe?: boolean },
++  options?: { skipTranscriptProbe?: boolean; configDir?: string },
+ ): Promise<boolean> {
+   if (!provider || !isClaudeCliBackend(provider)) {
+     return true;
+@@ -128,7 +128,13 @@ export async function isCliBindingFlushed(
+     if (delayMs > 0) {
+       await cliRunnerDeps.delay(delayMs);
+     }
+-    if (await cliRunnerDeps.claudeCliSessionTranscriptHasContent({ sessionId, workspaceDir })) {
++    if (
++      await cliRunnerDeps.claudeCliSessionTranscriptHasContent({
++        sessionId,
++        workspaceDir,
++        ...(options?.configDir ? { configDir: options.configDir } : {}),
++      })
++    ) {
+       return true;
+     }
+   }
+@@ -573,7 +579,12 @@ async function runPreparedCliAgentOwned(
+               effectiveCliSessionId,
+               params.provider,
+               context.cwd ?? context.workspaceDir,
+-              { skipTranscriptProbe: acceptsCliLiveSession(context) },
++              {
++                skipTranscriptProbe: acceptsCliLiveSession(context),
++                configDir:
++                  context.preparedBackend.env?.CLAUDE_CONFIG_DIR ??
++                  context.preparedBackend.backend.env?.CLAUDE_CONFIG_DIR,
++              },
+             );
+         const interruptionError = terminalInterruption
+           ? formatCliTerminalInterruption(terminalInterruption)
+diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
+index 91e25c5..3324181 100644
+--- a/src/agents/cli-runner/prepare.test.ts
++++ b/src/agents/cli-runner/prepare.test.ts
+@@ -206,6 +206,7 @@ const ensureSandboxWorkspaceForSessionMock = vi.hoisted(() =>
+ );
+ vi.mock("../../config/config.js", async () => ({
+   getRuntimeConfig: getRuntimeConfigMock,
++  ...(await import("../../config/runtime-snapshot.js")),
+   resolveGatewayPort: (await import("../../config/paths.js")).resolveGatewayPort,
+ }));
+ 
+@@ -729,6 +730,74 @@ describe("prepareCliRunContext", () => {
+     await fixture.cleanup();
+   });
+ 
++  it("restricts internal memory saving to mediated read and append-only write", async () => {
++    const project = vi.fn(() => ({
++      agentId: "main",
++      tools: [
++        {
++          name: "read",
++          description: "read",
++          parameters: { type: "object", properties: {} },
++          execute: vi.fn(),
++        },
++        {
++          name: "write",
++          description: "append",
++          parameters: { type: "object", properties: {} },
++          execute: vi.fn(),
++        },
++      ],
++    }));
++    setCliRunnerPrepareTestDeps({
++      resolveMcpLoopbackScopedTools: project,
++      resolveMcpLoopbackPolicyTools: project,
++      getActiveMcpLoopbackRuntime: vi.fn(() => ({
++        port: 31783,
++        ownerToken: "test-owner",
++        nonOwnerToken: "test-non-owner",
++      })),
++    });
++    setRawCliBackendForPrepareTest({
++      id: "native-cli",
++      pluginId: "native-plugin",
++      bundleMcp: true,
++      bundleMcpMode: "claude-config-file",
++      nativeToolMode: "selectable",
++      toolAvailabilityEnforcement: "execution-args",
++      resolveExecutionArgs: ({ baseArgs }) => baseArgs,
++      config: createJsonlStdinBackendConfig("native-cli"),
++    });
++    const context = await fixture.prepare({
++      provider: "native-cli",
++      model: "test-model",
++      config: {},
++      trigger: "memory",
++      memoryFlushWritePath: "memory/2026-01-01.md",
++      initialTurnTainted: true,
++      runtimePolicySessionKey: "agent:main:source",
++      conversationToolPolicy: { deny: ["exec"] },
++      sessionManager: SessionManager.fromEntries([], fixture.session.dir),
++    });
++    expect(context.params.cliToolAvailability).toEqual({ native: [], openClaw: ["read", "write"] });
++    expect(project).toHaveBeenCalledWith(
++      expect.objectContaining({
++        context: expect.objectContaining({
++          trigger: "memory",
++          memoryFlushWritePath: "memory/2026-01-01.md",
++          runtimePolicySessionKey: "agent:main:source",
++          initialTurnTainted: true,
++          conversationToolPolicy: { deny: ["exec"] },
++        }),
++      }),
++    );
++  });
++
++  it("refuses memory saving without a host-owned append destination", async () => {
++    await expect(fixture.prepare({ trigger: "memory" })).rejects.toThrow(
++      "host-owned append target",
++    );
++  });
++
+   it.each(["process", "plugin"] as const)(
+     "carries silent heartbeat outcome in late %s user input without rebinding",
+     async (targetKind) => {
+@@ -4154,6 +4223,7 @@ describe("prepareCliRunContext", () => {
+         messageActionTurnCapability,
+       );
+       expect(mintMcpLoopbackClientGrant).toHaveBeenCalledWith({
++        codeModeSkills: [],
+         context: {
+           sessionKey: "agent:main:telegram:group:chat123",
+           runtimePolicySessionKey: "agent:worker:discord:default:direct:canonical-sender",
+@@ -6215,6 +6285,57 @@ describe("prepareCliRunContext", () => {
+     });
+   });
+ 
++  it("retains a cold dedicated-directory binding and checks its orphaned tools", async () => {
++    const { dir } = fixture.session;
++    const taskDir = path.join(dir, "task");
++    fs.mkdirSync(taskDir, { recursive: true });
++    setRawCliBackendForPrepareTest({
++      id: "claude-cli",
++      pluginId: "anthropic",
++      bundleMcp: false,
++      config: {
++        command: "claude",
++        env: { CLAUDE_CONFIG_DIR: path.join(dir, "dedicated-login") },
++        args: ["--print"],
++        resumeArgs: ["--resume", "{sessionId}"],
++        output: "jsonl",
++        input: "stdin",
++        sessionMode: "existing",
++      },
++    });
++    const transcriptCheck = vi.fn(async () => true);
++    const orphanCheck = vi.fn(async () => false);
++    setCliRunnerPrepareTestDeps({
++      claudeCliSessionTranscriptHasContent: transcriptCheck,
++      claudeCliSessionTranscriptHasOrphanedToolUse: orphanCheck,
++    });
++
++    const context = await fixture.prepare({
++      sessionKey: "agent:main:telegram:direct:peer",
++      cwd: taskDir,
++      prompt: "follow-up",
++      provider: "claude-cli",
++      model: "opus",
++      cliSessionBinding: { sessionId: "live-claude-sid", cwdHash: hashCliSessionText(taskDir) },
++      cliSessionId: "live-claude-sid",
++    });
++
++    expect(transcriptCheck).toHaveBeenCalledWith({
++      sessionId: "live-claude-sid",
++      workspaceDir: taskDir,
++      configDir: path.join(dir, "dedicated-login"),
++    });
++    expect(orphanCheck).toHaveBeenCalledWith({
++      sessionId: "live-claude-sid",
++      workspaceDir: taskDir,
++      configDir: path.join(dir, "dedicated-login"),
++    });
++    expect(context.reusableCliSession).toEqual({
++      mode: "reuse",
++      sessionId: "live-claude-sid",
++    });
++  });
++
+   it.each(["prepared", "admitted"] as const)(
+     "stops CLI skill preparation before sandbox materialization when %s authority is revoked",
+     async (phase) => {
+diff --git a/src/agents/command/claude-cli-project-dir.test.ts b/src/agents/command/claude-cli-project-dir.test.ts
+new file mode 100644
+index 0000000..662f3a9
+--- /dev/null
++++ b/src/agents/command/claude-cli-project-dir.test.ts
+@@ -0,0 +1,87 @@
++import fs from "node:fs/promises";
++import os from "node:os";
++import path from "node:path";
++import { afterEach, beforeEach, expect, it, vi } from "vitest";
++import {
++  claudeCliSessionTranscriptHasContent,
++  claudeCliSessionTranscriptHasOrphanedToolUse,
++} from "./attempt-execution.helpers.js";
++import { resolveClaudeCliProjectDirForWorkspace } from "./claude-cli-project-dir.js";
++
++let root: string;
++beforeEach(async () => {
++  root = await fs.mkdtemp(path.join(os.tmpdir(), "claude-transcript-config-"));
++  vi.stubEnv("CLAUDE_CONFIG_DIR", "");
++});
++afterEach(async () => {
++  vi.unstubAllEnvs();
++  await fs.rm(root, { recursive: true, force: true });
++});
++
++it("keeps the default directory when no native override is configured", () => {
++  expect(resolveClaudeCliProjectDirForWorkspace({ workspaceDir: root, homeDir: root })).toContain(
++    path.join(root, ".claude", "projects"),
++  );
++});
++
++it.each(["environment", "backend"])(
++  "finds a cold native transcript in the %s directory without falling back to another account",
++  async (binding) => {
++    const configDir = path.join(root, "selected-account"),
++      workspaceDir = root;
++    if (binding === "environment") vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
++    else vi.stubEnv("CLAUDE_CONFIG_DIR", path.join(root, "other-account"));
++    const params = { workspaceDir, homeDir: root, ...(binding === "backend" ? { configDir } : {}) };
++    const canonical = await fs.realpath(workspaceDir);
++    const project = path.join(
++      configDir,
++      "projects",
++      canonical.normalize("NFC").replace(/[^a-zA-Z0-9]/g, "-"),
++    );
++    await fs.mkdir(project, { recursive: true });
++    const transcript = path.join(project, "synthetic-session.jsonl");
++    await fs.writeFile(
++      transcript,
++      JSON.stringify({
++        type: "assistant",
++        message: {
++          role: "assistant",
++          content: [{ type: "tool_use", id: "pending", name: "Read", input: {} }],
++        },
++      }) + "\n",
++    );
++    expect(resolveClaudeCliProjectDirForWorkspace(params)).toBe(project);
++    expect(
++      await claudeCliSessionTranscriptHasContent({ ...params, sessionId: "synthetic-session" }),
++    ).toBe(true);
++    expect(
++      await claudeCliSessionTranscriptHasOrphanedToolUse({
++        ...params,
++        sessionId: "synthetic-session",
++      }),
++    ).toBe(true);
++    await fs.appendFile(
++      transcript,
++      JSON.stringify({
++        type: "user",
++        message: {
++          role: "user",
++          content: [{ type: "tool_result", tool_use_id: "pending", content: "done" }],
++        },
++      }) + "\n",
++    );
++    expect(
++      await claudeCliSessionTranscriptHasOrphanedToolUse({
++        ...params,
++        sessionId: "synthetic-session",
++      }),
++    ).toBe(false);
++    expect(
++      await claudeCliSessionTranscriptHasContent({
++        ...params,
++        configDir: path.join(root, "absent-account"),
++        sessionId: "synthetic-session",
++      }),
++    ).toBe(false);
++  },
++);
