@@ -11,3 +11,5 @@ Claude manual and idle operations use the SDK transport on a host-admitted, resu
 This patch includes core integration and regressions. Native adapter integration may be supplied by a companion patch. Required release checks include installed native cancellation/resume, complete snapshot input, policy-preserving writes and recorded channel delivery. Passing isolated tests alone is not installed acceptance.
 
 Snapshot memory inference selects the existing native CLI runner for a CLI source. It keeps the captured in-memory session, mediated append target, source policy and its own lifecycle. The live native session is not reused.
+
+Each snapshot save creates its own hidden user-turn recorder from the maintenance prompt. The recorder has no durable target or foreground admission; native adapters can validate the submitted prompt without appending to the source conversation.
