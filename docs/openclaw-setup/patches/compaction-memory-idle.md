@@ -13,3 +13,5 @@ This patch includes core integration and regressions. Native adapter integration
 Snapshot memory inference selects the existing native CLI runner for a CLI source. It keeps the captured in-memory session, mediated append target, source policy and its own lifecycle. The live native session is not reused.
 
 Each snapshot save creates its own hidden user-turn recorder from the maintenance prompt. The recorder has no durable target or foreground admission; native adapters can validate the submitted prompt without appending to the source conversation.
+
+Claude transcript readiness and orphan-tool checks resolve the same account directory as the native process. An explicit prepared backend directory takes precedence over inherited `CLAUDE_CONFIG_DIR`; without either, the standard home directory remains the default. Cold restart and binding-flush checks therefore do not discard a persisted session merely because its transcript lives outside the standard directory. The selected directory is checked directly, without searching other accounts.
