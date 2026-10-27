@@ -37,7 +37,7 @@ Retire blocking-gather and durable-handoff customizations together. Native paren
 
 **Approval:** Production approved. **Approval reference:** The requester approved implementation and shipping on October 18, approved shared code and Claude publication, then resumed work on October 24 using build, ci-dev and ci-prod. Public changes exclude other provider integrations.
 
-The latest DEV run failed during memory acceptance and closed cleanly. Claude compaction now uses the SDK transport that owns its snapshot callback. Snapshot saving now uses detached work admission so request cleanup cannot close the saver’s work scope. The affected 127 local tests pass; retained review is clear and fresh installed acceptance remains required. No deployed latency improvement is claimed.
+The latest DEV run confirms native Claude compaction captures a snapshot and starts its independent saver. Saving still failed. A local regression reproduces that runner entering the API path. The snapshot saver now selects the native CLI runner with the same mediated memory tools and retained history. All 136 memory-runner tests pass; retained review is clear. Installed acceptance remains required. No deployed latency improvement is claimed.
 
 ## Agent section
 
@@ -54,6 +54,8 @@ Retain complete native tool history, preserve source permissions, admit one deta
 Use the maintained native callbacks and session-maintenance scheduler. The idle trigger and manual compaction use the same snapshot hook. Do not weaken native cancellation or input ownership guards.
 
 ### Implementation
+
+Explicit CLI snapshot saving now calls the existing CLI runner, carrying the internal session manager, prepared admission, source policy identity, append target, effective context budget and independent diagnostic owner. It does not reuse a source CLI session. API fallback and retries remain disabled for snapshot writes. The regression asserts actual CLI dispatch, rejects embedded dispatch, and verifies the live checkpoint is unchanged.
 
 Use existing compaction notifications, internal snapshot preparation and the memory runner. Detached gateway work admission gives the saver its own asynchronous work scope. A regression through real admission reproduces `Async work scope is closed` with the previous independent-root API after the triggering scope drains; it passes with detached admission. Retain source authorization, incognito checks, ownership, cancellation and persistence. Native PreCompact retains the selected active transcript chain before callback acknowledgment; detached saving does not block on inference. A bounded reverse reader stops at the current root, so obsolete branches do not consume the snapshot budget. Repeated notifications reuse the retained job; uncertain writes require reconciliation.
 
