@@ -50,14 +50,15 @@ included. The unrelated old artifact retention repair remains parked.
 The requester directed delivery through `build`, `ci-dev` and `ci-prod`, with
 CI owning deployment, tests, merge, rollback and cleanup. Yield after dispatch
 and resume on the durable lifecycle event. Implementation and local packaged
-qualification pass; refreshed deployment qualification is next.
+qualification pass. DEV passed; production admission required a refresh after
+main advanced. The refreshed candidate must pass DEV again.
 
 ## Agent section
 
 ### State
 
 Public branch `codex/ptc-tool-results` rebased from main
-`0a95d50ec81e8c81948e2427a8acd917bd3e6bbf`.
+`31a98d689f4b335e922a64fb93569be78b0c27d2`.
 Paired private state records companion paths and base. Existing work was preserved.
 
 ### Scope and acceptance criteria
@@ -110,8 +111,9 @@ require a new build and DEV run. CI owns recovery and cleanup.
 ### Review log
 
 Retained reviewer found missing cumulative test registrations in both repositories.
-Both are fixed and independently verified. Final result: CLEAR. The complete packaged four-tool QuickJS scenario passed. Installed DEV and
-production qualification remain CI gates. The first build exposed the
+Both are fixed and independently verified. Final result: CLEAR. The complete packaged four-tool QuickJS scenario passed.
+DEV passed on the prior candidate. The refreshed paired composition requires
+new installed DEV and production qualification. The first build exposed the
 packager’s direct-child-only dependency lookup; root lookup now matches the
 existing transitive lookup. Retained review independently passed all four package tests and cleared the repair.
 
