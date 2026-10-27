@@ -209,7 +209,10 @@
     "src/agents/session-maintenance/run.native-idle.test.ts": "agents-support",
     "src/auto-reply/reply/agent-runner-maintenance.test.ts": "auto-reply-reply",
     "src/agents/command/maintenance.test.ts": "agents-support",
-    "src/agents/cli-runner/execute.supervisor-capture.test.ts": "agents-support"
+    "src/agents/cli-runner/execute.supervisor-capture.test.ts": "agents-support",
+    "src/agents/command/claude-cli-project-dir.test.ts": "agents-support",
+    "src/agents/command/attempt-execution.test.ts": "agents-support",
+    "src/agents/cli-runner/cli-run-settlement.test.ts": "agents-support"
   },
   "patches": [
     {
@@ -623,7 +626,10 @@
         "src/agents/session-maintenance/run.native-idle.test.ts",
         "src/auto-reply/reply/agent-runner-maintenance.test.ts",
         "src/agents/command/maintenance.test.ts",
-        "src/agents/cli-runner/execute.supervisor-capture.test.ts"
+        "src/agents/cli-runner/execute.supervisor-capture.test.ts",
+        "src/agents/command/claude-cli-project-dir.test.ts",
+        "src/agents/command/attempt-execution.test.ts",
+        "src/agents/cli-runner/cli-run-settlement.test.ts"
       ]
     }
   ],
@@ -631,7 +637,10 @@
     "extensions/imessage/src/approval-native.test.ts",
     "extensions/imessage/src/approval-reactions.test.ts",
     "src/plugins/hooks.before-tool-call.test.ts",
-    "src/agents/agent-tools.before-tool-call.embedded-mode.test.ts"
+    "src/agents/agent-tools.before-tool-call.embedded-mode.test.ts",
+    "src/agents/command/claude-cli-project-dir.test.ts",
+    "src/agents/command/attempt-execution.test.ts",
+    "src/agents/cli-runner/cli-run-settlement.test.ts"
   ],
   "candidateTests": [
     "tests/candidate.gmail-approval.test.ts",
