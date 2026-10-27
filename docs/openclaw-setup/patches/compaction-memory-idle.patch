@@ -529,10 +529,22 @@ index bab8eddd081..92535ea098e 100644
          context: params.context,
          abortSignal: signal,
 diff --git a/src/agents/cli-runner/execute.ts b/src/agents/cli-runner/execute.ts
-index 07ba2e88169..fc6e8587fc3 100644
 --- a/src/agents/cli-runner/execute.ts
 +++ b/src/agents/cli-runner/execute.ts
-@@ -514,6 +514,7 @@ export async function executePreparedCliRun(
+@@ -235,7 +235,11 @@
+     params.controlOperation === "compact" && context.backendResolved.manualCompaction
+       ? { ...backend, input: context.backendResolved.manualCompaction.input }
+       : backend;
+-  const { argsPrompt, stdin } = resolvePromptInput({ backend: promptInputBackend, prompt });
++  // A plugin sends the prompt through its protocol. Do not also append the
++  // process-only /compact argument, which would submit the command twice.
++  const { argsPrompt, stdin } = usePluginOwnedExecution
++    ? {}
++    : resolvePromptInput({ backend: promptInputBackend, prompt });
+   const baseArgs = useResume ? (backend.resumeArgs ?? backend.args ?? []) : (backend.args ?? []);
+   const resolvedArgs = useResume
+     ? baseArgs.map((entry) => entry.replaceAll("{sessionId}", resolvedSessionId ?? ""))
+@@ -514,6 +518,7 @@
                    fastAutoOnSeconds: params.fastModeAutoOnSeconds,
                  }).enabled,
            executionMode: params.executionMode ?? "agent",
@@ -3476,14 +3488,14 @@ index 00000000000..4cc05670605
 +}
 diff --git a/src/agents/session-maintenance/compaction-memory.test.ts b/src/agents/session-maintenance/compaction-memory.test.ts
 new file mode 100644
-index 00000000000..6f90f10c40d
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory.test.ts
-@@ -0,0 +1,231 @@
+@@ -0,0 +1,263 @@
 +import { randomUUID } from "node:crypto";
 +import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 +import { createDeferred } from "../../../test/helpers/promise.js";
 +import { createCorePluginStateKeyedStore } from "../../plugin-state/plugin-state-store.js";
++import { AsyncWorkScope, trackAsyncWork } from "../../shared/async-work-scope.js";
 +import { drainGlobalSingletonLifecycleState } from "../../shared/global-singleton.js";
 +import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 +import type { CompactionMemoryRecord } from "./compaction-memory-jobs.js";
@@ -3535,10 +3547,6 @@ index 00000000000..6f90f10c40d
 +vi.mock("../../plugins/runtime/gateway-request-scope.js", () => ({
 +  getPluginRuntimeGatewayRequestScope: () => undefined,
 +  withPluginRuntimeGatewayRequestScope: (_scope: unknown, run: () => unknown) => run(),
-+}));
-+vi.mock("../../process/gateway-work-admission.js", async (original) => ({
-+  ...(await original<object>()),
-+  runWithGatewayIndependentRootWorkAdmission: (run: () => unknown) => run(),
 +}));
 +vi.mock("../../infra/agent-events.js", async (original) => ({
 +  ...(await original<object>()),
@@ -3685,6 +3693,41 @@ index 00000000000..6f90f10c40d
 +    },
 +  );
 +
++  it("keeps memory inference usable after the triggering async owner closes", async () => {
++    await withOpenClawTestState({ label: "compaction-memory-owner" }, async () => {
++      const foreground = new AsyncWorkScope();
++      const started = createDeferred();
++      const finish = createDeferred();
++      const saved = createDeferred();
++      const failures: string[] = [];
++      mocks.save.mockImplementation(async () => {
++        started.resolve();
++        await finish.promise;
++        try {
++          await trackAsyncWork(async () => { saved.resolve(); });
++          return { outcome: "completed" };
++        } catch (error) {
++          failures.push(String(error));
++          saved.resolve();
++          return { outcome: "failed" };
++        }
++      });
++      await foreground.run(() => captureCompactionMemory(context()));
++      await started.promise;
++      try {
++        await foreground.drain();
++        finish.resolve();
++        await saved.promise;
++        expect(failures).toEqual([]);
++      } finally {
++        finish.resolve();
++      }
++      await vi.waitFor(async () => expect(
++        (await jobs().entries()).filter(r => r.value.kind === "job").map(r => r.value.status),
++      ).toEqual(["succeeded"]));
++    });
++  });
++
 +  it("rejects capture failure before dispatching any saver", async () => {
 +    await withOpenClawTestState({ label: "compaction-memory-capture-failed" }, async () => {
 +      mocks.capture.mockRejectedValue(new Error("projection failed"));
@@ -3738,7 +3781,7 @@ new file mode 100644
 +  getPluginRuntimeGatewayRequestScope,
 +  withPluginRuntimeGatewayRequestScope,
 +} from "../../plugins/runtime/gateway-request-scope.js";
-+import { runWithGatewayIndependentRootWorkAdmission } from "../../process/gateway-work-admission.js";
++import { runWithGatewayDetachedWorkAdmission } from "../../process/gateway-work-admission.js";
 +import { isIncognitoSessionKey } from "../../routing/session-key.js";
 +import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 +import { resolveAgentDir, resolveAgentWorkspaceDir } from "../agent-scope.js";
@@ -3834,7 +3877,7 @@ new file mode 100644
 +          withPluginRuntimeGatewayRequestScope(
 +            { pluginRegistry, resolveGatewayContext, isWebchatConnect: () => false },
 +            () =>
-+              runWithGatewayIndependentRootWorkAdmission(
++              runWithGatewayDetachedWorkAdmission(
 +                async () => {
 +                  assertCurrent();
 +                  const entry: SessionEntry = {
@@ -4913,3 +4956,112 @@ new file mode 100644
 +    expect((await store.entries()).filter(r => r.value.kind === "job")).toHaveLength(1);
 +  });
 +});
+diff --git a/src/agents/cli-runner/execute.supervisor-capture.test.ts b/src/agents/cli-runner/execute.supervisor-capture.test.ts
+--- a/src/agents/cli-runner/execute.supervisor-capture.test.ts
++++ b/src/agents/cli-runner/execute.supervisor-capture.test.ts
+@@ -27,7 +27,7 @@
+   resetDiagnosticRunActivityForTest,
+   startDiagnosticRunActivityTracking,
+ } from "../../logging/diagnostic-run-activity.js";
+-import type { CliBackendParseJsonlEvent } from "../../plugins/cli-backend.types.js";
++import type { CliBackendExecuteContext, CliBackendParseJsonlEvent } from "../../plugins/cli-backend.types.js";
+ import { getPluginModuleLoaderStats } from "../../plugins/plugin-module-loader-cache.js";
+ import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
+ import { setActivePluginRegistry } from "../../plugins/runtime.js";
+@@ -51,7 +51,13 @@
+   supervisorSpawnMock,
+   wrapPreparedCliRunWithTestAdmission,
+ } from "./execute.test-support.js";
++import { resolveCliExecutionTarget } from "./execution-target.js";
+ import { captureCliRunStartTime, type PreparedCliRunContext } from "./types.js";
++
++const snapshotHook = vi.hoisted(() => vi.fn(async (_params: unknown) => {}));
++vi.mock("../harness/prompt-compaction-hook-helpers.js", () => ({
++  runAgentHarnessBeforeCompactionHook: snapshotHook,
++}));
+ 
+ const executePreparedCliRun = wrapPreparedCliRunWithTestAdmission(executePreparedCliRunImpl);
+ 
+@@ -182,6 +188,7 @@
+   resetAgentEventsForTest();
+   resetDiagnosticEventsForTest();
+   supervisorSpawnMock.mockReset();
++  snapshotHook.mockClear();
+   // These contexts bypass preparation, which normally loads the provider owner.
+   // Unknown CLI errors must not materialize bundled plugins inside this fixture.
+   const registry = createEmptyPluginRegistry();
+@@ -492,6 +499,59 @@
+       }
+     });
+   });
++
++  it.each([true, false])(
++    "uses Claude's callback transport for compaction and validates its acknowledgement (%s)",
++    async (acknowledged) => {
++      const context = buildPreparedCliRunContext({ output: "jsonl", provider: "claude-cli" });
++      context.preparedBackend.backend.command = "/bin/sh";
++      context.params.prompt = "/compact";
++      context.params.controlOperation = "compact";
++      context.params.config = {
++        agents: { defaults: { compaction: { memoryFlush: { compactionHooks: ["claude-cli"] } } } },
++      };
++      context.backendResolved.manualCompaction = {
++        input: "arg",
++        buildPrompt: () => "/compact",
++        validateOutput: (output) =>
++          output.includes('"subtype":"compact_boundary"')
++            ? { ok: true }
++            : { ok: false, reason: "native compaction was not acknowledged" },
++      };
++      const entries = [{ type: "message", message: { role: "user", content: "synthetic fact" } }];
++      const execute = vi.fn(async function* (execution: CliBackendExecuteContext) {
++        expect(execution.prompt).toBe("/compact");
++        expect(execution.args).not.toContain("/compact");
++        expect(execution.toolAvailability).toEqual({ native: [], openClaw: [] });
++        expect(await execution.requestToolPermission({ toolName: "Bash", toolInput: {} })).toEqual({
++          behavior: "deny",
++          message: "Native tools are unavailable during compaction.",
++        });
++        expect(execution.retainCompactionSnapshot).toBeDefined();
++        await execution.retainCompactionSnapshot!(entries);
++        if (acknowledged) {
++          yield { type: "system", subtype: "compact_boundary" };
++        }
++        yield { type: "result", subtype: "success", result: "", session_id: "session-1" };
++      });
++      context.executionTarget = resolveCliExecutionTarget({
++        params: context.params,
++        backendId: context.backendResolved.id,
++        execute,
++      });
++      const result = executePreparedCliRun(context);
++      if (acknowledged) {
++        await expect(result).resolves.toMatchObject({ text: "", rawText: "" });
++      } else {
++        await expect(result).rejects.toThrow("native compaction was not acknowledged");
++      }
++      expect(execute).toHaveBeenCalledOnce();
++      expect(snapshotHook).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
++        ctx: expect.objectContaining({ memorySaveHarnessId: "claude-cli", memorySaveEntries: entries }),
++      }));
++      expect(supervisorSpawnMock).not.toHaveBeenCalled();
++    },
++  );
+ 
+   it("passes native compaction as an argument and requires backend acknowledgement", async () => {
+     const raw = `${JSON.stringify({ type: "system", subtype: "compacting" })}\n`;
+diff --git a/src/agents/cli-runner/execution-target.ts b/src/agents/cli-runner/execution-target.ts
+--- a/src/agents/cli-runner/execution-target.ts
++++ b/src/agents/cli-runner/execution-target.ts
+@@ -42,7 +42,10 @@
+       placement: { nodeId, ...(entry.execCwd?.trim() ? { cwd: entry.execCwd.trim() } : {}) },
+     };
+   }
+-  return context.execute && context.params.controlOperation !== "compact"
++  // Claude's SDK transport owns PreCompact callbacks as well as ordinary turns.
++  // Other backends retain their process-based manual compaction contract.
++  return context.execute &&
++    (context.params.controlOperation !== "compact" || context.backendId === "claude-cli")
+     ? { kind: "plugin", execute: context.execute }
+     : { kind: "process" };
+ }
