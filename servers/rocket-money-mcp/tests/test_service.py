@@ -24,8 +24,9 @@ class FakeAuth:
     def mark(self, value):
         self.state = value
 
-    def open_login(self):
+    def open_login(self, *, verify):
         self.renewals += 1
+        verify()
 
     def close(self):
         self.closed += 1
@@ -216,3 +217,29 @@ def test_crash_record_reconciles_only_by_read(setup):
         service.call("rocket_money_operation_status", {"requestId": p["requestId"]})["status"] == "verified"
     )
     assert len(mutations(auth)) == 1
+
+
+@pytest.mark.parametrize("renewed_viewer", ["owner", "different-owner"])
+def test_renewal_verifies_pinned_identity_before_financial_operation(setup, monkeypatch, renewed_viewer):
+    service, auth = setup
+    auth.fail = "auth"
+    original = auth.open_login
+
+    def renew(*, verify):
+        assert not mutations(auth)
+        auth.fail = None
+        auth.viewer = renewed_viewer
+        original(verify=verify)
+
+    monkeypatch.setattr(auth, "open_login", renew)
+    result = service.call("rocket_money_set_category", params())
+    assert auth.renewals == 1
+    assert auth.calls[:2] == [IDENTITY, IDENTITY]
+    if renewed_viewer == "owner":
+        assert result["status"] == "verified"
+        assert len(mutations(auth)) == 1
+        assert auth.state == "ready"
+    else:
+        assert result["status"] == "blocked"
+        assert not mutations(auth)
+        assert auth.closed == 1
