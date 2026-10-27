@@ -37,13 +37,13 @@ Retire blocking-gather and durable-handoff customizations together. Native paren
 
 **Approval:** Production approved. **Approval reference:** The requester approved implementation and shipping on October 18, approved shared code and Claude publication, then resumed work on October 24 using build, ci-dev and ci-prod. Public changes exclude other provider integrations.
 
-The preserved candidate is rebased onto current main. The optional-policy snapshot serialization repair and native idle scheduling repair are implemented. Historical focused checks passed; current CI acceptance is pending. The next DEV run will cover native manual compaction, one independent memory save and recall after restart. Actual fifteen-minute idle and cancellation acceptance remain required before production. No deployed latency improvement is claimed.
+The latest DEV run failed during memory acceptance and closed cleanly. Claude compaction now uses the SDK transport that owns its snapshot callback. Snapshot saving now uses detached work admission so request cleanup cannot close the saver’s work scope. The affected 127 local tests pass; retained review is clear and fresh installed acceptance remains required. No deployed latency improvement is claimed.
 
 ## Agent section
 
 ### State
 
-Refreshed public base: `0a95d50ec81e8c81948e2427a8acd917bd3e6bbf`. Preserved pre-rebase candidate: `db06e3f3930f8fd28fe7c2b900df469f34960b19`. Pinned OpenClaw: `eb377ac59e6c9fd6c7705028034812becf00271b` (2026.9.6). Publish from a clean feature branch based on the public base. Earlier unpublished investigation commits are retained outside the public branch. Public tests use a synthetic harness identity and Claude Code. Companion patches supply other native adapters and their specific regression bindings. Public CI requires no companion repository or deployment configuration.
+Refreshed public base: `31a98d689f4b335e922a64fb93569be78b0c27d2`. Preserved pre-rebase candidate: `db06e3f3930f8fd28fe7c2b900df469f34960b19`. Pinned OpenClaw: `eb377ac59e6c9fd6c7705028034812becf00271b` (2026.9.6). Publish from a clean feature branch based on the public base. Earlier unpublished investigation commits are retained outside the public branch. Public tests use a synthetic harness identity and Claude Code. Companion patches supply other native adapters and their specific regression bindings. Public CI requires no companion repository or deployment configuration.
 
 ### Scope and acceptance criteria
 
@@ -55,9 +55,9 @@ Use the maintained native callbacks and session-maintenance scheduler. The idle 
 
 ### Implementation
 
-Use existing compaction notifications, internal snapshot preparation and the memory runner. Retain source authorization, incognito checks, ownership, cancellation and persistence. Native PreCompact retains the selected active transcript chain before callback acknowledgment; detached saving does not block on inference. A bounded reverse reader stops at the current root, so obsolete branches do not consume the snapshot budget. Repeated notifications reuse the retained job; uncertain writes require reconciliation.
+Use existing compaction notifications, internal snapshot preparation and the memory runner. Detached gateway work admission gives the saver its own asynchronous work scope. A regression through real admission reproduces `Async work scope is closed` with the previous independent-root API after the triggering scope drains; it passes with detached admission. Retain source authorization, incognito checks, ownership, cancellation and persistence. Native PreCompact retains the selected active transcript chain before callback acknowledgment; detached saving does not block on inference. A bounded reverse reader stops at the current root, so obsolete branches do not consume the snapshot budget. Repeated notifications reuse the retained job; uncertain writes require reconciliation.
 
-Claude manual and idle operations use a host-admitted, resume-only control path. Safe mode retains built-in `/compact` while disabling customizations. Empty tools, strict empty MCP configuration and a denying permission callback prevent tools from running during compaction. Ordinary turns retain `--disable-slash-commands`; a foreground prompt cannot select the control path.
+Claude manual and idle operations select the SDK transport, which owns PreCompact, on a host-admitted, resume-only control path. The prompt is sent once through the protocol. The prior process transport performed native compaction but could not invoke that callback. Native completion acknowledgement remains required. Safe mode retains built-in `/compact` while disabling customizations. Empty tools, strict empty MCP configuration and a denying permission callback prevent tools from running during compaction. Ordinary turns retain `--disable-slash-commands`; a foreground prompt cannot select the control path.
 
 Code Mode selects the borrowed source policy separately from the session that owns execution. Its replay, wait ownership and lifecycle events retain that execution identity. Shared hooks and the idle scheduler use existing session-maintenance ownership and persistence.
 
@@ -66,6 +66,8 @@ Native Claude completion carries a CLI session binding rather than the embedded 
 Native yielded-parent ownership and terminal delivery guards are present in the pinned upstream base. Remove both gather patches and adapt dependent untrusted-result presentation hunks. The delegation canary expects a native `yielded` acknowledgment followed by one `subagent_settle` continuation. It checks wrapping enabled and disabled and direct, delayed, spawn and yield paths.
 
 ### Validation
+
+The transport and asynchronous ownership repairs pass 127 tests across the CLI execution, plugin boundary and compaction-memory files (17.01 seconds). The new ownership regression failed on the prior API with `Async work scope is closed`. Native installed acceptance remains pending.
 
 Focused checks cover final Claude child-process arguments, native hook routing, source policy, snapshot retention, deduplication, append-only writes, restart recovery and idle admission. Installed synthetic Claude delegation passes with wrapping on and off. These checks use native processes with scripted inference and do not establish real-provider or deployed acceptance.
 
