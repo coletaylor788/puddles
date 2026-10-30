@@ -28,10 +28,17 @@ export function validateCandidate(value) {
   }
   return value;
 }
-export function bytes(root) {
-  const stat = lstatSync(root);
-  if (stat.isSymbolicLink()) return 0;
-  return stat.isDirectory() ? readdirSync(root).reduce((n, name) => n + bytes(join(root, name)), 0) : stat.size;
+export function bytes(root, { allowMissing = false } = {}) {
+  try {
+    const stat = lstatSync(root);
+    if (stat.isSymbolicLink()) return 0;
+    return stat.isDirectory() ? readdirSync(root).reduce((n, name) => n + bytes(join(root, name), { allowMissing }), 0) : stat.size;
+  } catch (error) {
+    // Capacity scans can overlap removal of another run's temporary files.
+    // Source and control measurements remain strict unless explicitly opted in.
+    if (allowMissing && error.code === 'ENOENT') return 0;
+    throw error;
+  }
 }
 // File lengths alone omit allocation rounding and directory/link metadata.
 // Estimate against the destination volume, not the source's allocated blocks.
@@ -53,7 +60,7 @@ export function storageFootprint(root, allocationUnit) {
 export function capacity(root, { maxBytes, reserveBytes }, additional = 0, { physicalAdditional = additional, phase = 'admission' } = {}) {
   if (![maxBytes, reserveBytes, additional, physicalAdditional, reserveBytes + physicalAdditional].every(n => Number.isSafeInteger(n) && n >= 0) ||
       maxBytes === 0 || physicalAdditional < additional || !/^[a-z][a-z0-9-]{0,63}$/.test(phase)) throw new Error('Explicit CI storage budget required');
-  const used = existsSync(root) ? bytes(root) : 0;
+  const used = bytes(root, { allowMissing: true });
   const disk = statfsSync(root);
   const available = disk.bavail * disk.bsize, requiredAvailable = reserveBytes + physicalAdditional;
   if (used + additional > maxBytes || available < requiredAvailable) {
