@@ -159,12 +159,14 @@ export function wrapMcpTool(
         return toAgentResult(raw, source);
       }
 
+      const content = [{ type: "text" as const, text: current }];
       return {
-        content: [{ type: "text" as const, text: current }],
+        content,
         details: {
           source,
           modified: true,
-          original: raw,
+          isError: raw.isError === true,
+          content,
         },
       };
     },
@@ -185,9 +187,11 @@ function toAgentResult(raw: CallToolResult, source: string) {
     (b): b is { type: "text"; text: string } | { type: "image"; data: string; mimeType: string } =>
       b.type === "text" || b.type === "image",
   );
+  const visible = content.length > 0 ? content : [{ type: "text" as const, text: "" }];
   return {
-    content: content.length > 0 ? content : [{ type: "text" as const, text: "" }],
-    details: { source, isError: raw.isError === true },
+    content: visible,
+    // Native Code Mode returns details to scripts. Only expose the checked result.
+    details: { source, isError: raw.isError === true, content: visible },
   };
 }
 
@@ -200,9 +204,10 @@ function blockedResult(
   const text = `[${source}] blocked ${toolName} (${phase}): ${
     reason ?? "hook detected unsafe content"
   }`;
+  const content = [{ type: "text" as const, text }];
   return {
-    content: [{ type: "text" as const, text }],
-    details: { source, blocked: true, phase, reason },
+    content,
+    details: { source, blocked: true, phase, reason, content },
   };
 }
 

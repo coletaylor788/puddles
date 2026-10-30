@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -76,5 +76,24 @@ describe("runtime package selection", () => {
 
     expect(spawnSync).not.toHaveBeenCalled();
     expect(existsSync(join(root, "runtime/index.js"))).toBe(true);
+  });
+
+  it("packages sibling pnpm dependencies from the real plugin location without copying host peers", async () => {
+    const { root, source } = fixture();
+    const store = join(source, "node_modules/.pnpm/plugin/node_modules");
+    const plugin = join(store, "plugin"), dependency = join(store, "fixture-dependency");
+    mkdirSync(plugin, { recursive: true }); mkdirSync(dependency);
+    writeFileSync(join(plugin, "package.json"), JSON.stringify({ name: "plugin", version: "1.0.0",
+      files: ["index.js"], dependencies: { "fixture-dependency": "1.0.0" }, peerDependencies: { openclaw: "*" } }));
+    writeFileSync(join(plugin, "index.js"), "export {};\n");
+    writeFileSync(join(dependency, "package.json"), JSON.stringify({ name: "fixture-dependency", version: "1.0.0" }));
+    writeFileSync(join(dependency, "index.js"), "module.exports = 'selected';\n");
+    const link = join(source, "node_modules/plugin"); symlinkSync(plugin, link);
+    const output = join(root, "runtime");
+    await materializeRuntimeForDev(link, output);
+    const selected = join(output, "node_modules/fixture-dependency");
+    expect(realpathSync(selected).startsWith(realpathSync(output) + "/")).toBe(true);
+    expect(readFileSync(join(selected, "index.js"), "utf8")).toContain("selected");
+    expect(existsSync(join(output, "node_modules/openclaw"))).toBe(false);
   });
 });

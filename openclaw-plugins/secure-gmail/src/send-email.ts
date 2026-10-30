@@ -68,9 +68,10 @@ export function approvalSummary(args: Record<string, unknown>): string {
 }
 
 function result(status: string, message: string, receipt: Record<string, string> = {}) {
+  const content = [{ type: "text" as const, text: JSON.stringify({ status, message, ...receipt }) }];
   return {
-    content: [{ type: "text" as const, text: JSON.stringify({ status, message, ...receipt }) }],
-    details: { source: "secure-gmail", status, ...receipt },
+    content,
+    details: { source: "secure-gmail", status, ...receipt, content },
   };
 }
 

@@ -131,11 +131,14 @@ export function wrapMcpTool(
         return toAgentResult(raw);
       }
 
+      const content = [{ type: "text" as const, text: current }];
       return {
-        content: [{ type: "text", text: current }],
+        content,
         details: {
           source: "secure-gmail",
           modified: true,
+          isError: raw.isError === true,
+          content,
         },
       };
     },
@@ -156,9 +159,11 @@ function toAgentResult(raw: CallToolResult) {
     (b): b is { type: "text"; text: string } | { type: "image"; data: string; mimeType: string } =>
       b.type === "text" || b.type === "image",
   );
+  const visible = content.length > 0 ? content : [{ type: "text" as const, text: "" }];
   return {
-    content: content.length > 0 ? content : [{ type: "text" as const, text: "" }],
-    details: { source: "secure-gmail", isError: raw.isError === true },
+    content: visible,
+    // Native Code Mode returns details to scripts. Only expose the checked result.
+    details: { source: "secure-gmail", isError: raw.isError === true, content: visible },
   };
 }
 
@@ -166,8 +171,9 @@ function blockedResult(toolName: string, reason: string | undefined) {
   const text = `[secure-gmail] blocked ${toolName}: ${
     reason ?? "ingress hook detected unsafe content"
   }`;
+  const content = [{ type: "text" as const, text }];
   return {
-    content: [{ type: "text" as const, text }],
-    details: { source: "secure-gmail", blocked: true, reason },
+    content,
+    details: { source: "secure-gmail", blocked: true, reason, content },
   };
 }
