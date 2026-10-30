@@ -156,6 +156,7 @@ it("closes every provider server even when process shutdown and another cleanup 
     ...servers.map(server => () => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))),
   ]);
   await expect(result).rejects.toMatchObject({ errors: [stopError, providerError] });
+  await expect(result).rejects.toThrow("stop failed; Error: provider failed");
   expect(servers.every(server => !server.listening)).toBe(true);
 });
 

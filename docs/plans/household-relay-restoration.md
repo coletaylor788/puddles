@@ -1,8 +1,8 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; DEV qualification deadline repaired, new CI run pending
+**Status:** Production approved; repairing DEV cleanup diagnostics and refreshing the candidate
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
-**Last updated:** 2026-10-26
+**Last updated:** 2026-10-30
 
 ## Human section
 
@@ -600,3 +600,42 @@ affect validation only; the application artifact is unchanged.
 - [x] Rebuild with corrected source discovery and pass fresh DEV tests.
 - [x] Complete independent closure of the replacement DEV run.
 - [ ] Complete managed TEST, PROD, source merge, and cleanup.
+
+### Eighth full release and nested package-manager repair
+
+The eighth attempt is consumed and independently closed. The core pool passed
+7,183 cases with one skip across 226 files. Candidate checks passed 22 cases,
+and all 16 application scenarios passed. The subsequent companion lint command
+failed with exit127 because its shell invoked a package-manager name that was
+not exposed by the pinned toolchain. The installed controller stopped TEST,
+retired its processes and cleared the ticket. Production runtime, configuration,
+backup and normal intake were verified unchanged and healthy.
+
+The companion's lint and test scripts now use the explicit launcher already
+used by its build command. The registered executable toolchain regression runs
+both authored scripts with no package-manager shim on PATH, checks both workspace
+groups and verifies that a failed workspace test stops the application runner.
+It passed under a bounded native process. Exact companion lint under that same
+restricted PATH also passed. The successor must perform the same preflight
+before the full application pool. Reuse only proofs whose actual inputs still
+match; do not replay the consumed release or change runtime output merely to
+refresh source metadata.
+
+### DEV cleanup failure and current recovery
+
+The latest installed qualification completed eleven of twelve actual-model
+scenarios. The native application scenario failed during fixture cleanup.
+The terminal deployment receipt and source queue confirm failure and cleanup
+closure. Production promotion has not run for this candidate.
+
+Cleanup failures were absent from the fixture diagnostic file, and bounded
+reporting selected stack tails instead of the error message. The repair records
+cleanup failures with their underlying resource errors and samples the error
+header before redaction and clipping. It preserves every cleanup assertion and
+release gate. Eleven process cleanup tests and twenty qualification and control
+tests pass. The original resource cleanup cause remains unproven.
+
+The paired source refresh preserves both the released custom-tool retry timing
+fix and this feature's timeout, rotated-transcript, and classification fixture
+fixes. Patch conflicts were resolved by merging their materialized source.
+Fresh affected review, build, and installed DEV validation remain required.

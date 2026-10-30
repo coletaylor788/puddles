@@ -102,5 +102,6 @@ export async function cleanupFixtureResources(actions) {
   for (const action of actions) {
     try { await action(); } catch (error) { errors.push(error); }
   }
-  if (errors.length) throw new AggregateError(errors, "Native fixture resource cleanup failed");
+  if (errors.length) throw new AggregateError(errors,
+    `Native fixture resource cleanup failed: ${errors.map(String).join("; ")}`);
 }
