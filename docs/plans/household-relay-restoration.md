@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; repairing DEV cleanup diagnostics and refreshing the candidate
+**Status:** Production approved; DEV passed, refreshing after main advanced
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-30
 
@@ -131,6 +131,12 @@ minutes for all 12 cases. The overall deadline now covers every bounded case
 plus startup and cleanup. Individual case and provider limits remain unchanged.
 CI completed teardown and production was not reached. Both branches are refreshed
 for the installed output queue, which owns the next DEV attempt and its cleanup.
+
+The latest DEV qualification passed, including teardown and source cleanup.
+Production CI then rejected the queued candidate before dispatch because main
+advanced. The refresh preserves the newly released packaged tools and their
+recording configuration. A rebuilt candidate must pass DEV again before
+production submission.
 
 ## Agent section
 
@@ -639,3 +645,18 @@ The paired source refresh preserves both the released custom-tool retry timing
 fix and this feature's timeout, rotated-transcript, and classification fixture
 fixes. Patch conflicts were resolved by merging their materialized source.
 Fresh affected review, build, and installed DEV validation remain required.
+
+### Refresh after the successful DEV run
+
+DEV `gh-41129380952-1` passed with `phase=complete` and no child. Its source
+queue closed at `1793396546042` and transfer cleanup completed. The subsequent
+production submission was rejected for changed main before workflow dispatch;
+its source queue is closed and no production deployment occurred for it.
+
+Both feature heads were preserved before rebasing onto the released tool-result
+compatibility changes. The private conflict keeps both packaged Apple PIM and
+the Household return plugin, and retains both test inventories. The source
+patch set is unchanged. Rebuild the refreshed paired application and controls,
+repeat affected configuration and packaging tests, retain the independent
+reviewer, then submit fresh DEV. The prior DEV pass is historical evidence, not
+qualification of the new package inputs.
