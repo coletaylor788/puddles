@@ -2,7 +2,7 @@
 
 Status: Implemented, deployment qualification pending
 Issue: https://github.com/coletaylor788/puddles/issues/336
-Last updated: 2026-10-26
+Last updated: 2026-10-30
 Owner: PTC tool repair
 
 ## Human section
@@ -50,15 +50,17 @@ included. The unrelated old artifact retention repair remains parked.
 The requester directed delivery through `build`, `ci-dev` and `ci-prod`, with
 CI owning deployment, tests, merge, rollback and cleanup. Yield after dispatch
 and resume on the durable lifecycle event. Implementation and local packaged
-qualification pass. DEV passed; production admission required a refresh after
-main advanced. The refreshed candidate must pass DEV again.
+qualification pass. DEV passed and closed. The production application suite
+found an obsolete plugin-retirement rule in configuration migration. That rule
+now preserves the reviewed packaged entry; focused regression tests pass. The
+corrected candidate requires a fresh build and CI qualification.
 
 ## Agent section
 
 ### State
 
 Public branch `codex/ptc-tool-results` rebased from main
-`31a98d689f4b335e922a64fb93569be78b0c27d2`.
+`0dee83b9eae4e914688ef2756486de843f365ea1`.
 Paired private state records companion paths and base. Existing work was preserved.
 
 ### Scope and acceptance criteria
