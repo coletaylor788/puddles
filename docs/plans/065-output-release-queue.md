@@ -90,3 +90,22 @@ Existing retained reviewer resumed for the complete change.
 - [ ] Full tooling suites and retained review.
 - [ ] Merge, install and multi-feature acceptance.
 - [ ] Cleanup and implementer guidance.
+
+
+### Capacity scan correction (2026-10-30)
+
+A capacity scan can enumerate temporary files while another completed run removes
+its scratch directory. Treat an entry that disappears during this live usage
+scan as zero remaining bytes. Continue rejecting permission and I/O errors,
+keep source and control measurements strict, and preserve existing quotas and
+free-space reserves. This changes neither queue ordering nor build ownership.
+
+**Approval:** Production approved. **Approval reference:** The requester approved
+fixing the observed capacity-scan race on 2026-10-30 and explicitly excluded
+additional disk accounting. Legacy retirement is a separate operational task.
+
+Regression coverage removes real files and directories at the scan boundary,
+exercises build-reference registration, verifies quota enforcement on surviving
+files, and verifies other filesystem errors still propagate. Install the reviewed
+release tooling between transactions after the complete independent tooling suite
+passes. No application rebuild or deployment is required for this tooling fix.

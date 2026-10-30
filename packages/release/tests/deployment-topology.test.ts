@@ -328,6 +328,7 @@ function wrapperFixture(fault: boolean) {
       directory, receiptPath, targetPath, preparedDestination, backups,
       env: {
         ...process.env, PATH: `${bin}:${process.env.PATH}`,
+        E2E_CAPACITY_ROOT: join(realpathSync(directory), "capacity"),
         OPENCLAW_CANDIDATE_RECEIPT: receiptPath, OPENCLAW_DEPLOY_TARGET: targetPath,
         MINI_HOST: "", OPENCLAW_DEPLOY_ACTION: "activate",
       },

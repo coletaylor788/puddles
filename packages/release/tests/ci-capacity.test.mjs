@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statfsSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { capacity, publishCandidate, storageFootprint } from '../src/ci-candidate.mjs';
+import { bytes, capacity, loadCandidate, publishCandidate, registerBuildReference, storageFootprint } from '../src/ci-candidate.mjs';
 
 function fixture(t) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'ci-capacity-')));
@@ -65,4 +67,60 @@ test('publication checks physical allocation before creating a candidate', async
     return true;
   });
   assert.equal(readdirSync(registry).filter(name => /^[a-f0-9]{64}$/.test(name)).length, 0);
+});
+
+// Interleave actual removal at the filesystem boundary, without timing sleeps.
+function duringScan(t, method, path, action) {
+  const original = fs[method];
+  let fired = false;
+  t.mock.method(fs, method, (value, ...args) => {
+    if (value === path && !fired) { fired = true; action(); }
+    return original(value, ...args);
+  });
+  syncBuiltinESMExports();
+  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  return () => assert.equal(fired, true, 'scan reached the interleaved operation');
+}
+
+for (const method of ['lstatSync', 'readdirSync']) {
+  test(`capacity keeps counting surviving files when cleanup removes an entry before ${method}`, t => {
+    const root = fixture(t), vanished = join(root, 'cache');
+    if (method === 'readdirSync') { mkdirSync(vanished); writeFileSync(join(vanished, 'data'), 'temporary'); }
+    else writeFileSync(vanished, 'temporary');
+    const verify = duringScan(t, method, vanished, () => rmSync(vanished, { recursive: true }));
+    assert.equal(capacity(root, { maxBytes: 10, reserveBytes: 0 }, 2).used, 8);
+    verify();
+    assert.throws(() => capacity(root, { maxBytes: 10, reserveBytes: 0 }, 3), { code: 'CI_STORAGE_CAPACITY' });
+  });
+
+  for (const code of ['EACCES', 'EIO']) test(`capacity propagates ${code} from ${method}`, t => {
+    const root = fixture(t), path = method === 'readdirSync' ? root : join(root, 'existing');
+    const error = Object.assign(new Error('fixture filesystem failure'), { code });
+    const verify = duringScan(t, method, path, () => { throw error; });
+    assert.throws(() => capacity(root, { maxBytes: 10, reserveBytes: 0 }), caught => caught === error);
+    verify();
+  });
+}
+
+test('build registration survives removal of another run temporary file', async t => {
+  const root = fixture(t), registry = join(root, 'registry'), source = join(root, 'source');
+  mkdirSync(source); writeFileSync(join(source, 'app'), 'payload');
+  const inputs = { repositories: [{ repository: 'example/app', head: '1'.repeat(40), base: '2'.repeat(40), tree: '3'.repeat(40) }] };
+  const policy = { maxBytes: 1024 * 1024, reserveBytes: 0 };
+  const first = await registerBuildReference(registry, source, inputs, policy);
+  const scratch = join(registry, first.id, 'application-runs', 'finished');
+  mkdirSync(scratch, { recursive: true });
+  const temporary = join(scratch, 'cache'); writeFileSync(temporary, 'temporary transform output');
+  const verify = duringScan(t, 'lstatSync', temporary, () => rmSync(temporary));
+  const nextInputs = { repositories: [{ ...inputs.repositories[0], head: '4'.repeat(40) }] };
+  const next = await registerBuildReference(registry, source, nextInputs, policy);
+  verify();
+  assert.notEqual(next.id, first.id);
+  assert.equal(loadCandidate(registry, next.id).artifact, source);
+});
+
+test('strict byte counts and source footprints still reject missing inputs', t => {
+  const root = fixture(t), missing = join(root, 'missing');
+  assert.throws(() => bytes(missing), { code: 'ENOENT' });
+  assert.throws(() => storageFootprint(missing, 4096), { code: 'ENOENT' });
 });
