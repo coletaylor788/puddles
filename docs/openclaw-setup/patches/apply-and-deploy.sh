@@ -45,6 +45,7 @@ PATCHES=(
   talk-request-recovery
   code-mode-additive-surface
   claude-code-mode-mcp
+  claude-native-agent-profiles
 )
 
 if [ -n "${MINI_HOST:-}" ]; then

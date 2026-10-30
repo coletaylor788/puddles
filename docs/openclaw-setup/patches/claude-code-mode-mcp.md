@@ -17,6 +17,11 @@ An exact list of callable names must not turn node-only `exec` into gateway or
 sandbox execution. This host-owned selection stays separate from the name
 allowlist and cannot be supplied by an MCP client.
 
+Delegated turns resolve tool policy using the policy owner and policy session.
+The current conversation still owns Code Mode execution, parked calls and cleanup.
+A worker policy must not be paired with another agent's session during policy lookup
+or replace the conversation that can resume a parked call.
+
 The shared runtime belongs to the current grant and capture. It outlives the
 short schema cache so a later `code_wait` can resume work. Grant replacement,
 deactivation, revocation, and shutdown dispose it and abort pending work. A later
