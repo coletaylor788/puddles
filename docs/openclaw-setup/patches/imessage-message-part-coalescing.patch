@@ -60,10 +60,18 @@ index d5ee71b48..05d93ce30 100644
      ...buildChannelReactionShape({ notificationModes: ["off", "own", "all"] }),
      catchup: z
 diff --git a/extensions/imessage/src/monitor.last-route.test.ts b/extensions/imessage/src/monitor.last-route.test.ts
-index d0a062e29..e282bcf82 100644
+index d0a062e..90613f9 100644
 --- a/extensions/imessage/src/monitor.last-route.test.ts
 +++ b/extensions/imessage/src/monitor.last-route.test.ts
-@@ -161,6 +161,18 @@ const waitForTransportReadyMock = vi.hoisted(() =>
+@@ -11,6 +11,7 @@ import {
+   recordInboundSession,
+   type ensureConfiguredBindingRouteReady,
+ } from "openclaw/plugin-sdk/conversation-runtime";
++import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
+ import {
+   createTestRegistry,
+   resetPluginRuntimeStateForTest,
+@@ -161,6 +162,18 @@ const waitForTransportReadyMock = vi.hoisted(() =>
  );
  const createIMessageRpcClientMock = vi.hoisted(() => vi.fn<typeof createIMessageRpcClient>());
  const probeIMessagePrivateApiMock = vi.hoisted(() => vi.fn<typeof probeIMessagePrivateApi>());
@@ -82,7 +90,7 @@ index d0a062e29..e282bcf82 100644
  const readChannelAllowFromStoreMock = vi.hoisted(() => vi.fn(async () => [] as string[]));
  const ensureConfiguredBindingRouteReadyMock = vi.hoisted(() =>
    vi.fn<typeof ensureConfiguredBindingRouteReady>(async () => ({ ok: true })),
-@@ -173,12 +185,18 @@ const dispatchReplyWithBufferedBlockDispatcherMock = vi.hoisted(() =>
+@@ -173,12 +186,18 @@ const dispatchReplyWithBufferedBlockDispatcherMock = vi.hoisted(() =>
  );
  const debouncerControl = vi.hoisted(() => ({
    holdEntries: false,
@@ -101,7 +109,7 @@ index d0a062e29..e282bcf82 100644
      this.flush = undefined;
      this.flushEach = undefined;
    },
-@@ -186,6 +204,9 @@ const debouncerControl = vi.hoisted(() => ({
+@@ -186,6 +205,9 @@ const debouncerControl = vi.hoisted(() => ({
  const createChannelInboundDebouncerMock = vi.hoisted(() =>
    vi.fn(
      (opts: {
@@ -111,7 +119,7 @@ index d0a062e29..e282bcf82 100644
        onFlush: (
          entries: unknown[],
          createFlush: typeof createTestInboundDebounceFlush,
-@@ -193,10 +214,24 @@ const createChannelInboundDebouncerMock = vi.hoisted(() =>
+@@ -193,10 +215,24 @@ const createChannelInboundDebouncerMock = vi.hoisted(() =>
      }) => ({
        debouncer: {
          enqueue: async (entry: unknown) => {
@@ -136,7 +144,7 @@ index d0a062e29..e282bcf82 100644
            debouncerControl.entries.push(entry);
            debouncerControl.flush = async () => {
              const entries = debouncerControl.entries.splice(0);
-@@ -212,7 +247,9 @@ const createChannelInboundDebouncerMock = vi.hoisted(() =>
+@@ -212,7 +248,9 @@ const createChannelInboundDebouncerMock = vi.hoisted(() =>
              }
            };
          },
@@ -147,7 +155,7 @@ index d0a062e29..e282bcf82 100644
          cancelKey: () => false,
          drain: async () => {},
        },
-@@ -239,7 +276,7 @@ vi.mock("openclaw/plugin-sdk/channel-inbound", async (importOriginal) => {
+@@ -239,7 +277,7 @@ vi.mock("openclaw/plugin-sdk/channel-inbound", async (importOriginal) => {
    return {
      ...actual,
      createChannelInboundDebouncer: createChannelInboundDebouncerMock,
@@ -156,7 +164,7 @@ index d0a062e29..e282bcf82 100644
    };
  });
  
-@@ -255,6 +292,43 @@ vi.mock("./probe.js", async (importOriginal) => {
+@@ -255,6 +293,43 @@ vi.mock("./probe.js", async (importOriginal) => {
    };
  });
  
@@ -200,7 +208,7 @@ index d0a062e29..e282bcf82 100644
  vi.mock("./monitor/abort-handler.js", () => ({
    attachIMessageMonitorAbortHandler: vi.fn(() => () => {}),
  }));
-@@ -306,6 +380,7 @@ describe("iMessage monitor last-route updates", () => {
+@@ -306,6 +381,7 @@ describe("iMessage monitor last-route updates", () => {
            rpcMethods: [],
          },
      );
@@ -208,7 +216,107 @@ index d0a062e29..e282bcf82 100644
      readChannelAllowFromStoreMock.mockReset().mockResolvedValue([]);
      ensureConfiguredBindingRouteReadyMock.mockReset().mockResolvedValue({ ok: true });
      dispatchReplyWithBufferedBlockDispatcherMock.mockClear();
-@@ -1750,5 +1825,1607 @@ describe("iMessage monitor last-route updates", () => {
+@@ -739,30 +815,74 @@ describe("iMessage monitor last-route updates", () => {
+     ).toBe(false);
+   });
+ 
+-  it("waits for configured ACP target readiness before dispatching an authorized message", async () => {
+-    let releaseReadiness: ((value: { ok: true }) => void) | undefined;
+-    ensureConfiguredBindingRouteReadyMock.mockImplementationOnce(
+-      () =>
+-        new Promise((resolve) => {
+-          releaseReadiness = resolve;
+-        }),
+-    );
+-    createIMessageWatchClient({
++  it("waits for configured ACP target readiness before dispatching an authorized message", async ({
++    onTestFailed,
++  }) => {
++    const readinessEntered = createDeferred<void>();
++    const releaseReadiness = createDeferred<{ ok: true }>();
++    const dispatchEntered = createDeferred<void>();
++    const runtimeFailure = createDeferred<string>();
++    const runtime = {
++      error: vi.fn((...args: unknown[]) => runtimeFailure.resolve(args.map(String).join(" "))),
++      exit: vi.fn(),
++      log: vi.fn(),
++    };
++    let stage = "monitor startup";
++    onTestFailed(() => {
++      console.error(`ACP readiness test failed during ${stage}`, runtime.error.mock.calls);
++    });
++    const waitForStage = async (name: string, entered: Promise<void>) => {
++      stage = name;
++      const deadline = createDeferred<void>();
++      const timer = setTimeout(() => deadline.reject(new Error(`${name}: timed out`)), 10_000);
++      try {
++        await Promise.race([
++          entered,
++          deadline.promise,
++          runtimeFailure.promise.then((message) => {
++            throw new Error(`${name}: ${message}`);
++          }),
++        ]);
++      } finally {
++        clearTimeout(timer);
++      }
++    };
++    ensureConfiguredBindingRouteReadyMock.mockImplementationOnce(() => {
++      readinessEntered.resolve();
++      return releaseReadiness.promise;
++    });
++    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(async () => {
++      dispatchEntered.resolve();
++      return EMPTY_DISPATCH_RESULT;
++    });
++    const client = createIMessageWatchClient({
+       onClose: async (notify) => {
+         notify(createInboundMessage({ id: 81, guid: "acp-ready-81", text: "start the agent" }));
+-        await vi.waitFor(() => {
++        try {
++          // Durable admission is asynchronous. Wait for entry, not a polling deadline.
++          await waitForStage("readiness entry", readinessEntered.promise);
+           expect(ensureConfiguredBindingRouteReadyMock).toHaveBeenCalledTimes(1);
+-        });
+-        expect(dispatchReplyWithBufferedBlockDispatcherMock).not.toHaveBeenCalled();
+-        releaseReadiness?.({ ok: true });
+-        await vi.waitFor(() => {
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).not.toHaveBeenCalled();
++          releaseReadiness.resolve({ ok: true });
++          await waitForStage("dispatch entry", dispatchEntered.promise);
+           expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
+-        });
++          stage = "monitor shutdown";
++        } finally {
++          releaseReadiness.resolve({ ok: true });
++        }
+       },
+     });
+ 
+-    await runIMessageMonitor(createConfiguredBindingMonitor());
++    try {
++      await runIMessageMonitor(createConfiguredBindingMonitor({ runtime }));
++    } finally {
++      expect(client.stop).toHaveBeenCalledTimes(1);
++    }
+ 
++    stage = "final assertions";
++    expect(runtime.error).not.toHaveBeenCalled();
++    expect(ensureConfiguredBindingRouteReadyMock).toHaveBeenCalledTimes(1);
++    expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
+     expect(ensureConfiguredBindingRouteReadyMock).toHaveBeenCalledWith({
+       cfg: expect.any(Object),
+       bindingResolution: expect.objectContaining({
+@@ -778,7 +898,7 @@ describe("iMessage monitor last-route updates", () => {
+     expect(ensureConfiguredBindingRouteReadyMock.mock.invocationCallOrder[0]).toBeLessThan(
+       dispatchReplyWithBufferedBlockDispatcherMock.mock.invocationCallOrder[0]!,
+     );
+-  });
++  }, 30_000);
+ 
+   it("drops unavailable configured ACP messages before typing, reads, media, history, or dispatch", async () => {
+     setAvailablePrivateApiMethods(["watch.subscribe", "typing", "read"]);
+@@ -1750,5 +1870,1718 @@ describe("iMessage monitor last-route updates", () => {
        }
      });
    }
@@ -308,6 +416,51 @@ index d0a062e29..e282bcf82 100644
 +    const mediaPath = path.join(mediaDir, "standalone.jpg");
 +    fs.writeFileSync(mediaPath, "image");
 +
++    const urlDispatched = createDeferred<void>();
++    const imageDispatched = createDeferred<void>();
++    const mediaEntered = createDeferred<void>();
++    const releaseMedia = createDeferred<void>();
++    const runtimeFailure = createDeferred<string>();
++    const runtime = {
++      error: vi.fn((...args: unknown[]) => runtimeFailure.resolve(args.map(String).join(" "))),
++      exit: vi.fn(),
++      log: vi.fn(),
++    };
++    const waitForStage = async (name: string, entered: Promise<void>) => {
++      const deadline = createDeferred<void>();
++      const timer = setTimeout(() => deadline.reject(new Error(`${name}: timed out`)), 10_000);
++      try {
++        await Promise.race([
++          entered,
++          deadline.promise,
++          runtimeFailure.promise.then((message) => {
++            throw new Error(`${name}: ${message}`);
++          }),
++        ]);
++      } finally {
++        clearTimeout(timer);
++      }
++    };
++    const stageAttachments = iMessageMediaStaging.stageIMessageAttachments;
++    vi.spyOn(iMessageMediaStaging, "stageIMessageAttachments").mockImplementation(
++      async (attachments, params) => {
++        if (attachments.length > 0) {
++          mediaEntered.resolve();
++          await releaseMedia.promise;
++        }
++        return stageAttachments(attachments, params);
++      },
++    );
++    dispatchReplyWithBufferedBlockDispatcherMock
++      .mockImplementationOnce(async () => {
++        urlDispatched.resolve();
++        return EMPTY_DISPATCH_RESULT;
++      })
++      .mockImplementationOnce(async () => {
++        imageDispatched.resolve();
++        return EMPTY_DISPATCH_RESULT;
++      });
++
 +    let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
 +    const client = {
 +      request: vi.fn(async (method: string) => {
@@ -317,51 +470,60 @@ index d0a062e29..e282bcf82 100644
 +        throw new Error(`unexpected imsg method ${method}`);
 +      }),
 +      waitForClose: vi.fn(async () => {
-+        onNotification?.({
-+          method: "message",
-+          params: {
-+            message: {
-+              id: 724,
-+              guid: "LIVE-GUID-724",
-+              text: "https://example.com/standalone",
-+              balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
-+              created_at: new Date().toISOString(),
-+              chat_id: 123,
-+              sender: "+15550001111",
-+              is_from_me: false,
-+              is_group: false,
++        try {
++          onNotification?.({
++            method: "message",
++            params: {
++              message: {
++                id: 724,
++                guid: "LIVE-GUID-724",
++                text: "https://example.com/standalone",
++                balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
++                created_at: new Date().toISOString(),
++                chat_id: 123,
++                sender: "+15550001111",
++                is_from_me: false,
++                is_group: false,
++              },
 +            },
-+          },
-+        });
-+        await vi.waitFor(() => {
++          });
++          // Durable admission completes asynchronously before dispatch can begin.
++          await waitForStage("URL dispatch", urlDispatched.promise);
 +          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
-+        });
++          expect(debouncerControl.entries).toEqual([]);
 +
-+        onNotification?.({
-+          method: "message",
-+          params: {
-+            message: {
-+              id: 725,
-+              guid: "LIVE-GUID-725",
-+              text: null,
-+              attachments: [
-+                {
-+                  original_path: mediaPath,
-+                  mime_type: "image/jpeg",
-+                  transfer_name: "standalone.jpg",
-+                },
-+              ],
-+              created_at: new Date().toISOString(),
-+              chat_id: 456,
-+              sender: "+15550001111",
-+              is_from_me: false,
-+              is_group: false,
++          onNotification?.({
++            method: "message",
++            params: {
++              message: {
++                id: 725,
++                guid: "LIVE-GUID-725",
++                text: null,
++                attachments: [
++                  {
++                    original_path: mediaPath,
++                    mime_type: "image/jpeg",
++                    transfer_name: "standalone.jpg",
++                  },
++                ],
++                created_at: new Date().toISOString(),
++                chat_id: 456,
++                sender: "+15550001111",
++                is_from_me: false,
++                is_group: false,
++              },
 +            },
-+          },
-+        });
-+        await vi.waitFor(() => {
++          });
++          await waitForStage("media staging", mediaEntered.promise);
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
++          expect(debouncerControl.entries).toEqual([]);
++          releaseMedia.resolve();
++          await waitForStage("image dispatch", imageDispatched.promise);
 +          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(2);
-+        });
++          expect(debouncerControl.entries).toEqual([]);
++        } finally {
++          releaseMedia.resolve();
++        }
 +      }),
 +      stop: vi.fn(async () => {}),
 +    };
@@ -373,36 +535,41 @@ index d0a062e29..e282bcf82 100644
 +      return client as never;
 +    });
 +
-+    await monitorIMessageProvider({
-+      config: {
-+        channels: {
-+          imessage: {
-+            coalesceSameSenderDms: true,
-+            dmPolicy: "allowlist",
-+            allowFrom: ["+15550001111"],
-+            includeAttachments: true,
-+            attachmentRoots: [mediaDir],
-+            sendReadReceipts: false,
++    try {
++      await monitorIMessageProvider({
++        config: {
++          channels: {
++            imessage: {
++              coalesceSameSenderDms: true,
++              dmPolicy: "allowlist",
++              allowFrom: ["+15550001111"],
++              includeAttachments: true,
++              attachmentRoots: [mediaDir],
++              sendReadReceipts: false,
++            },
 +          },
-+        },
-+        session: { mainKey: "main" },
-+      } as never,
-+      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
-+    });
++          session: { mainKey: "main" },
++        } as never,
++        runtime,
++      });
++      expect(runtime.error).not.toHaveBeenCalled();
 +
-+    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
-+      "https://example.com/standalone",
-+    );
-+    expect(
-+      dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.media?.map(
-+        (item) => item.path,
-+      ),
-+    ).toEqual([expect.stringMatching(/standalone---.+\.jpg$/)]);
-+    expect(
-+      dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.media?.map(
-+        (item) => item.contentType,
-+      ),
-+    ).toEqual(["image/jpeg"]);
++      expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
++        "https://example.com/standalone",
++      );
++      expect(
++        dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.media?.map(
++          (item) => item.path,
++        ),
++      ).toEqual([expect.stringMatching(/standalone---.+\.jpg$/)]);
++      expect(
++        dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.media?.map(
++          (item) => item.contentType,
++        ),
++      ).toEqual(["image/jpeg"]);
++    } finally {
++      dispatchReplyWithBufferedBlockDispatcherMock.mockReset().mockResolvedValue(EMPTY_DISPATCH_RESULT);
++    }
 +  });
 +
 +  it("does not merge a payload after an overdue absolute deadline", async () => {
@@ -613,6 +780,8 @@ index d0a062e29..e282bcf82 100644
 +  ])(
 +    "merges a payload-referential $name with the following URL balloon row",
 +    async ({ prompt, url, observedRuntimeGapMs, rowBase, linkRepliesToPrompt }) => {
++      // Check window selection without charging real ingress work against the clock.
++      vi.setSystemTime(new Date("2026-09-01T12:00:00.000Z"));
 +      debouncerControl.holdEntries = true;
 +      debouncerControl.respectDebouncePolicy = true;
 +
@@ -829,9 +998,55 @@ index d0a062e29..e282bcf82 100644
 +    },
 +  );
 +
-+  it("starts a fresh bucket after a payload without continuation metadata", async () => {
++  it("starts a fresh bucket after a payload without continuation metadata", async ({
++    onTestFailed,
++  }) => {
 +    debouncerControl.holdEntries = true;
 +    debouncerControl.respectDebouncePolicy = true;
++
++    const firstDispatch = createDeferred<void>();
++    const allRowsEnqueued = createDeferred<void>();
++    const runtimeFailure = createDeferred<string>();
++    const runtime = {
++      error: vi.fn((...args: unknown[]) => runtimeFailure.resolve(args.map(String).join(" "))),
++      exit: vi.fn(),
++      log: vi.fn(),
++    };
++    let stage = "monitor startup";
++    onTestFailed(() => {
++      console.error(`iMessage bucket test failed during ${stage}`, runtime.error.mock.calls);
++    });
++    const waitForStage = async (name: string, entered: Promise<void>) => {
++      stage = name;
++      const deadline = createDeferred<void>();
++      const timer = setTimeout(() => deadline.reject(new Error(`${name}: timed out`)), 10_000);
++      try {
++        await Promise.race([
++          entered,
++          deadline.promise,
++          runtimeFailure.promise.then((message) => {
++            throw new Error(`${name}: ${message}`);
++          }),
++        ]);
++      } finally {
++        clearTimeout(timer);
++      }
++    };
++    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(async () => {
++      firstDispatch.resolve();
++      return EMPTY_DISPATCH_RESULT;
++    });
++    const createDebouncer = createChannelInboundDebouncerMock.getMockImplementation()!;
++    createChannelInboundDebouncerMock.mockImplementationOnce((opts) => {
++      const result = createDebouncer(opts);
++      const enqueue = result.debouncer.enqueue;
++      let enqueued = 0;
++      result.debouncer.enqueue = async (entry) => {
++        await enqueue(entry);
++        if (++enqueued === 5) allRowsEnqueued.resolve();
++      };
++      return result;
++    });
 +
 +    let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
 +    const client = {
@@ -893,13 +1108,14 @@ index d0a062e29..e282bcf82 100644
 +            },
 +          });
 +        }
-+        await vi.waitFor(() => {
-+          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
-+        });
-+        await vi.waitFor(() => {
-+          expect(debouncerControl.entries).toHaveLength(3);
-+        });
++        // Durable admission is asynchronous; wait for ownership, not a polling deadline.
++        await waitForStage("first composition dispatch", firstDispatch.promise);
++        await waitForStage("second composition admission", allRowsEnqueued.promise);
++        expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
++        expect(debouncerControl.entries).toHaveLength(3);
++        stage = "second composition flush";
 +        await debouncerControl.flush?.();
++        stage = "monitor shutdown";
 +      }),
 +      stop: vi.fn(async () => {}),
 +    };
@@ -923,9 +1139,12 @@ index d0a062e29..e282bcf82 100644
 +        },
 +        session: { mainKey: "main" },
 +      } as never,
-+      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
++      runtime,
 +    });
 +
++    stage = "final assertions";
++    expect(runtime.error).not.toHaveBeenCalled();
++    expect(client.stop).toHaveBeenCalledTimes(1);
 +    expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(2);
 +    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
 +      "What link is this? https://example.com/first",
@@ -935,7 +1154,7 @@ index d0a062e29..e282bcf82 100644
 +    expect(secondBody).toContain("Check this");
 +    expect(secondBody).toContain("https://example.com/second");
 +    expect(secondBody).toContain("second composition tail");
-+  });
++  }, 30_000);
 +
 +  it("keeps a chained non-URL balloon separate from a pending pair", async () => {
 +    debouncerControl.holdEntries = true;
