@@ -1,0 +1,672 @@
+# Restore the Household owner relay
+
+**Status:** Production approved; DEV passed, repairing application-test cleanup
+**Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
+**Last updated:** 2026-10-31
+
+## Human section
+
+### Design
+
+Restore the owner-mediated relay so Household can ask for information and end
+its turn. The owner can answer later without an open native approval expiring.
+Return that answer to the original Household session using OpenClaw's ordinary
+session messaging. Keep email approvals unchanged.
+
+```mermaid
+flowchart LR
+    Household[Household question] --> Ping[Message owner with source session marker]
+    Ping --> Wait[Household ends its turn]
+    Ping --> Reply[Owner replies to that specific message later]
+    Reply --> Main[Main relays the owner's answer]
+    Main --> Grant[Native send-only grant]
+    Grant --> Session[Original Household session]
+    Session --> User[Household delivers the answer to its user]
+```
+
+#### Asking the owner
+
+Household sends the configured owner an iMessage ending with
+`[sk:<originating session key>]`, then stops. Each question needs its own owner
+response. Household and its workers cannot call `sessions_send` or read Main's
+private context. Existing message-recipient restrictions still apply.
+
+#### Returning the answer
+
+Main acts only on an authenticated owner reply that uses the native iMessage
+Reply gesture and quotes the original request marker. A pasted marker, a plain
+owner message, or a message from another sender is not that reply. Main sends
+only the owner's answer to the exact Household session from the quoted marker.
+It never guesses a recent request or derives an external recipient from the key.
+Missing or malformed markers cause an explanation to the owner without delivery.
+
+Household receives that answer in its own session and delivers it to the person
+who asked. Native-app conversations keep their source session; external chats
+keep their native channel route. Installed tests must establish both paths.
+Ordinary cross-agent access remains denied for Household. A small policy plugin
+uses OpenClaw's existing scoped-access API to grant only Main's return send to
+an existing Household conversation. The grant binds the current target session
+incarnation and never permits status, history, list, or reverse access. If the
+plugin is absent or fails, native access remains denied. Main's instructions
+still establish owner authorization and select the original conversation.
+Household reads its own native session status to distinguish the saved external
+route from the active internal agent turn. For an external route, it sends only
+the answer through the current-source message tool without choosing a channel
+or recipient. In a confirmed native conversation with no external route, Main's
+incoming relay is already displayed as the answer, so Household stays silent.
+A later announcement must not repeat either answer. Failed or ambiguous status
+and attempted or uncertain sends do not count as confirmed delivery.
+
+#### Automatic reply turns
+
+An exact-session grant suppresses OpenClaw's separate peer and announcement
+turns. The initial target turn still handles delivery. The removed zero-turn
+setting is not restored, and no communication patch is added. Main and Household
+retain agent-level instructions to stop an unexpected automatic exchange with
+`REPLY_SKIP`. Main never treats an automatic reply or tool result as a new
+owner authorization, retrieves additional private facts, or expands the answer.
+Household treats a new question as a new owner request.
+
+The requester explicitly accepts instructions for the answer-content boundary.
+Native turn scheduling does not freeze the exchange's subject: new input can be queued or,
+where authority permits, steer a running turn. The policy must hold even if a
+new question appears in the conversation during an exchange. Tests return an
+extra Household question, require no Main peer reentry, then separately verify a fresh
+user turn after delivery. They do not simulate concurrent user steering or claim
+deterministic prevention of model mistakes.
+
+#### CI deployment
+
+The installed `build` entrypoint freezes the application and a separate bundle
+of reviewed migration and acceptance controls. Those controls verify the current
+configuration and guidance hashes before applying the Household changes. They
+preserve unrelated settings and bind the candidate's packaged sandbox image.
+DEV and TEST use CI-owned disposable slots and recorded external delivery.
+Their real-model qualification reads the existing credential reference in place.
+Production acceptance is read-only. CI owns deployment, tests, rollback, source
+merge and cleanup. The owner dispatches `ci-dev` and then `ci-prod`, yielding
+after each dispatch until the completion event arrives.
+
+### Status
+
+**Approval:** Production approved. **Approval reference:** "Approved to restore",
+then "Yeah the instructions is a fine solution", and "once tested, approved to
+ship" on 2026-10-17. This approves source-session return with instructions
+limiting automatic exchanges, followed by testing, review, production release,
+merge, and cleanup. No agent-to-agent patch or deferred approval service.
+
+The requester renewed approval for the required release operations on
+2026-10-19 in the release-manager chat, message
+`01a154e7-a796-7793-9861-f961e7ad930b`. This includes removing the obsolete
+DEV-only compatibility filter so qualification preserves the programmatic-tool
+settings already released for all tool-enabled agents. Existing agent tool
+permissions and native approvals stay unchanged.
+
+The requester resumed this candidate on 2026-10-24 and directed both repositories
+to use current main and the installed triggered CI process. The original source
+heads are preserved. Both candidates are rebased, and retained review cleared
+the rebased behavior. Fresh CI controls, build and DEV acceptance are pending;
+historical DEV results do not qualify this new output.
+
+Previously, the refreshed artifact passed all 12 managed DEV scenarios. The latest legacy release
+then stopped before deployment on two iMessage test assertions. Both checked
+that at least 14.9 seconds remained in a 15-second buffer after real asynchronous
+ingress work. Message count and content checks passed, but host scheduling used
+more than the implicit 100 ms allowance.
+
+The reviewed test-only correction fixes the date clock in those three table
+rows while keeping timer scheduling and ingress work real. Existing assertions
+and separate real-debouncer deadline tests remain intact. Production timing and
+agent communication behavior do not change. The patch and companion digest are
+updated. All three focused cases and all 64 tests in the affected file passed.
+The failed release is independently
+closed, with production healthy and unchanged.
+
+The legacy release envelopes remain historical evidence. They will not be
+replayed through the new workflow.
+
+The first triggered DEV run completed with a qualification timeout. The serial
+suite permits four minutes per case but its overall deadline allowed only 15
+minutes for all 12 cases. The overall deadline now covers every bounded case
+plus startup and cleanup. Individual case and provider limits remain unchanged.
+CI completed teardown and production was not reached. Both branches are refreshed
+for the installed output queue, which owns the next DEV attempt and its cleanup.
+
+The refreshed candidate passed DEV, including teardown and source cleanup.
+Production CI stopped in the application suite before deployment. Fixture
+shutdown counted an exited process awaiting reaping as live; macOS rejects
+signals to a group containing only those processes with `EPERM`. The cleanup
+helper now excludes zombies, matching the existing command runner. Identity
+checks and permission errors for live processes remain enforced. The repair
+needs retained review, a rebuilt candidate and fresh DEV qualification.
+
+## Agent section
+
+### State
+
+The application-suite failure occurred after the affected gateway logged a clean
+shutdown. An isolated macOS reproduction confirmed `EPERM` when signaling a
+zombie-only process group. A regression holds a real exited child unreaped and
+checks that fixture cleanup neither signals nor waits on it. It failed before
+the change; all 12 fixture-process tests pass after it. Source queue and transfer
+cleanup are closed, and neither source base advanced. CI will repeat the full
+application suite after the repaired candidate passes DEV.
+
+DEV `gh-40155125218-1` failed at `dev-tests` with the 900000 ms qualification
+deadline. Its terminal receipt is `failed`, `phase=complete`, `child=null`;
+the source submission has `queueClosedAt=1792975218717`. The DEV owner and slot
+are absent and transfer cleanup is already clean. A delayed workflow-started
+notification does not authorize replay of that candidate.
+
+The shared qualification plan retains 12 routes at 240000 ms each. Its process
+deadline is 2940000 ms, including 60000 ms startup/teardown allowance, and the
+parent deadline is 2970000 ms to allow process-group shutdown first. Both fit
+within the installed CI phase limit. Regression checks cover the serial budget,
+bounded overrides and failure/timeout/signal/worker-exit cleanup. Fresh installed
+qualification remains required; no test assertion or native access rule changes.
+
+The active path is the installed `build`, `ci-dev`, and `ci-prod` workflow in
+[triggered CI](../../packages/release/CI.md). Both source branches were rebased
+on current main. The original heads are preserved under a task-owned backup
+branch. Main's newer flag-based readiness helper replaces the candidate's
+superseded readiness repair. All 38 patches apply to the pinned source.
+
+The companion CI entrypoint composes the maintained Household preparation and
+qualification with CI slot lifecycle and baseline acceptance. Frozen predecessor
+digests are checked again during acceptance; current mutable configuration cannot
+serve as its own expectation. The migration uses the candidate sandbox manifest
+before runtime installation. Main qualification accepts the maintained provider
+credential reference and the existing synthetic fixture shape. It does not copy
+credentials into a control bundle or runtime. The dependency closure includes
+dynamic fixture imports and child test scripts. CI owns slot teardown and scratch.
+Focused controls, configuration, guidance and authentication tests precede retained
+review of these integration changes. Build and installed DEV/TEST/PROD checks are
+still required. Record durable dispatch identifiers and yield after submission.
+
+The following paragraphs retain the earlier release evidence.
+
+Full R16 is consumed and independently closed. Its combined OpenClaw group
+reported 225 files passing and one failing, with 7,181 tests passing, two failing
+and one skipped. Both failures were the punctuationless and comma-delimited
+prompt rows at the remaining-window assertion. TEST and production deployment
+were not reached. All release owners retired; production and backup remain
+unchanged. The earlier private-suite timeout repair passed in this release.
+
+The retained reviewer accepted using `vi.setSystemTime` alone in the three-row
+mock-debouncer table. Enabling fake timers would let `vi.waitFor` advance the
+clock on every poll, so that option was removed. Existing teardown restores the
+date clock. The maintained public patch and companion exact digest now carry
+the same two-line change as the composed source. The three focused cases passed, followed by all 64 cases in the complete file
+under the standard database-worker test configuration. Both separate deadline
+cases passed. The owned run joined successfully in 67.30 seconds, and independent
+closure verified every test process and scope retired. No build has run for this
+revision yet.
+
+The application build cache hashes authored tests as inputs. Reevaluate the
+supported build and embedded build provenance after these tests pass. Do not
+reuse the preceding artifact or DEV acceptance merely because runtime source
+is unchanged. A new artifact needs fresh DEV, full application, TEST and PROD
+checks before source merge. Keep all consumed release records immutable.
+
+The following paragraphs retain earlier release findings for context.
+
+Full R14 is consumed and independently closed. Public e2e reported 34 files and
+311 tests passing. OpenClaw reported 226 files, 7,183 passes and one skip. The
+candidate suite passed 13 files and 22 tests. The companion suite reported 424
+passes, five failures and 16 skips. TEST and production deployment were not
+reached. The queue is empty; production and backup are unchanged.
+
+The companion corrections keep Main-only current approval routing and explicit
+support for the valid earlier shared route. Two manifest digests must match the
+already reviewed public test corrections. The migration parity failures compare
+the same eight denied tools in different order; canonicalize the shared list and
+deployment reconciler without removing a deny or relaxing comparison. Extend
+the existing reconciliation regression to preserve an unrelated deny and remain
+idempotent. The selected Node executable lacks adjacent Corepack, so resolve
+the supported host toolchain explicitly rather than weakening its version check.
+Complete companion validation passed with 429 passes and 16 skips. The original
+command joined successfully in 52.44 seconds, and independent closure verified
+both process owners retired. All five preceding failures passed. The FaceTime
+packaging check and four SDK cases also passed after the local request supplied
+the same prepared-source aliases as the maintained application runner. Retained
+review is clear. The successor suite and DEV commands will bind an existing
+complete Node 26.1.0/Corepack 0.36.0 pair with exact identity checks.
+The packaged configuration changes invalidate the previous artifact identity
+and affected installed DEV proof. Unchanged compiled inputs may still be reused
+through the maintained incremental builder.
+
+Stage R14 passed and is independently closed. Source, output, DEV, production
+and backup checks passed. Full R13 stopped before TEST or production. The public
+e2e package reported 310 passing cases and one failure at
+`application-check-cleanup.test.ts:206`: an inherited process scope reported
+incomplete registration. The runtime deliberately records pending launches
+before starting workers, so a snapshot of a shared suite scope can legitimately
+be incomplete while other tests run. The failed snapshot did not preserve the
+individual pending record, so its exact originating worker is unconfirmed.
+
+The test-only correction runs the failure fixtures under a dedicated native
+supervisor. After the nested command joins, it checks that the supervisor's own
+scope is open and fully registered, and that the nested child and scope retired.
+The outer test then verifies supervisor retirement and retains the real inherited
+scope closing checks. It changes no runtime semantics or fixture deadlines. The
+extra supervisor has its own bounded command. Focused validation held an
+unrelated pending record in a new test-owned ancestor throughout the full cleanup
+test file, without modifying actual inherited records. All ten cases passed in
+9.95 seconds, including the five nested failure fixtures. Both native ownership
+and the synthetic ancestor retired after completion. Independent closure verified
+retirement. Retained review is clear.
+Independent recovery verification is complete. All release owners retired, the
+queue is empty, and healthy production and backup are unchanged. Preserve Full
+R13 evidence and do not replay it.
+
+The preceding cache-mode correction explicitly establishes mode 0644 and runs
+the digest regression under 022 and 077. All five cases passed under both launch
+masks, independent closure retired both owners, and retained review is clear.
+The correction also passed in Full R13. Stage R13 had resolved the earlier empty
+`.cache` parent difference without broadening exclusions.
+
+`packages/e2e/src/prepared-source-cache.mjs` validates the explicit absent-parent
+preimage and prepares only that fixed empty directory. Its committed regression
+covers restrictive umask, unexpected entries and unchanged integrity coverage
+for cache children and ordinary source. Fresh staging copies these maintained
+bytes and retains exact before and after digest checks. No cache exclusion is
+broadened. All 13 staging integration cases and four maintained helper cases passed.
+The maintained tests used the existing package-local Vitest runner after a
+first invocation selected an absent root runner; no maintained test ran in
+that failed invocation. Independent closure retired every test owner and
+retained the 13 passing integration cases without replay. Retained review of
+the complete helper, tests and staging integration is clear. Stage R13 bound
+and transferred those exact helper bytes. No new application build is needed
+for the directory preparation or the test-only mode correction.
+
+
+The R10 release is consumed and independently closed. Its full application
+run selected 226 files and finished in 1,143.05 seconds with 7,182 passes,
+one failure and one skip. The failure was
+`monitor.last-route.test.ts`'s standalone URL-preview and image case: the second
+dispatch was not observed before `vi.waitFor`'s polling deadline. A single
+unchanged focused reproduction passed in 990 ms of test time (36.97 seconds
+including transform and import work). A passing reproduction does not establish
+a runtime fix. The maintained coalescing patch now changes only this test to
+observe dispatch-entry promises and controlled media staging, without sleeps
+or longer polling timeouts. Its registered cumulative test remains unchanged.
+Focused validation passed all 99 cases across the routing and coalescing files
+in 67.60 seconds, including transform and import work. The corrected case took
+666 ms. Full patch composition passed, runtime and package outputs were
+unchanged, and build and postbuild readiness both reported clean. The same
+artifact remains eligible for the prior DEV proof while its actual inputs
+match. Retained review is clear. The next release must use a fresh attempt
+and refresh source, configuration and capacity at the front of the queue.
+
+Public branch: `codex/restore-household-owner-relay`. The isolated companion
+worktree uses the same branch. Both were rebased onto the released programmatic
+tool changes. Conflicts preserve the released process runner and cleanup tests.
+The companion's sequential installed runner now includes both programmatic-tool
+coverage and Household preparation and return-isolation checks.
+
+The old DEV compatibility filter is removed. Preparation validates the candidate
+before changing target configuration or guidance and preserves existing
+programmatic-tool settings. The refreshed application passed managed DEV. The
+fourth full release stopped before TEST after one failure among 7,184 selected
+OpenClaw cases (7,182 passed and one skipped). Independent closure confirmed
+retired processes, an empty queue, and unchanged production and backup. That
+attempt is consumed. Preserve its failure evidence and use a fresh successor.
+The earlier correction changes only the malformed-payload bucket test and its
+documentation. Its full test file and delayed-admission case passed. Four
+failure probes confirmed that errors and missing dispatch remain observable.
+Independent closure verified process retirement and unchanged source and
+application output. No test or build allocation is held during preparation.
+Reuse proofs only where their actual inputs remain unchanged.
+
+The fifth full release passed that corrected iMessage case but stopped on
+`waits for configured custom-tool evidence after memory_search fails`. The core
+pool reported 7,182 passed, one failed, and one skipped across 226 files. The
+original caller and every native owner joined; independent closure verified an
+empty lane, closed TEST ports, absent qualification credentials, and unchanged
+production, configuration, and backup. That attempt is consumed as well.
+An unchanged isolated run passed the case, and an unchanged ordered run passed
+it with three neighboring timeout cases. Independent diagnosis identified a
+missing recall join in the immediately preceding fixture, without claiming that
+it caused this failure. The current correction deterministically holds and joins
+that cleanup, preserves its behavior assertions, and adds existing diagnostics
+to the success assertion. All four focused cases and all 226 cases in the full
+file passed with the correction. The retained reviewer cleared the complete
+current behavior diff. No production code or deadline changes.
+
+The sixth full release passed the preceding custom-tool case in 195 ms but
+failed `uses configured memory evidence from a rotated embedded transcript
+(stale poll: true)` in 1,323 ms. Its core pool again reported 7,182 passed, one
+failed, and one skipped across 226 files. The original caller joined with exit
+code 1. Independent closure verified retired owners and an empty lane with
+production and backup unchanged. No TEST or production deployment occurred.
+This attempt is consumed and must not be replayed.
+
+Both unchanged rotated-transcript variants then passed in isolation. The
+reviewed correction is applied to the maintained patch and prepared source. It
+uses selective fake timers to drive the actual poll after the fixture writes
+its transcript, preserves the stale-read ordering and 1,000 ms recall budget,
+joins recall cleanup, and removes the fixture-owned rotated file. It changes no
+production code. All five focused cases and all 226 tests in the file passed. Removing only the
+post-read stopped guard caused the expected grounded-context failure. The native
+owner retired before the original watcher bytes were restored. Every command
+joined and retired its scope without a resource violation. All maintained patches
+compose exactly, and application output bytes remain unchanged. Native readiness
+requires a refresh because restored runtime input has a newer modification time
+than the build stamp. Existing output equality does not waive that build check.
+
+The seventh full release passed the previously corrected cases but failed
+`classifies grounded harness-native recall: successful summary`. The core pool
+reported 7,182 passed, one failed, and one skipped in 1,247.59 seconds. The
+classification reported `timeout_partial` after 1.4 seconds with its 26-character
+summary retained. Independent closure verified all original commands and owners
+stopped, an empty queue, unchanged production and backup, normal intake, and
+healthy production. No TEST or production deployment occurred. This attempt is
+consumed.
+
+The five-row table uses immediate mocked native tool evidence and completion,
+but its real 1,000 ms watchdog also races transcript reads and cleanup. This is
+a concrete timing dependency in a classification test. The exact scheduling or
+I/O cause of the failed run remains unproven. The reviewed correction freezes
+only Date, performance, and timeout timers for that table, retains real
+filesystem work, and joins the recall owner before shared fixture reset. All
+classification and error assertions stay intact. The observed partial result
+does not itself prove cleanup contaminated another case. The correction changes
+no runtime behavior and does not increase the deadline.
+
+### Scope and acceptance criteria
+
+- An unanswered question ends Household's turn and starts no Main lookup.
+- A later authenticated quoted owner answer returns to the exact original
+  Household session, including iMessage and native-app sessions.
+- Plain owner input, forged provenance, malformed markers, and other senders
+  do not authorize an answer relay.
+- Household cannot call upward session tools. Workers retain their restrictions.
+- Main does not disclose additional facts if the automatic exchange asks for
+  more, including after another user message. A new question needs owner input.
+- Unknown delivery outcomes are reported without automatic replay.
+
+### Architecture and decisions
+
+Selected upstream revision `eb377ac59e6c9fd6c7705028034812becf00271b` has ordinary
+peer reply flow with up to five additional turns. `runAgentStep` creates each
+turn in the existing session. The old `maxPingPongTurns` option is absent.
+`REPLY_SKIP` stops non-deliverable peer replies. Exact-session grants suppress
+the separate reply flow and bind the restored return route to one incarnation.
+
+The current sender grant is removed from Household. The ordinary agent allowlist
+excludes Household. The `session-return-grant` plugin grants only native `send`
+requests from eligible Main sessions to eligible existing Household sessions.
+It checks current configuration, the request's loaded plugin registry, both
+session entries, and the target incarnation. Worker, cron, and hook sessions
+are excluded. Runtime cleanup retires the grant. Missing or failed registration
+leaves native access denied. Household's tool and sandbox denials also prevent
+Household from initiating session sends. Main's old
+approval-provenance exception is removed; automatic peer replies carry no owner
+approval for new disclosure. The legacy handoff skill is updated in the same
+managed transaction as both agents' guidance and configuration.
+
+### Implementation
+
+Companion config and packaged guidance own the environment-specific behavior.
+Keep the reusable approval plugin packaged but disabled for this route. Package
+and activate the separate return-grant plugin in the same transaction. Use
+narrow config reconciliation and exact predecessor hashes to preserve unrelated
+guidance and DEV experiments. Include the handoff skill in preparation,
+acceptance, and rollback coverage. The scoped return-grant plugin supplies only the native send permission described above.
+
+### Validation
+
+Full R12 passed the private toolchain and lint preflights, then stopped in the
+public e2e package after 16.14 seconds. Its 34 files contained 309 passing tests
+and one failing mode-transition assertion. The OpenClaw pool did not run.
+Focused validation passed all five cases under launch umask 022 and all five
+under 077. The native commands joined in 804 ms and 586 ms respectively.
+Both variants retain the content, permission, link and source-change checks.
+
+The seventh full application run failed the harness-native successful-summary
+classification. The corrected table passed all five rows in the focused run.
+The complete file passed all 226 cases with no skips in 63.33 seconds; its native
+command joined in 66.62 seconds. The successful-summary row passed in 174 ms.
+Terminal-error rows still reject summaries, and the independent live deadline,
+cold-recall timeout, and near-limit settlement regressions pass unchanged. Both
+native validation owners retired with no resource violation.
+
+The sixth full application run failed the rotated embedded-transcript case
+with absent context. It ran for 1,267.47 seconds. Isolated unchanged variants
+passed in 1,185 ms without a stale read and 173 ms with one; the native command
+joined in 32.01 seconds. This does not establish the original failure's cause.
+Independent review found a concrete missing cleanup join in the fixture and
+cleared the proposed timing and cleanup correction. The corrected five-case selection passed. The negative control temporarily
+removed the existing post-read stopped check and failed the grounded-context
+assertion as expected. The watcher was restored after native process retirement.
+The entire 226-case file passed with no skips in 64.24 seconds; its native command
+joined in 67.59 seconds. Production watcher behavior stays unchanged.
+
+The fifth full application run failed the Active Memory custom-tool evidence
+case with `expected prependContext` after about five seconds. That duration does
+not establish which deadline or cleanup stage was involved. The original case
+passed alone in 869 ms and with three neighboring timeout cases in 242 ms. Both
+diagnostic processes and their native scopes retired successfully. A retained
+independent review identified the preceding fixture's missing recall join as a
+real isolation gap. The correction passed all four focused cases, including the
+held-cleanup case in 302 ms and the following success case in 226 ms. The native
+owner and its scope retired, with no resource violation or source drift. The
+retained reviewer cleared the complete current diff. The entire 226-case file
+then passed with no skips or failures in 62.38 seconds. Its native command joined
+in 65.61 seconds and retired its scope without a resource violation. A fresh
+complete application run is still required.
+
+The preceding full application run failed the iMessage test `starts a fresh bucket
+after a payload without continuation metadata`. Its first default `vi.waitFor`
+expired while the dispatch count was zero. The fixture uses real durable
+admission but discards runtime errors, so the failure does not establish a
+timing-only cause. The correction waits for the first dispatch and all five
+debouncer enqueue completions, after submitting all notifications together.
+It preserves the two compositions, exact counts, content checks, and production
+behavior. Named deadlines and captured runtime errors expose stalled or failed
+processing. Retained review cleared the correction. All 64 cases in the corrected
+test file passed, as did the affected case with a deliberate 1.5-second admission
+delay. Separate probes produced the expected failures for admission errors,
+dispatch errors, and a flush that never dispatches. The original test failed
+under the same delay, demonstrating its polling limitation without proving the
+historical release failure's cause. Independent closure verified the temporary
+test's removal and unchanged source and application output. The validation
+wrapper needed one correction to recognize excluded cases as `skipped` in the
+installed Vitest report. The two successful results remained valid; only the
+four unfinished probes ran in the successor.
+
+Run focused config and guidance transaction tests. Exercise installed native
+session messaging with recorded channel delivery and synthetic data. Qualify
+Main and Household's changed instructions with actual provider output, including
+delayed owner replies, plain/forged input, and an attempted expansion during
+peer replies. Full application, installed TEST, and read-only PROD gates remain
+required. No real messages or account writes in automated tests.
+
+Current local results on 2026-10-17 for the scoped return-grant repair:
+
+- 23 focused plugin tests and its typecheck passed. Configuration, preparation,
+  and application layout checks passed (16 tests).
+- All four installed scripted routing cases passed in one clean run (109 seconds).
+  Both source routes and deliberate extra-question results produced exactly one
+  answer, zero Main peer reentry, and zero announcements.
+- Seven installed isolation scenarios passed (106 seconds). Native status,
+  model-changing status, history, and send requests to a seeded other-tier
+  session are denied with the plugin enabled, absent, disabled, and failing
+  registration. The sender's own status remains available. Missing grants also
+  deny Main's return send.
+- Six invalid-authorization scenarios and guarded preparation passed (154 seconds).
+  Together these runs cover all 18 installed scripted/preparation cases.
+- All 10 actual-model relay scenarios passed (428 seconds), including both source
+  routes, a restart before the owner reply, extra-question tool results, fresh
+  user questions, and six invalid authorization cases. All writes and delivery
+  use recording fixtures. The temporary credential copy was removed afterward.
+- Hosted companion contract checks passed. Public hosted checks
+  and the retained review are tracked by the release manager. Neither substitutes
+  for deployed DEV, the full application pool, TEST, or read-only PROD acceptance.
+- Read-only DEV and TEST snapshot comparisons still match the full rendered
+  behavior after the narrow reconciliation and preserve the accepted sandbox
+  image. No shared state was changed. Refresh these inputs after allocation.
+
+The initial new isolation probe omitted ingress, and the next used the wrong
+fixture result field after its native denial assertions passed. Both harness
+errors were corrected. The final seven-case run passes without failures or skips.
+Earlier failed logs remain local review evidence, not qualification clearance.
+
+Earlier actual-model failures exposed Household discarding the initial answer
+and an incorrect no-tool test assertion. Native prompt capture established that
+external replies require current-source delivery. Native app history already
+displays Main's forwarded answer. Final qualification covers both paths after
+correcting the instructions and assertions. Explicit peer reply
+steps still use `REPLY_SKIP`. Announcement suppression requires confirmed
+delivery, not an attempted call. A separate harness correction keeps native
+session label generation from consuming a Household relay turn. No communication
+patch was added.
+
+Managed DEV qualification on 2026-10-18 passed all 12 actual-model cases
+in 502 seconds. This includes both source routes and silent Main completion
+after sending an answer. The manager independently verified process shutdown,
+closed ports, retired temporary credentials, and released the DEV allocation.
+The prepared application stayed unchanged. That run belongs to the original
+candidate and does not qualify its replacement.
+
+On 2026-10-19 the corrected native build completed in 151 seconds. Native
+readiness passed with all nested Git calls disabled, and both previously omitted
+compiled entries were present. Fresh transfer checks verified the complete
+replacement artifact, source snapshots, control seal, and stopped predecessor.
+The replacement then passed all 12 installed actual-model DEV cases in 468
+seconds, with no failures or skips. The controller and maintained stop both
+joined without a resource-limit abort. Independent closure verified the stopped
+runtime and configuration, no remaining writers, closed ports, and retirement
+of the temporary credential.
+
+An earlier DEV attempt exposed a fixture error: a text-only Main completion
+after a tool result could lose its workspace marker. The fixture now resolves
+previously observed tool-call IDs to their original agent, rejects unknown or
+mixed histories, and waits for Main completion before a fresh question. Two
+recovery cases cover silent completion on both source routes. The focused
+checks and all 12 scripted installed cases also pass.
+
+### Rollout and rollback
+
+Use the manager-owned release lane and one reviewed artifact through TEST and
+PROD. Restore runtime, config, both agents' instructions, and handoff skill
+together if acceptance fails. Preserve current healthy production until then.
+
+### Review log
+
+The retained reviewer cleared the cleanup-scope correction and its complete
+current behavior diff. It verified that the dedicated supervisor owns the last
+appended scope, failure fixtures preserve inherited scopes, nested failures
+propagate, and both child and supervisor retirement remain checked. All ten
+cleanup tests passed with a pending sibling held in a test-owned ancestor.
+Independent closure verified native ownership and synthetic scope retirement.
+The original pending worker remains unproven, and fresh release gates remain.
+
+The retained reviewer cleared the harness-native classification correction.
+It confirmed that the table tests outcomes rather than elapsed time, and that
+selective fake timers preserve the assertions and real filesystem work. The
+focused and full-file checks passed. Review of the final maintained patch and
+source consistency remains part of release preparation.
+
+The retained reviewer cleared the rotated-transcript correction, its exact
+maintained patch reconstruction, and the three bounded validation runners. The
+subsequent focused, negative, and full-file results meet that review's remaining
+local validation requirements. The current application release remains unqualified
+until a fresh complete run and installed acceptance pass.
+
+The retained independent reviewer completed review through the same-model CLI
+route. It found one P2: adding Household to the symmetric agent allowlist also
+enabled direct status reads of Main. The repair removes that grant and supplies
+only a reverse, exact-session send grant. Installed tests must prove denied
+reads and sends with absent, disabled, and failed plugin registration, plus
+enabled delivery and no peer reentry. The retained reviewer cleared that product
+repair and the qualification cleanup changes. The same reviewer subsequently
+cleared the fixture repair, corrected build preparation, replacement DEV controls,
+and transfer packet. Fresh managed DEV passed. Full release controls for the
+replacement still require their retained review before admission.
+
+Qualification cancellation exposed shared runner failures: a detached fixture
+could outlive an unexpectedly exiting worker, and failed joining could still
+permit deletion of test state. This branch adopts the reviewed shared repairs
+through `0050d267`, without the unrelated feature changes. A launch gate records
+process ownership before starting work. Surviving supervisors can then join
+registered fixtures after a worker exits. Failed joins retain test state.
+Qualification uses the existing asynchronous runner and fixture cleanup hooks.
+The shared source passes 451 release tests, 31 focused runner/fixture tests and
+the e2e typecheck. Composed qualification passes all five cleanup/credential
+cases and the installed gateway isolation scenario. These exact shared source
+inputs are reused here. The manager adopted the controller repair before the
+passing managed DEV run. These changes affect test execution, not agent
+communication or the prepared application.
+
+The installer follow-up isolates intentional failing launch fixtures from their
+outer supervisor. Application checks now honor an explicit bounded deadline.
+The companion runs its installed test groups sequentially, waits for failed
+process cleanup before starting the next group, and stops on interruption.
+Household-specific installed checks remain in the inventory. These changes
+affect validation only; the application artifact is unchanged.
+
+### Checklist
+
+- [x] Recover the prior relay and verify current upstream behavior.
+- [x] Record approval for source-session return with agent instructions.
+- [x] Prepare isolated public and companion workspaces.
+- [x] Implement config, guidance, and handoff skill restoration.
+- [x] Pass focused, installed DEV, actual-model, and independent review checks.
+- [x] Rebuild with corrected source discovery and pass fresh DEV tests.
+- [x] Complete independent closure of the replacement DEV run.
+- [ ] Complete managed TEST, PROD, source merge, and cleanup.
+
+### Eighth full release and nested package-manager repair
+
+The eighth attempt is consumed and independently closed. The core pool passed
+7,183 cases with one skip across 226 files. Candidate checks passed 22 cases,
+and all 16 application scenarios passed. The subsequent companion lint command
+failed with exit127 because its shell invoked a package-manager name that was
+not exposed by the pinned toolchain. The installed controller stopped TEST,
+retired its processes and cleared the ticket. Production runtime, configuration,
+backup and normal intake were verified unchanged and healthy.
+
+The companion's lint and test scripts now use the explicit launcher already
+used by its build command. The registered executable toolchain regression runs
+both authored scripts with no package-manager shim on PATH, checks both workspace
+groups and verifies that a failed workspace test stops the application runner.
+It passed under a bounded native process. Exact companion lint under that same
+restricted PATH also passed. The successor must perform the same preflight
+before the full application pool. Reuse only proofs whose actual inputs still
+match; do not replay the consumed release or change runtime output merely to
+refresh source metadata.
+
+### DEV cleanup failure and current recovery
+
+The latest installed qualification completed eleven of twelve actual-model
+scenarios. The native application scenario failed during fixture cleanup.
+The terminal deployment receipt and source queue confirm failure and cleanup
+closure. Production promotion has not run for this candidate.
+
+Cleanup failures were absent from the fixture diagnostic file, and bounded
+reporting selected stack tails instead of the error message. The repair records
+cleanup failures with their underlying resource errors and samples the error
+header before redaction and clipping. It preserves every cleanup assertion and
+release gate. Eleven process cleanup tests and twenty qualification and control
+tests pass. The original resource cleanup cause remains unproven.
+
+The paired source refresh preserves both the released custom-tool retry timing
+fix and this feature's timeout, rotated-transcript, and classification fixture
+fixes. Patch conflicts were resolved by merging their materialized source.
+Fresh affected review, build, and installed DEV validation remain required.
+
+### Refresh after the successful DEV run
+
+DEV `gh-41129380952-1` passed with `phase=complete` and no child. Its source
+queue closed at `1793396546042` and transfer cleanup completed. The subsequent
+production submission was rejected for changed main before workflow dispatch;
+its source queue is closed and no production deployment occurred for it.
+
+Both feature heads were preserved before rebasing onto the released tool-result
+compatibility changes. The private conflict keeps both packaged Apple PIM and
+the Household return plugin, and retains both test inventories. The source
+patch set is unchanged. Rebuild the refreshed paired application and controls,
+repeat affected configuration and packaging tests, retain the independent
+reviewer, then submit fresh DEV. The prior DEV pass is historical evidence, not
+qualification of the new package inputs.
