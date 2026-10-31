@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { createServer } from "node:http";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,6 +39,40 @@ it("keeps permission failures for a group that still exists", async () => {
   await expect(stopFixtureProcess(f.handle, { readGroup: f.readGroup, readProcesses: f.readProcesses, signal: () => {
     throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });
   } })).rejects.toThrow("kill EPERM");
+});
+
+it("does not signal or wait on an exited, unreaped fixture process", () => {
+  const helper = new URL("../src/native-fixture-process.mjs", import.meta.url).href;
+  const probe = `
+    import assert from 'node:assert/strict';
+    import { fixtureProcessGroup, stopFixtureProcess } from ${JSON.stringify(helper)};
+    const pid = Number(process.argv[1]);
+    assert.deepEqual(fixtureProcessGroup(pid), []);
+    await stopFixtureProcess({ child: { pid, exitCode: 0, signalCode: null },
+      descendantIdentities: new Map([[pid, { pid, uid: process.getuid(), start: 'exited child' }]]) },
+      { graceMs: 0, signal: () => { throw new Error('Signaled an exited fixture'); } });
+  `;
+  // Node reaps its own children automatically. Keep an actual zombie under a
+  // small parent so the production ps parser sees it until the probe finishes.
+  execFileSync(process.env.GMAIL_MCP_PYTHON ?? "python3", ["-c", `
+import os, subprocess, sys, time
+pid = os.fork()
+if pid == 0:
+    os.setsid()
+    os._exit(0)
+try:
+    deadline = time.monotonic() + 2
+    while True:
+        state = subprocess.check_output(['ps', '-p', str(pid), '-o', 'stat='], text=True).strip()
+        if state.startswith('Z'):
+            break
+        if time.monotonic() >= deadline:
+            raise RuntimeError('Fixture child did not exit')
+        time.sleep(.01)
+    subprocess.run([sys.argv[1], '--input-type=module', '-e', sys.argv[2], str(pid)], check=True, timeout=5)
+finally:
+    os.waitpid(pid, 0)
+`, process.execPath, probe], { timeout: 10000, stdio: "pipe" });
 });
 
 it("refuses a reused process group before escalation", async () => {
