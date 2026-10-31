@@ -2,7 +2,7 @@
 
 Status: Production approved, CI preparation
 Issue: To be linked
-Last updated: 2026-10-26
+Last updated: 2026-10-31
 Owner: Latency feature owner
 
 ## Human section
@@ -37,13 +37,13 @@ Retire blocking-gather and durable-handoff customizations together. Native paren
 
 **Approval:** Production approved. **Approval reference:** The requester approved implementation and shipping on October 18, approved shared code and Claude publication, then resumed work on October 24 using build, ci-dev and ci-prod. Public changes exclude other provider integrations.
 
-The latest DEV run confirms native Claude compaction captures a snapshot and starts its independent saver. Saving still failed. A local regression reproduces that runner entering the API path. The snapshot saver now selects the native CLI runner with the same mediated memory tools and retained history. All 136 memory-runner tests pass; retained review is clear. Installed acceptance remains required. No deployed latency improvement is claimed.
+Native Claude manual compaction now passes snapshot capture, independent saving and recall after gateway restart. Expanded idle qualification exposed a long-workspace transcript lookup mismatch before the timer ran. The lookup now matches the native CLI's signed hash, with a failing-before and passing-after regression. Installed idle and interruption acceptance remain required. Production is unchanged.
 
 ## Agent section
 
 ### State
 
-Refreshed public base: `31a98d689f4b335e922a64fb93569be78b0c27d2`. Preserved pre-rebase candidate: `db06e3f3930f8fd28fe7c2b900df469f34960b19`. Pinned OpenClaw: `eb377ac59e6c9fd6c7705028034812becf00271b` (2026.9.6). Publish from a clean feature branch based on the public base. Earlier unpublished investigation commits are retained outside the public branch. Public tests use a synthetic harness identity and Claude Code. Companion patches supply other native adapters and their specific regression bindings. Public CI requires no companion repository or deployment configuration.
+Refreshed public base: `3f4ff207a83828c57e2038b9022b39d9f618c0ae`. Preserved pre-rebase candidate: `db06e3f3930f8fd28fe7c2b900df469f34960b19`. Pinned OpenClaw: `eb377ac59e6c9fd6c7705028034812becf00271b` (2026.9.6). Publish from a clean feature branch based on the public base. Earlier unpublished investigation commits are retained outside the public branch. Public tests use a synthetic harness identity and Claude Code. Companion patches supply other native adapters and their specific regression bindings. Public CI requires no companion repository or deployment configuration.
 
 ### Scope and acceptance criteria
 
@@ -69,11 +69,13 @@ Native yielded-parent ownership and terminal delivery guards are present in the 
 
 ### Validation
 
+Current manual DEV acceptance passes native compaction, one independent save and restart recall. Expanded idle fixtures found the truncated project key used an unsigned hash where the native CLI uses the absolute signed 32-bit value. The runtime lookup now matches both positive and negative native hash cases; all five project-directory tests pass. No timer or acceptance guard was weakened. Fresh installed acceptance remains pending.
+
 The transport and asynchronous ownership repairs pass 127 tests across the CLI execution, plugin boundary and compaction-memory files (17.01 seconds). The new ownership regression failed on the prior API with `Async work scope is closed`. Native installed acceptance remains pending.
 
 Focused checks cover final Claude child-process arguments, native hook routing, source policy, snapshot retention, deduplication, append-only writes, restart recovery and idle admission. Installed synthetic Claude delegation passes with wrapping on and off. These checks use native processes with scripted inference and do not establish real-provider or deployed acceptance.
 
-Before release, qualify actual native compaction and independent memory saving with synthetic conversations, then confirm recall after restart. Separately exercise the real fifteen-minute idle trigger at the configured input ratio and native cancellation/resume. Do not substitute shortened timers or edited usage for that acceptance. Preserve exact source, artifact and process-closure evidence.
+Before release, qualify actual native compaction and independent memory saving with synthetic conversations, then confirm recall after restart. Separately exercise the real fifteen-minute idle trigger at the configured input ratio and native cancellation/resume. Use the real fifteen-minute timer with synthetic host usage metadata at the eighty-percent boundary. This qualifies scheduling and cancellation; it does not claim a naturally accumulated full-window history. Preserve exact source, artifact and process-closure evidence.
 
 ### Rollout and rollback
 
