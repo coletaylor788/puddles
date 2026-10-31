@@ -1,8 +1,8 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; DEV passed, refreshing after main advanced
+**Status:** Production approved; DEV passed, repairing application-test cleanup
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
-**Last updated:** 2026-10-30
+**Last updated:** 2026-10-31
 
 ## Human section
 
@@ -132,15 +132,25 @@ plus startup and cleanup. Individual case and provider limits remain unchanged.
 CI completed teardown and production was not reached. Both branches are refreshed
 for the installed output queue, which owns the next DEV attempt and its cleanup.
 
-The latest DEV qualification passed, including teardown and source cleanup.
-Production CI then rejected the queued candidate before dispatch because main
-advanced. The refresh preserves the newly released packaged tools and their
-recording configuration. A rebuilt candidate must pass DEV again before
-production submission.
+The refreshed candidate passed DEV, including teardown and source cleanup.
+Production CI stopped in the application suite before deployment. Fixture
+shutdown counted an exited process awaiting reaping as live; macOS rejects
+signals to a group containing only those processes with `EPERM`. The cleanup
+helper now excludes zombies, matching the existing command runner. Identity
+checks and permission errors for live processes remain enforced. The repair
+needs retained review, a rebuilt candidate and fresh DEV qualification.
 
 ## Agent section
 
 ### State
+
+The application-suite failure occurred after the affected gateway logged a clean
+shutdown. An isolated macOS reproduction confirmed `EPERM` when signaling a
+zombie-only process group. A regression holds a real exited child unreaped and
+checks that fixture cleanup neither signals nor waits on it. It failed before
+the change; all 12 fixture-process tests pass after it. Source queue and transfer
+cleanup are closed, and neither source base advanced. CI will repeat the full
+application suite after the repaired candidate passes DEV.
 
 DEV `gh-40155125218-1` failed at `dev-tests` with the 900000 ms qualification
 deadline. Its terminal receipt is `failed`, `phase=complete`, `child=null`;
