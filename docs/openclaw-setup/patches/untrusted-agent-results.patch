@@ -1773,31 +1773,6 @@ index 00000000000..ad6fd6839da
 +    },
 +  };
 +}
-diff --git a/src/agents/yield-descendant-gather.ts b/src/agents/yield-descendant-gather.ts
-index 469612f3302..4df740a5307 100644
---- a/src/agents/yield-descendant-gather.ts
-+++ b/src/agents/yield-descendant-gather.ts
-@@ -1,3 +1,4 @@
-+import { getRuntimeConfig } from "../config/config.js";
- import { readDescendantSubagentFallbackReply } from "../cron/isolated-agent/subagent-followup.js";
- import { waitForAgentRunsToDrain } from "./run-wait.js";
- import { listDescendantRunsForRequester } from "./subagents/registry/subagent-registry-read.js";
-@@ -23,6 +24,7 @@ export async function gatherYieldDescendants(params: {
-   toolCallId: string;
-   timeoutMs?: number;
- }): Promise<YieldDescendantGatherResult> {
-+  const config = getRuntimeConfig();
-   const requesterKey = params.agentSessionKey?.trim();
-   if (!requesterKey) return { active: false };
-   if (!params.requesterSessionId || !params.toolCallId) {
-@@ -87,6 +89,7 @@ export async function gatherYieldDescendants(params: {
-       sessionKey: requesterKey,
-       runStartedAt,
-       runIds: new Set(completed.map((entry) => entry.runId)),
-+      ...(config.tools?.agentToAgent?.untrustedAgents?.length ? { modelFacingConfig: config } : {}),
-     });
-     const gatheredRunIds = completed.map((entry) => entry.runId);
-     const handoff = {
 diff --git a/src/config/schema.help.runtime.ts b/src/config/schema.help.runtime.ts
 index ffd81821dcf..b26872b5ba5 100644
 --- a/src/config/schema.help.runtime.ts
@@ -1875,39 +1850,26 @@ index 0a1a7cd5cbb..33baecfff88 100644
 +  expect(reader.completion?.resultText).toBe("<reader findings>");
 +});
 diff --git a/src/cron/isolated-agent/subagent-followup.ts b/src/cron/isolated-agent/subagent-followup.ts
-index ef79f7d37df..cf7038929d1 100644
 --- a/src/cron/isolated-agent/subagent-followup.ts
 +++ b/src/cron/isolated-agent/subagent-followup.ts
-@@ -1,4 +1,3 @@
--/** Reads or waits for descendant subagent summaries after isolated cron orchestration. */
- import { readLatestAssistantReply, waitForAgentRunsToDrain } from "../../agents/run-wait.js";
- import { resolveSubagentCompletionResultText } from "../../agents/subagents/completion/subagent-completion-result.js";
- import {
-@@ -8,12 +7,15 @@ import {
+@@ -8,6 +8,8 @@
  import { isRetainedUnendedSubagentRun } from "../../agents/subagents/registry/subagent-run-liveness.js";
  import { bindAgentToolGatewayRequest } from "../../agents/tools/in-process-gateway.js";
  import { selectDeliverableSessionsReply } from "../../agents/tools/sessions-send-tokens.js";
 +import { formatUntrustedAgentText } from "../../agents/untrusted-agent-results.js";
++import type { OpenClawConfig } from "../../config/types.js";
  import { stripHeartbeatToken } from "../../auto-reply/heartbeat.js";
  import {
    HEARTBEAT_TOKEN,
-   isSilentReplyPayloadText,
-   SILENT_REPLY_TOKEN,
- } from "../../auto-reply/tokens.js";
-+/** Reads or waits for descendant subagent summaries after isolated cron orchestration. */
-+import type { OpenClawConfig } from "../../config/types.js";
- import { sleepWithAbort } from "../../infra/backoff.js";
- import { isFastTestRuntimeEnv } from "../../infra/env.js";
- import { isLikelyInterimCronMessage } from "./subagent-followup-hints.js";
-@@ -32,6 +34,7 @@ export async function readDescendantSubagentFallbackReply(params: {
+@@ -31,6 +33,7 @@
+ export async function readDescendantSubagentFallbackReply(params: {
    sessionKey: string;
    runStartedAt: number;
-   runIds?: ReadonlySet<string>;
 +  modelFacingConfig?: OpenClawConfig;
  }): Promise<string | undefined> {
    const descendants = listDescendantRunsForRequester(params.sessionKey).filter(
      (entry) =>
-@@ -67,7 +70,15 @@ export async function readDescendantSubagentFallbackReply(params: {
+@@ -65,7 +68,15 @@
      if (!reply || reply.toUpperCase() === SILENT_REPLY_TOKEN.toUpperCase()) {
        continue;
      }

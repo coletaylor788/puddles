@@ -17,8 +17,7 @@ PATCHES=(
   managed-local-service-lifecycle
   gateway-memory-warmup
   file-lock-stale-reclaim-guard
-  sessions-yield-block-and-gather
-  sessions-yield-durable-handoff
+  native-parent-continuation
   subagent-cross-agent-spawn-fix
   skill-workshop-sandbox-fix
   imessage-message-part-coalescing
@@ -45,6 +44,7 @@ PATCHES=(
   talk-request-recovery
   code-mode-additive-surface
   claude-code-mode-mcp
+  compaction-memory-idle
 )
 
 if [ -n "${MINI_HOST:-}" ]; then
