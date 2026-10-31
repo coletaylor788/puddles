@@ -41,7 +41,7 @@ export async function inspectSources(manifest, api = execute, { allowMerged = fa
     // Human authorization and retained agent review belong to the owning task;
     // neither a GitHub approving review nor paid branch protection is required.
     const contexts = source.requiredChecks;
-    if (!Array.isArray(contexts) || !contexts.length || contexts.length > 100 ||
+    if (!Array.isArray(contexts) || contexts.length > 100 ||
         contexts.some(name => typeof name !== 'string' || !name.trim() || name.length > 200) ||
         new Set(contexts).size !== contexts.length) throw new Error('Explicit required repository checks are missing or invalid');
     const checks = await api([`${prefix}/commits/${source.head}/check-runs?per_page=100`]);

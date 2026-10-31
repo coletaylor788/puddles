@@ -57,7 +57,9 @@ artifacts are not install destinations. See the [suite prerequisites](../e2e/REA
 This is a single-owner workflow. User authorization and retained agent review
 belong to the owning task. GitHub approving reviews, another account, branch
 protection, and paid repository features are not prerequisites. Each changed
-repository freezes a nonempty `requiredChecks` list in the candidate inputs.
+repository freezes an explicit `requiredChecks` list in the candidate inputs.
+Use `[]` when the repository has no separate checks for that change; its
+application tests still run in the full production suite.
 Production requires those checks to succeed on the exact head, rejects any
 reported pending or failed check, and verifies the current main base and tree.
 
