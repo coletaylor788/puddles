@@ -37,7 +37,7 @@ Retire blocking-gather and durable-handoff customizations together. Native paren
 
 **Approval:** Production approved. **Approval reference:** The requester approved implementation and shipping on October 18, approved shared code and Claude publication, then resumed work on October 24 using build, ci-dev and ci-prod. Public changes exclude other provider integrations.
 
-Native Claude manual compaction now passes snapshot capture, independent saving and recall after gateway restart. Expanded idle qualification exposed a long-workspace transcript lookup mismatch before the timer ran. The lookup now matches the native CLI's signed hash, with a failing-before and passing-after regression. Installed idle and interruption acceptance remain required. Production is unchanged.
+Native Claude manual compaction passes snapshot capture, independent saving and recall after gateway restart. Idle qualification now reaches the quiet period but times out before the native hook. A focused reproduction found that delayed maintenance inherited the completed reply's closed async scope. Maintenance now uses the existing detached admission API, as the saver already does. Focused checks pass; installed idle and interruption acceptance remain required. Production is unchanged.
 
 ## Agent section
 
@@ -68,6 +68,8 @@ Native Claude completion carries a CLI session binding rather than the embedded 
 Native yielded-parent ownership and terminal delivery guards are present in the pinned upstream base. Remove both gather patches and adapt dependent untrusted-result presentation hunks. The delegation canary expects a native `yielded` acknowledgment followed by one `subagent_settle` continuation. It checks wrapping enabled and disabled and direct, delayed, spawn and yield paths.
 
 ### Validation
+
+The idle lifetime regression arms the real scheduler under a foreground AsyncWorkScope, drains that owner, then fires the timer with its inherited context. Native work tracking fails with independent-root admission and succeeds with detached admission. Twenty affected maintenance and memory tests pass in 17.42 seconds. The configured quiet period and cancellation guards are unchanged.
 
 Current manual DEV acceptance passes native compaction, one independent save and restart recall. Expanded idle fixtures found the truncated project key used an unsigned hash where the native CLI uses the absolute signed 32-bit value. The runtime lookup now matches both positive and negative native hash cases; all five project-directory tests pass. No timer or acceptance guard was weakened. Fresh installed acceptance remains pending.
 

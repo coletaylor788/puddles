@@ -1261,6 +1261,15 @@ diff --git a/src/agents/session-maintenance/run.ts b/src/agents/session-maintena
  import type { SessionEntry } from "../../config/sessions/types.js";
  import type { OpenClawConfig } from "../../config/types.openclaw.js";
  import { fenceScheduledGatewayContextResolver } from "../../gateway/scheduled-run-gateway-context.js";
+@@ -15,7 +17,7 @@
+   getPluginRuntimeGatewayRequestScope,
+   withPluginRuntimeGatewayRequestScope,
+ } from "../../plugins/runtime/gateway-request-scope.js";
+-import { runWithGatewayIndependentRootWorkAdmission } from "../../process/gateway-work-admission.js";
++import { runWithGatewayDetachedWorkAdmission } from "../../process/gateway-work-admission.js";
+ import { beginSessionWorkAdmission } from "../../sessions/session-lifecycle-admission.js";
+ import { createCommandBudget } from "../command/maintenance-budget.js";
+ import {
 @@ -24,6 +26,10 @@
  } from "../command/runtime-loaders.js";
  import type { CompactionRequestBudget } from "../sessions/compaction/request-budget.js";
@@ -1318,6 +1327,15 @@ diff --git a/src/agents/session-maintenance/run.ts b/src/agents/session-maintena
    const { prepared, followupRun } = request;
    const sessionKey = prepared.sessionKey;
    if (!sessionKey) {
+@@ -170,7 +208,7 @@
+         return;
+       }
+       return owner.run(() =>
+-        runWithGatewayIndependentRootWorkAdmission(
++        runWithGatewayDetachedWorkAdmission(
+           async () => {
+             assertCurrent();
+             const { loadSessionEntryReadOnly } = await loadSessionStoreRuntime();
 @@ -197,6 +235,29 @@
                  ) {
                    throw createAbortError("Session changed before optional maintenance admission");
@@ -4572,10 +4590,12 @@ diff --git a/src/agents/session-maintenance/run.native-idle.test.ts b/src/agents
 new file mode 100644
 --- /dev/null
 +++ b/src/agents/session-maintenance/run.native-idle.test.ts
-@@ -0,0 +1,181 @@
+@@ -0,0 +1,201 @@
++import { AsyncLocalStorage } from "node:async_hooks";
 +import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 +import type { SessionEntry } from "../../config/sessions.js";
 +import type { OpenClawConfig } from "../../config/types.openclaw.js";
++import { AsyncWorkScope, trackAsyncWork } from "../../shared/async-work-scope.js";
 +import { cancelIdleCompaction } from "./idle.js";
 +import { resolveCompletedNativeIdleBinding } from "./native-idle.js";
 +import { scheduleSessionMaintenance, type SessionMaintenanceRequest } from "./run.js";
@@ -4609,9 +4629,6 @@ new file mode 100644
 +}));
 +vi.mock("../../gateway/scheduled-run-gateway-context.js", () => ({
 +  fenceScheduledGatewayContextResolver: () => undefined,
-+}));
-+vi.mock("../../process/gateway-work-admission.js", () => ({
-+  runWithGatewayIndependentRootWorkAdmission: (run: () => unknown) => run(),
 +}));
 +vi.mock("../../sessions/session-lifecycle-admission.js", () => ({
 +  beginSessionWorkAdmission: async ({ assertAllowed }: { assertAllowed: () => void }) => {
@@ -4753,6 +4770,27 @@ new file mode 100644
 +      expect(state.flush).not.toHaveBeenCalled();
 +    },
 +  );
++});
++
++
++it("runs idle compaction in a fresh async scope after foreground cleanup", async () => {
++  const request = fixture();
++  const foreground = new AsyncWorkScope();
++  const saved = vi.fn();
++  state.compact.mockImplementationOnce(async () => {
++    await trackAsyncWork(async () => { saved(); });
++  });
++  const inherited = foreground.run(() => {
++    scheduleSessionMaintenance(request);
++    return AsyncLocalStorage.snapshot();
++  });
++  await foreground.drain();
++  // Native timers inherit the arming async context; reproduce that with fake time.
++  await inherited(fireIdle);
++  expect(state.compact).toHaveBeenCalledOnce();
++  for (const work of state.tracked) await expect(work).resolves.toBeUndefined();
++  expect(saved).toHaveBeenCalledOnce();
++  expect(state.release).toHaveBeenCalledOnce();
 +});
 diff --git a/src/auto-reply/reply/agent-runner-maintenance.test.ts b/src/auto-reply/reply/agent-runner-maintenance.test.ts
 new file mode 100644
