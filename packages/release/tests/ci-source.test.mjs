@@ -36,7 +36,7 @@ test('single-owner preflight needs current source and explicit checks without Gi
   await assert.rejects(inspectSources(f.manifest, f.api), /checks have not passed/);
 });
 test('missing check policy, pending or failed checks, and incomplete inventories block production', async () => {
-  for (const requiredChecks of [undefined, [], ['checks', 'checks']]) {
+  for (const requiredChecks of [undefined, null, '', ['checks', 'checks']]) {
     const f = fixture(); f.source.requiredChecks = requiredChecks;
     f.manifest.inputsDigest = digest(f.manifest.inputs);
     f.manifest.id = digest({ artifactDigest: f.manifest.artifactDigest, inputsDigest: f.manifest.inputsDigest });
@@ -100,4 +100,22 @@ test('unchanged companion binds exact current main without manufacturing a PR', 
   await mergeSources(f.manifest, api); assert.equal(f.merges(), 1);
   current = '7'.repeat(40);
   await assert.rejects(inspectSources(f.manifest, api, { allowMerged: true }), /companion main moved/);
+});
+
+// A repository may rely on the candidate application suite instead of a PR job.
+test('an explicit empty check list permits no jobs but never ignores reported failures', async () => {
+  const f = fixture(); f.source.requiredChecks = [];
+  f.manifest.inputsDigest = digest(f.manifest.inputs);
+  f.manifest.id = digest({ artifactDigest: f.manifest.artifactDigest, inputsDigest: f.manifest.inputsDigest });
+  f.checks.check_runs = []; f.checks.total_count = 0;
+  assert.equal((await inspectSources(f.manifest, f.api)).length, 1);
+  for (const check of [{ name: 'tooling', status: 'in_progress' }, { name: 'tooling', status: 'completed', conclusion: 'failure' }]) {
+    f.checks.check_runs = [check]; f.checks.total_count = 1;
+    await assert.rejects(inspectSources(f.manifest, f.api), /checks have not passed/);
+  }
+  f.checks.check_runs = []; f.checks.total_count = 0;
+  f.statuses.statuses = [{ context: 'other', state: 'failure' }]; f.statuses.total_count = 1; f.statuses.state = 'failure';
+  await assert.rejects(inspectSources(f.manifest, f.api), /checks have not passed/);
+  f.statuses.statuses = []; f.statuses.total_count = 0;
+  await mergeSources(f.manifest, f.api); assert.equal(f.merges(), 1);
 });
