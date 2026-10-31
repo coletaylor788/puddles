@@ -5047,10 +5047,10 @@ diff --git a/src/agents/cli-runner/execution-target.ts b/src/agents/cli-runner/e
      : { kind: "process" };
  }
 diff --git a/src/agents/command/claude-cli-project-dir.ts b/src/agents/command/claude-cli-project-dir.ts
-index f3bf78d..bca36cb 100644
+index f3bf78d..6e92e5b 100644
 --- a/src/agents/command/claude-cli-project-dir.ts
 +++ b/src/agents/command/claude-cli-project-dir.ts
-@@ -6,7 +6,18 @@ import os from "node:os";
+@@ -6,17 +6,29 @@ import os from "node:os";
  import path from "node:path";
  import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
  
@@ -5070,7 +5070,20 @@ index f3bf78d..bca36cb 100644
  const MAX_SANITIZED_PROJECT_LENGTH = 200;
  
  // Claude CLI stores project state under a sanitized workspace key. Add a stable
-@@ -42,12 +53,11 @@ function canonicalizeWorkspaceDir(workspaceDir: string): string {
+ // hash when the key is truncated so long paths do not collide silently.
++// Match the native CLI: absolute value of the signed 32-bit accumulator.
+ function simpleHash36(input: string): string {
+   let hash = 0;
+   for (let index = 0; index < input.length; index += 1) {
+-    hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
++    hash = (hash * 31 + input.charCodeAt(index)) | 0;
+   }
+-  return hash.toString(36);
++  return Math.abs(hash).toString(36);
+ }
+ 
+ function sanitizeClaudeCliProjectKey(workspaceDir: string): string {
+@@ -42,12 +54,11 @@ function canonicalizeWorkspaceDir(workspaceDir: string): string {
  export function resolveClaudeCliProjectDirForWorkspace(params: {
    workspaceDir: string;
    homeDir?: string;
@@ -5374,10 +5387,10 @@ index 91e25c5..3324181 100644
      async (phase) => {
 diff --git a/src/agents/command/claude-cli-project-dir.test.ts b/src/agents/command/claude-cli-project-dir.test.ts
 new file mode 100644
-index 0000000..662f3a9
+index 0000000..c497bd6
 --- /dev/null
 +++ b/src/agents/command/claude-cli-project-dir.test.ts
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,99 @@
 +import fs from "node:fs/promises";
 +import os from "node:os";
 +import path from "node:path";
@@ -5463,5 +5476,17 @@ index 0000000..662f3a9
 +        sessionId: "synthetic-session",
 +      }),
 +    ).toBe(false);
++  },
++);
++
++// Native CLI uses the absolute signed 32-bit hash for truncated project keys.
++it.each([[13, "84rh70"], [14, "mhah3v"]])(
++  "matches native long workspace keys (%s segments)",
++  (segments, suffix) => {
++    const workspaceDir = "/synthetic/" + "long-workspace/".repeat(Number(segments)) + "alpha";
++    const key = workspaceDir.replace(/[^a-zA-Z0-9]/g, "-").slice(0, 200) + "-" + suffix;
++    expect(resolveClaudeCliProjectDirForWorkspace({ workspaceDir, configDir: root })).toBe(
++      path.join(root, "projects", key),
++    );
 +  },
 +);
