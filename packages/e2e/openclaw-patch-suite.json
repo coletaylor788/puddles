@@ -155,7 +155,7 @@
     "src/test-utils/ports.test.ts": "unit",
     "extensions/openai/realtime-quicksilver-gateway-bridge-lifecycle.test.ts": "extension-provider-openai",
     "src/talk/agent-run-control.test.ts": "unit-src",
-    "src/agents/harness/tool-surface-bridge.test.ts": "unit-fast",
+    "src/agents/harness/tool-surface-bridge.test.ts": "agents-support",
     "src/agents/code-mode.config.test.ts": "unit-fast",
     "src/agents/embedded-agent-runner/terminal-tool-failure.test.ts": "unit-fast",
     "src/agents/sessions/tools/tool-definition-wrapper.test.ts": "unit-fast",
@@ -178,7 +178,24 @@
     "src/agents/tool-search-scheduling.test.ts": "agents-core",
     "src/agents/embedded-agent-runner/run/attempt-stream-prepare.test.ts": "infra",
     "src/agents/embedded-agent-runner/run.plugin-runtime-refresh.integration.test.ts": "agents-embedded-agent",
-    "src/gateway/mcp-grant-store.test.ts": "gateway-core"
+    "src/gateway/mcp-grant-store.test.ts": "gateway-core",
+    "extensions/anthropic/cli-profile.test.ts": "extension-providers",
+    "extensions/anthropic/cli-runtime.test.ts": "extension-providers",
+    "src/agents/cli-runner/execute-plugin.test.ts": "infra",
+    "src/agents/cli-runner/execute-plugin.policy.test.ts": "infra",
+    "src/agents/cli-runner/prepare.test.ts": "infra",
+    "src/agents/cli-runner.spawn.test.ts": "infra",
+    "src/agents/exec-defaults.test.ts": "agents-core",
+    "src/gateway/cli-session-history.profile-dir.test.ts": "gateway-core",
+    "src/gateway/cli-session-history.test.ts": "gateway-core",
+    "src/gateway/cli-session-history.claude-snapshot.test.ts": "gateway-core",
+    "src/agents/command/attempt-execution.test.ts": "agents-support",
+    "src/agents/cli-runner/history-boundary.test.ts": "infra",
+    "src/agents/cli-runner/cli-run-settlement.test.ts": "agents-support",
+    "src/tui/embedded-backend.test.ts": "tui",
+    "src/agents/tools/embedded-gateway-stub.history.test.ts": "agents-tools",
+    "src/commands/doctor-claude-cli.test.ts": "commands",
+    "src/gateway/mcp-http.code-mode.test.ts": "gateway-core"
   },
   "patches": [
     {
@@ -565,7 +582,31 @@
         "src/gateway/mcp-http.handlers.network-error.test.ts",
         "src/gateway/mcp-http.runtime.test.ts",
         "src/gateway/mcp-http.test.ts",
-        "src/gateway/mcp-grant-store.test.ts"
+        "src/gateway/mcp-grant-store.test.ts",
+        "src/gateway/mcp-http.code-mode.test.ts",
+        "src/agents/harness/tool-surface-bridge.test.ts"
+      ]
+    },
+    {
+      "name": "claude-native-agent-profiles",
+      "tests": [
+        "extensions/anthropic/cli-profile.test.ts",
+        "extensions/anthropic/cli-runtime.test.ts",
+        "src/agents/cli-runner/execute-plugin.test.ts",
+        "src/agents/cli-runner/execute-plugin.policy.test.ts",
+        "src/agents/cli-runner/prepare.test.ts",
+        "src/agents/cli-runner.spawn.test.ts",
+        "src/agents/exec-defaults.test.ts",
+        "src/gateway/cli-session-history.profile-dir.test.ts",
+        "src/gateway/cli-session-history.test.ts",
+        "src/gateway/cli-session-history.claude-snapshot.test.ts",
+        "src/agents/command/attempt-execution.test.ts",
+        "src/agents/cli-runner/history-boundary.test.ts",
+        "src/agents/cli-runner/cli-run-settlement.test.ts",
+        "src/tui/embedded-backend.test.ts",
+        "src/agents/tools/embedded-gateway-stub.history.test.ts",
+        "src/commands/doctor-claude-cli.test.ts",
+        "src/agents/cli-runner/prepare.web-search.test.ts"
       ]
     }
   ],
