@@ -212,7 +212,8 @@
     "src/agents/cli-runner/execute.supervisor-capture.test.ts": "agents-support",
     "src/agents/command/claude-cli-project-dir.test.ts": "agents-support",
     "src/agents/command/attempt-execution.test.ts": "agents-support",
-    "src/agents/cli-runner/cli-run-settlement.test.ts": "agents-support"
+    "src/agents/cli-runner/cli-run-settlement.test.ts": "agents-support",
+    "src/auto-reply/reply/agent-runner-memory.native-idle.test.ts": "infra"
   },
   "patches": [
     {
@@ -629,7 +630,8 @@
         "src/agents/cli-runner/execute.supervisor-capture.test.ts",
         "src/agents/command/claude-cli-project-dir.test.ts",
         "src/agents/command/attempt-execution.test.ts",
-        "src/agents/cli-runner/cli-run-settlement.test.ts"
+        "src/agents/cli-runner/cli-run-settlement.test.ts",
+        "src/auto-reply/reply/agent-runner-memory.native-idle.test.ts"
       ]
     }
   ],

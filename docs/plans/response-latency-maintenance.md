@@ -37,7 +37,7 @@ Retire blocking-gather and durable-handoff customizations together. Native paren
 
 **Approval:** Production approved. **Approval reference:** The requester approved implementation and shipping on October 18, approved shared code and Claude publication, then resumed work on October 24 using build, ci-dev and ci-prod. Public changes exclude other provider integrations.
 
-Native Claude manual compaction passes snapshot capture, independent saving and recall after gateway restart. Idle qualification now reaches the quiet period but times out before the native hook. A focused reproduction found that delayed maintenance inherited the completed reply's closed async scope. Maintenance now uses the existing detached admission API, as the saver already does. Focused checks pass; installed idle and interruption acceptance remain required. Production is unchanged.
+Native Claude manual compaction passes snapshot capture, independent saving and recall after gateway restart. Idle acceptance remains open. A new local regression through the real compaction entry point reproduced a missing native session binding; the minimal forwarding fix passes that regression. Installed idle completion and interruption still require DEV verification. Production is unchanged.
 
 ## Agent section
 
@@ -96,3 +96,7 @@ The retained reviewer previously cleared snapshot ownership, native callback rou
 - [ ] Pass full application suite and TEST.
 - [ ] Deploy, verify PROD and merge through CI.
 - [ ] Finalize owned inputs and retained evidence.
+
+### Idle binding repair, November 5
+
+The scheduler validated the persisted native binding, but `runSessionCompactionIfNeeded` omitted it when calling `compactEmbeddedAgentSession`. Native control therefore returned `cannot manually compact without a resumable native session` before invoking the hook. Forward `getCliSessionBinding(entry, runtimeId)` only for admitted native idle work. The new registered regression persists a bound session, uses the real memory runner and queued compaction, and replaces only external CLI execution. It failed before the fix and passed afterward (20.31 seconds for the focused test command). The earlier async-scope repair remains necessary but did not solve this separate omission.

@@ -1620,15 +1620,16 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.test.ts b/src/auto-reply/r
 diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/agent-runner-memory.ts
 --- a/src/auto-reply/reply/agent-runner-memory.ts
 +++ b/src/auto-reply/reply/agent-runner-memory.ts
-@@ -9,6 +9,7 @@
+@@ -9,6 +9,8 @@
  import { resolveDefaultAgentId } from "../../agents/agent-scope-config.js";
  import { resolveBootstrapWarningSignaturesSeen } from "../../agents/bootstrap-budget.js";
  import { resolveCliBackendConfig } from "../../agents/cli-backends.js";
 +import { runCliAgent } from "../../agents/cli-runner.js";
++import { getCliSessionBinding } from "../../agents/cli-session.js";
  import { estimateMessagesTokens } from "../../agents/compaction.js";
  import { isBenignCompactionSkipResult } from "../../agents/embedded-agent-runner/compact-reasons.js";
  import type { AcceptedCompactionSuccessor } from "../../agents/embedded-agent-runner/compaction-successor.js";
-@@ -22,6 +23,10 @@
+@@ -22,6 +24,10 @@
  import { resolveContextConfigProviderForRuntime } from "../../agents/openai-routing.js";
  import type { AgentMessage } from "../../agents/runtime/index.js";
  import { resolveSandboxConfigForAgent, resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
@@ -1639,7 +1640,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
  import { createSessionMaintenanceFollowup } from "../../agents/session-maintenance/run.js";
  import {
    resolvePersistedSessionRuntimeId,
-@@ -65,6 +70,7 @@
+@@ -65,6 +71,7 @@
  import { CommandLane } from "../../process/lanes.js";
  import { isIncognitoSessionKey, isUnscopedSessionKeySentinel } from "../../routing/session-key.js";
  import { resolveSessionPinnedHarnessId } from "../../sessions/agent-harness-session-key.js";
@@ -1647,7 +1648,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
  import type { UserTurnTranscriptAdmissionReceipt } from "../../sessions/user-turn-transcript.types.js";
  import { createLazyImportLoader } from "../../shared/lazy-promise.js";
  import { formatTokenCount } from "../../utils/token-format.js";
-@@ -647,6 +653,8 @@
+@@ -647,6 +654,8 @@
    isHeartbeat: boolean;
    /** Completed commands carry the actual harness, not the originally requested runtime. */
    agentHarnessId?: string;
@@ -1656,7 +1657,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
    abortSignal?: AbortSignal;
    authorize?: () => boolean;
    beforeCompaction?: (entry: SessionEntry) => Promise<SessionEntry | undefined>;
-@@ -682,7 +690,12 @@
+@@ -682,7 +691,12 @@
    const runtimeId = resolveFollowupAgentRuntimeId(runtimeParams);
    const isCli = followupUsesCliRuntime(runtimeParams, runtimeId);
    const ownsNativeCompaction = followupOwnsNativeCompaction(runtimeParams, runtimeId);
@@ -1670,7 +1671,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
      return entry ?? params.sessionEntry;
    }
    const isCodexRuntime = normalizeLowercaseStringOrEmpty(runtimeId) === "codex";
-@@ -718,6 +731,13 @@
+@@ -718,6 +732,13 @@
        reserveTokens: 20_000,
      });
    const freshPersistedTokens = resolveFreshSessionTotalTokens(entry);
@@ -1684,7 +1685,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
    const promptTokenEstimate = estimatePromptTokensForMemoryFlush(
      params.promptForEstimate ?? params.followupRun.prompt,
    );
-@@ -871,7 +891,7 @@
+@@ -871,7 +892,7 @@
        tokenCount: tokenCountForCompaction,
        threshold,
      });
@@ -1693,7 +1694,16 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
    if (!shouldCompact) {
      return entry ?? params.sessionEntry;
    }
-@@ -1016,6 +1036,7 @@
+@@ -1005,6 +1026,8 @@
+         authProfileId: params.followupRun.run.authProfileId,
+         authProfileIdSource: params.followupRun.run.authProfileIdSource,
+         sessionEntry: entry,
++        // Idle maintenance must resume the same native transcript admitted above.
++        ...(nativeIdle ? { cliSessionBinding: getCliSessionBinding(entry, runtimeId) } : {}),
+         agentHarnessId:
+           params.agentHarnessId ??
+           (entry.sessionId === params.followupRun.run.sessionId
+@@ -1016,6 +1039,7 @@
          thinkLevel: params.followupRun.run.thinkLevel,
          bashElevated: params.followupRun.run.bashElevated,
          trigger: "budget",
@@ -1701,7 +1711,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
          force: true,
          forcePreflight: true,
          preflightRequired: true,
-@@ -1165,28 +1186,50 @@
+@@ -1165,28 +1189,50 @@
    outcome: MemoryFlushOutcome;
  };
  
@@ -1772,7 +1782,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
    const abortSignal = resolveFollowupAbortSignal({
      abortSignal: params.replyOperation?.abortSignal ?? params.abortSignal,
      operatorAuthority: params.followupRun.operatorAuthority,
-@@ -1223,7 +1266,14 @@
+@@ -1223,7 +1269,14 @@
    const isCli =
      followupUsesCliRuntime(runtimeParams, runtimeId) ||
      followupOwnsNativeCompaction(runtimeParams, runtimeId);
@@ -1788,7 +1798,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
    if (!canAttemptFlush) {
      return { sessionEntry: entry ?? params.sessionEntry, outcome: "skipped" };
    }
-@@ -1231,9 +1281,16 @@
+@@ -1231,9 +1284,16 @@
    const flushRunId = crypto.randomUUID();
    let flushRunRegistered = false;
    let activeSessionEntry = entry ?? params.sessionEntry;
@@ -1808,7 +1818,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
    let memoryFlushPlan: MemoryFlushPlan | null;
    try {
      memoryFlushPlan = resolveMemoryFlushPlan({ cfg: params.cfg, contextWindowTokens });
-@@ -1244,161 +1301,164 @@
+@@ -1244,161 +1304,164 @@
      return { sessionEntry: activeSessionEntry, outcome: "skipped" };
    }
  
@@ -2125,7 +2135,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
  
    activeSessionEntry = entry ?? params.sessionEntry;
    params.replyOperation?.setPhase("memory_flushing");
-@@ -1416,7 +1476,7 @@
+@@ -1416,7 +1479,7 @@
      assertMemoryFlushCurrent();
      const plan = resolveMemoryFlushPlan({
        cfg: params.cfg,
@@ -2134,7 +2144,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
        contextWindowTokens,
      });
      if (!plan) {
-@@ -1429,21 +1489,29 @@
+@@ -1429,21 +1492,29 @@
      const agentId = params.followupRun.run.agentId ?? resolveDefaultAgentId(params.cfg);
      const runtime = await memoryFlushSessionRuntimeLoader.load();
      assertMemoryFlushCurrent();
@@ -2179,7 +2189,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
      await runtime.ensureMemoryFlushTargetFile({
        workspaceDir: params.followupRun.run.workspaceDir,
        relativePath: writePath,
-@@ -1516,6 +1584,7 @@
+@@ -1516,6 +1587,7 @@
    });
    const flushedCompactionCount = activeSessionEntry?.compactionCount ?? 0;
    let visibleErrorPayloads: ReplyPayload[] = [];
@@ -2187,7 +2197,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
    // Only the bounded phase belongs to the parent turn; maintenance content stays private.
    const parentRunId = params.opts?.runId;
    if (parentRunId) {
-@@ -1556,7 +1625,7 @@
+@@ -1556,7 +1628,7 @@
          model: selection.model,
          requestedRouteResolution: selection.requestedRouteResolution,
          agentDir: selection.agentDir,
@@ -2196,7 +2206,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
          userLockedAuthProfileId:
            params.followupRun.run.authProfileIdSource === "user"
              ? params.followupRun.run.authProfileId
-@@ -1567,7 +1636,7 @@
+@@ -1567,7 +1639,7 @@
          agentId: params.followupRun.run.agentId,
          sessionId: memorySession.sessionId,
          sessionKey: memorySession.sessionKey,
@@ -2205,7 +2215,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
        },
        harness: {
          workspaceDir: params.followupRun.run.workspaceDir,
-@@ -1587,6 +1656,10 @@
+@@ -1587,6 +1659,10 @@
        sessionOverride: { kind: "preserve" },
        abortSignal: deferredLifecycle.signal,
        runCandidate: async (provider, model, runOptions) => {
@@ -2216,7 +2226,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
          const sessionRuntimeOverride = runOptions.agentHarnessRuntimeOverride;
          const candidateThinkLevel = resolveRunThinkingLevelForFallbackCandidate({
            cfg: params.cfg,
-@@ -1616,7 +1689,7 @@
+@@ -1616,7 +1692,7 @@
              promptCacheKey: params.opts?.promptCacheKey,
              allowTransientCooldownProbe: runOptions.allowTransientCooldownProbe,
            });
@@ -2225,7 +2235,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
            preparedRunAdmission,
            ...embeddedContext,
            ...senderContext,
-@@ -1633,9 +1706,24 @@
+@@ -1633,9 +1709,24 @@
            contextTokenBudget: contextWindowTokens,
            memoryFlushWritePath,
            initialTurnTainted:
@@ -2251,7 +2261,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
            extraSystemPrompt: flushSystemPrompt,
            isFinalFallbackAttempt: runOptions.isFinalFallbackAttempt,
            bootstrapPromptWarningSignaturesSeen,
-@@ -1648,7 +1736,19 @@
+@@ -1648,7 +1739,19 @@
            authProfileFailurePolicy: runOptions.authProfileFailurePolicy,
            contextEngineLogicalTurnLease: runOptions.contextEngineLogicalTurnLease,
            onContextEngineTurnCandidate: runOptions.onContextEngineTurnCandidate,
@@ -2272,7 +2282,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
          visibleErrorPayloads = resolveVisibleMemoryFlushErrorPayloads(result.payloads);
          bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
            result.meta?.systemPromptReport,
-@@ -1661,7 +1761,7 @@
+@@ -1661,7 +1764,7 @@
        // Do not stamp memory-flush success for a resolved run that returned an error.
        throw buildVisibleMemoryFlushFailure(visibleErrorPayloads);
      }
@@ -5528,3 +5538,121 @@ index 0000000..c497bd6
 +    );
 +  },
 +);
+diff --git a/src/auto-reply/reply/agent-runner-memory.native-idle.test.ts b/src/auto-reply/reply/agent-runner-memory.native-idle.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/auto-reply/reply/agent-runner-memory.native-idle.test.ts
+@@ -0,0 +1,113 @@
++import { join } from "node:path";
++import { afterEach, expect, it, vi } from "vitest";
++import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
++import { testing as cliBackendsTesting } from "../../agents/cli-backends.test-support.js";
++import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
++import { setActivePluginRegistry } from "../../plugins/runtime.js";
++import { runSessionCompactionIfNeeded } from "./agent-runner-memory.js";
++import { createTestFollowupRun, writeTestSessionStore } from "./agent-runner.test-fixtures.js";
++
++const state = vi.hoisted(() => ({ runCli: vi.fn(async () => ({ meta: { durationMs: 1 } })) }));
++vi.mock("../../agents/cli-runner.js", () => ({ runCliAgent: state.runCli }));
++const dirs = useAutoCleanupTempDirTracker(afterEach);
++afterEach(() => {
++  cliBackendsTesting.resetDepsForTest();
++  state.runCli.mockClear();
++});
++
++it("idle compaction resumes the persisted native binding through the real compaction entry point", async () => {
++  const root = dirs.make("openclaw-idle-binding-");
++  const key = "agent:main:idle-binding";
++  const storePath = join(root, "sessions.sqlite");
++  const binding = { sessionId: "native-session", authProfileId: "anthropic:subscription" };
++  const cfg = {
++    agents: {
++      defaults: {
++        workspace: root,
++        compaction: {
++          idle: { afterMinutes: 15, inputThresholdRatio: 0.8, harnesses: ["claude-cli"] },
++          memoryFlush: { enabled: false, compactionHooks: ["claude-cli"] },
++        },
++      },
++    },
++    session: { store: storePath },
++    models: {
++      providers: {
++        anthropic: {
++          models: [{ id: "native-model", contextTokens: 256_000 }],
++        },
++      },
++    },
++  };
++  setActivePluginRegistry(createEmptyPluginRegistry());
++  cliBackendsTesting.setDepsForTest({
++    resolveRuntimeCliBackends: () =>
++      [
++        {
++          id: "claude-cli",
++          modelProvider: "anthropic",
++          config: {
++            command: "claude",
++            args: ["-p"],
++            resumeArgs: ["-p", "--resume", "{sessionId}"],
++            input: "stdin",
++            output: "jsonl",
++            sessionMode: "existing",
++          },
++          bundleMcp: false,
++          pluginId: "anthropic",
++          ownsNativeCompaction: true,
++          manualCompaction: {
++            buildPrompt: () => "/compact",
++            input: "arg",
++            validateOutput: () => ({ ok: true }),
++          },
++        },
++      ] as never,
++    resolvePluginSetupCliBackend: () => undefined,
++  });
++  const entry = {
++    sessionId: "host-session",
++    updatedAt: Date.now(),
++    modelProvider: "anthropic",
++    model: "native-model",
++    agentHarnessId: "claude-cli",
++    modelSelectionLocked: true,
++    cliSessionIds: { "claude-cli": binding.sessionId },
++    cliSessionBindings: { "claude-cli": binding },
++    totalTokens: 204_800,
++    totalTokensFresh: true,
++    totalTokensVersion: 1 as const,
++  };
++  await writeTestSessionStore(storePath, key, entry);
++  const followupRun = createTestFollowupRun({
++    sessionId: entry.sessionId,
++    sessionKey: key,
++    sessionFile: key,
++    workspaceDir: root,
++    agentDir: join(root, "agent"),
++    provider: "anthropic",
++    model: "native-model",
++  });
++  await runSessionCompactionIfNeeded({
++    cfg: cfg as never,
++    followupRun,
++    defaultModel: "native-model",
++    sessionEntry: entry,
++    sessionStore: { [key]: entry },
++    sessionKey: key,
++    storePath,
++    isHeartbeat: false,
++    idleCompaction: true,
++    agentHarnessId: "claude-cli",
++  });
++  expect(state.runCli).toHaveBeenCalledOnce();
++  expect(state.runCli).toHaveBeenCalledWith(
++    expect.objectContaining({
++      cliSessionId: binding.sessionId,
++      cliSessionBinding: binding,
++      authProfileId: binding.authProfileId,
++      controlOperation: "compact",
++    }),
++  );
++}, 45_000);
