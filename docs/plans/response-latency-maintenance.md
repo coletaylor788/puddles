@@ -43,7 +43,7 @@ Native Claude manual compaction passes snapshot capture, independent saving and 
 
 ### State
 
-Refreshed public base: `3f4ff207a83828c57e2038b9022b39d9f618c0ae`. Preserved pre-rebase candidate: `db06e3f3930f8fd28fe7c2b900df469f34960b19`. Pinned OpenClaw: `eb377ac59e6c9fd6c7705028034812becf00271b` (2026.9.6). Publish from a clean feature branch based on the public base. Earlier unpublished investigation commits are retained outside the public branch. Public tests use a synthetic harness identity and Claude Code. Companion patches supply other native adapters and their specific regression bindings. Public CI requires no companion repository or deployment configuration.
+Refreshed public base: `6b1ce4478fe6c5bc22311344ec705cb16e96ad8a`. Preserved pre-rebase candidate: `db06e3f3930f8fd28fe7c2b900df469f34960b19`. Pinned OpenClaw: `eb377ac59e6c9fd6c7705028034812becf00271b` (2026.9.6). Publish from a clean feature branch based on the public base. Earlier unpublished investigation commits are retained outside the public branch. Public tests use a synthetic harness identity and Claude Code. Companion patches supply other native adapters and their specific regression bindings. Public CI requires no companion repository or deployment configuration.
 
 ### Scope and acceptance criteria
 
@@ -100,3 +100,7 @@ The retained reviewer previously cleared snapshot ownership, native callback rou
 ### Idle binding repair, November 5
 
 The scheduler validated the persisted native binding, but `runSessionCompactionIfNeeded` omitted it when calling `compactEmbeddedAgentSession`. Native control therefore returned `cannot manually compact without a resumable native session` before invoking the hook. Forward `getCliSessionBinding(entry, runtimeId)` only for admitted native idle work. The new registered regression persists a bound session, uses the real memory runner and queued compaction, and replaces only external CLI execution. It failed before the fix and passed afterward (20.31 seconds for the focused test command). The earlier async-scope repair remains necessary but did not solve this separate omission.
+
+### CI tooling refresh, November 6
+
+Rebased the preserved feature onto current main after the backup tooling repair landed. The rebase leaves the latency patch and its focused runtime regression unchanged. Rebuild the candidate with the current installed tool and rerun installed DEV acceptance; the earlier candidate is stale. No production delivery is claimed.
