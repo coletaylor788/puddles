@@ -1,0 +1,30 @@
+{
+  "id": "session-return-grant",
+  "name": "Session Return Grant",
+  "version": "0.1.0",
+  "description": "Native exact-session grants for one-way answer returns",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "senderAgentId",
+      "targetAgentId"
+    ],
+    "properties": {
+      "senderAgentId": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]*$"
+      },
+      "targetAgentId": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]*$"
+      }
+    }
+  },
+  "activation": {
+    "onStartup": true,
+    "onAgentHarnesses": [
+      "copilot"
+    ]
+  }
+}

@@ -424,6 +424,11 @@ export async function runScenario(installedDir, scenario, options = {}) {
       } catch (error) { errors.push(error); }
     }
     if (!primaryError && errors.length === 0) rmSync(root, { recursive: true });
-    if (errors.length) throw new AggregateError([...(primaryError ? [primaryError] : []), ...errors], "Native fixture cleanup failed");
+    if (errors.length) {
+      const failure = new AggregateError([...(primaryError ? [primaryError] : []), ...errors],
+        `Native fixture cleanup failed: ${errors.map(String).join("; ")}`);
+      writeFileSync(join(root, "failure.log"), `${failure.stack}\n`, { mode: 0o600 });
+      throw failure;
+    }
   }
 }

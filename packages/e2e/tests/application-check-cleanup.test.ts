@@ -184,16 +184,37 @@ it('failed joining preserves qualification state while native cleanup still runs
 it('failure fixtures preserve their supervising command and retire only their own scopes', async () => {
   // @ts-expect-error Maintained executable release helper is tested at runtime.
   const { command } = await import('../../release/src/commands.mjs');
-  // @ts-expect-error Maintained executable release helper is tested at runtime.
-  const { inspectProcessScope } = await import('../../release/src/owned-process.mjs');
+  const releaseModule = (file: string) => pathToFileURL(resolve(import.meta.dirname, '../../release/src', file)).href;
+  const fixtureArgs = [resolve(import.meta.dirname, '../node_modules/vitest/vitest.mjs'), 'run',
+    'tests/application-check-cleanup.test.ts', '--maxWorkers', '1',
+    '-t', 'unexpected worker exit|failed joining preserves qualification state'];
+  // A shared suite scope can have pending launches from other test workers.
+  // Check registration only in this supervisor's own scope after its child joins.
+  const supervisor = `
+import assert from 'node:assert/strict';
+import {existsSync} from 'node:fs';
+import {join} from 'node:path';
+import {command} from ${JSON.stringify(releaseModule('commands.mjs'))};
+import {inspectProcessScope} from ${JSON.stringify(releaseModule('owned-process.mjs'))};
+const scope=JSON.parse(process.env.PUDDLES_PROCESS_SCOPES).at(-1);
+assert.ok(scope);
+let receipt,cleared=false;
+await command({command:process.execPath,args:${JSON.stringify(fixtureArgs)},cwd:${JSON.stringify(resolve(import.meta.dirname, '..'))},timeoutMs:30000},{},child=>{
+  if(child)receipt=child;else cleared=true;
+});
+assert.ok(receipt);
+assert.equal(cleared,true);
+assert.equal(existsSync(receipt.scope),false);
+assert.throws(()=>process.kill(receipt.pid,0));
+assert.equal(existsSync(join(scope,'closing')),false);
+assert.equal(inspectProcessScope(scope).incomplete,false);
+`;
   let receipt: { pid: number; scope: string } | undefined;
   let cleared = false;
   await command({
     command: process.execPath,
-    args: [resolve(import.meta.dirname, '../node_modules/vitest/vitest.mjs'), 'run',
-      'tests/application-check-cleanup.test.ts', '--maxWorkers', '1',
-      '-t', 'unexpected worker exit|failed joining preserves qualification state'],
-    cwd: resolve(import.meta.dirname, '..'), timeoutMs: 30_000,
+    args: ['--input-type=module', '-e', supervisor],
+    cwd: resolve(import.meta.dirname, '..'), timeoutMs: 35_000,
   }, {}, (child: { pid: number; scope: string } | null) => {
     if (child) receipt = child; else cleared = true;
   });
@@ -203,6 +224,5 @@ it('failure fixtures preserve their supervising command and retire only their ow
   expect(() => process.kill(receipt!.pid, 0)).toThrow();
   for (const scope of inheritedScopes) {
     expect(existsSync(join(scope, 'closing'))).toBe(false);
-    expect(inspectProcessScope(scope).incomplete).toBe(false);
   }
 }, 40_000);

@@ -5,12 +5,14 @@ import { execFileSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 
 function fixtureProcesses() {
-  return execFileSync("ps", ["-axo", "pid=,ppid=,pgid=,uid=,lstart="], {
+  return execFileSync("ps", ["-axo", "pid=,ppid=,pgid=,uid=,stat=,lstart="], {
     encoding: "utf8", timeout: 5000,
   }).split("\n").flatMap(line => {
-    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/);
-    return match ? [{ pid: Number(match[1]), parentPid: Number(match[2]), group: Number(match[3]),
-      uid: Number(match[4]), start: match[5] }] : [];
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/);
+    // Exited children awaiting reaping cannot write or receive signals. macOS
+    // returns EPERM for a group containing only these zombies.
+    return match && !match[5].startsWith("Z") ? [{ pid: Number(match[1]), parentPid: Number(match[2]), group: Number(match[3]),
+      uid: Number(match[4]), start: match[6] }] : [];
   });
 }
 
@@ -102,5 +104,6 @@ export async function cleanupFixtureResources(actions) {
   for (const action of actions) {
     try { await action(); } catch (error) { errors.push(error); }
   }
-  if (errors.length) throw new AggregateError(errors, "Native fixture resource cleanup failed");
+  if (errors.length) throw new AggregateError(errors,
+    `Native fixture resource cleanup failed: ${errors.map(String).join("; ")}`);
 }
