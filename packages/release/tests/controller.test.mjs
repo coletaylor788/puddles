@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -7,7 +7,7 @@ import { replaceBackup, restoreBackup, verifyBackup } from '../src/backup.mjs';
 import { enqueue, cancel, readQueue, updateQueue } from '../src/queue.mjs';
 import { deployDev, runNext, validateConfiguration } from '../src/controller.mjs';
 import { installTool } from '../src/install.mjs';
-import { treeHash } from '../src/files.mjs';
+import { snapshotTreeHash, treeHash } from '../src/files.mjs';
 
 function fixture(t) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'puddles-release-test-')));
@@ -365,4 +365,66 @@ test('DEV and TEST execute the same application callbacks with the owning featur
   assert.equal((await runNext(f.config)).status, 'released');
   assert.deepEqual(readFileSync(join(f.ticket.workspace, 'checks'), 'utf8').trim().split('\n'),
     ['dev', 'test'].flatMap(role => ['stop', 'prepare', 'start', 'health', 'tests'].map(step => `${role}-${step}`)));
+});
+
+for (const rollback of [false, true]) {
+  test(`state snapshot preserves literal symlinks through ${rollback ? 'rollback' : 'release'}`, async t => {
+    const f = fixture(t), state = join(f.root, 'state');
+    const outside = join(f.root, 'external');
+    mkdirSync(outside); writeFileSync(join(outside, 'untouched'), 'outside state');
+    const links = {
+      RunningChromeVersion: '123.0.0.0:1',
+      external: outside,
+      missing: join(f.root, 'does-not-exist'),
+      cycle: 'cycle',
+      internal: 'history',
+    };
+    for (const [name, target] of Object.entries(links)) symlinkSync(target, join(state, name));
+    const original = snapshotTreeHash(state);
+    enqueue(f.config.root, f.ticket);
+    const result = await runNext(f.config, async (_, env) => {
+      if (rollback && env.PUDDLES_RELEASE_PHASE === 'prod-tests') {
+        // A failed candidate changed state; rollback must put the links back.
+        for (const name of Object.keys(links)) rmSync(join(state, name));
+        writeFileSync(join(state, 'history'), 'candidate state');
+        throw new Error('synthetic acceptance failure');
+      }
+    });
+    assert.equal(result.status, rollback ? 'failed' : 'released');
+    const manifest = verifyBackup(f.config.backup);
+    assert.equal(manifest.paths[1].sha256, original);
+    for (const root of [state, join(f.config.backup.root, 'state')]) {
+      assert.equal(snapshotTreeHash(root), original);
+      for (const [name, target] of Object.entries(links)) {
+        assert.ok(lstatSync(join(root, name)).isSymbolicLink());
+        assert.equal(readlinkSync(join(root, name)), target);
+      }
+    }
+    assert.equal(readFileSync(join(outside, 'untouched'), 'utf8'), 'outside state');
+    assert.equal(readQueue(f.config.root).active, null);
+  });
+}
+
+test('backup verification detects changed link text before stopping production', async t => {
+  const f = fixture(t), state = join(f.root, 'state');
+  symlinkSync('123.0.0.0:1', join(state, 'RunningChromeVersion'));
+  await replaceBackup(f.config.backup, f.config.prod, async () => {});
+  const link = join(f.config.backup.root, 'state/RunningChromeVersion');
+  rmSync(link); symlinkSync('124.0.0.0:1', link);
+  const seen = [];
+  await assert.rejects(restoreBackup(f.config.backup, f.config.prod, async (_, phase) => seen.push(phase)), /Recovery backup changed/);
+  assert.deepEqual(seen, []);
+  assert.equal(readlinkSync(join(state, 'RunningChromeVersion')), '123.0.0.0:1');
+});
+
+test('snapshot hashing retains existing digests while artifact links stay strict', t => {
+  const f = fixture(t), artifact = f.ticket.artifact;
+  symlinkSync('version', join(artifact, 'internal'));
+  assert.equal(snapshotTreeHash(artifact), treeHash(artifact));
+  for (const [target, pattern] of [['missing', /ENOENT/], [join(f.root, 'state'), /Artifact link escapes/], ['invalid', /ELOOP/]]) {
+    symlinkSync(target, join(artifact, 'invalid'));
+    assert.throws(() => treeHash(artifact), pattern);
+    assert.match(snapshotTreeHash(artifact), /^[a-f0-9]{64}$/);
+    rmSync(join(artifact, 'invalid'));
+  }
 });

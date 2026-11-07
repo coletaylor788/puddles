@@ -1,6 +1,6 @@
 import { lstatSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { atomicJson, canonical, copy, readJson, separate, treeHash } from './files.mjs';
+import { atomicJson, canonical, copy, readJson, separate, snapshotTreeHash } from './files.mjs';
 
 // Do not treat dangling links or access errors as absent files.
 function absent(path) {
@@ -29,7 +29,7 @@ export function verifyBackup(config) {
     if (saved.name !== entry.name || saved.path !== entry.path || saved.allowAbsent !== entry.allowAbsent) throw new Error('Recovery backup changed');
     if (saved.absent === true) {
       if (entry.allowAbsent !== true || saved.sha256 !== null || !absent(snapshot)) throw new Error('Recovery backup changed');
-    } else if (saved.absent !== undefined || treeHash(snapshot) !== saved.sha256) throw new Error('Recovery backup changed');
+    } else if (saved.absent !== undefined || snapshotTreeHash(snapshot) !== saved.sha256) throw new Error('Recovery backup changed');
   }
   return manifest;
 }
@@ -52,8 +52,8 @@ export async function replaceBackup(config, service, run) {
         continue;
       }
       copy(entry.path, join(config.root, entry.name));
-      const sha256 = treeHash(join(config.root, entry.name));
-      if (sha256 !== treeHash(entry.path)) throw new Error('Backup does not match stopped production');
+      const sha256 = snapshotTreeHash(join(config.root, entry.name));
+      if (sha256 !== snapshotTreeHash(entry.path)) throw new Error('Backup does not match stopped production');
       paths.push({ ...entry, sha256 });
     }
     for (const entry of paths) if (entry.absent && !absent(entry.path)) throw new Error('Absent backup path appeared during capture');
