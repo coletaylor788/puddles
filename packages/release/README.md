@@ -77,6 +77,12 @@ invalidates the old backup, captures directly into the same location, and verifi
 it there. It restarts unchanged PROD even when capture fails. A failed capture
 cannot authorize deployment. There is no second backup generation.
 
+State snapshots copy symbolic links verbatim and hash their stored target text
+without following it. This preserves dangling browser sentinels, absolute links,
+and cycles without capturing or modifying files outside the declared paths.
+Verification detects changed link text or permissions before restore. Artifact
+hashing still rejects dangling links and links that escape the artifact root.
+
 An entry may declare `allowAbsent: true` for a path the application can create,
 such as a new guidance file. Capture records its absence; rollback removes a file
 created by the failed deployment. If the path already exists, capture and restore

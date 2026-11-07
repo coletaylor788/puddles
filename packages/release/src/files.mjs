@@ -34,14 +34,22 @@ export function atomicJson(path, data) {
     try { fsyncSync(dir); } finally { closeSync(dir); }
   } finally { rmSync(temporary, { force: true }); }
 }
-export function treeHash(root) {
+export function treeHash(root) { return hashTree(root, true); }
+
+// State snapshots preserve link text, including dangling browser sentinels.
+// Never follow a snapshot link: its target is not part of the captured tree.
+export function snapshotTreeHash(root) { return hashTree(root, false); }
+
+function hashTree(root, validateLinks) {
   const hash = createHash('sha256');
   function visit(path, name) {
     const stat = lstatSync(path);
     hash.update(JSON.stringify([name, stat.mode & 0o777]));
     if (stat.isSymbolicLink()) {
-      const target = realpathSync(path);
-      if (!contains(root, target)) throw new Error(`Artifact link escapes its root: ${name}`);
+      if (validateLinks) {
+        const target = realpathSync(path);
+        if (!contains(root, target)) throw new Error(`Artifact link escapes its root: ${name}`);
+      }
       hash.update('link:' + readlinkSync(path));
     } else if (stat.isDirectory()) {
       hash.update('directory');
