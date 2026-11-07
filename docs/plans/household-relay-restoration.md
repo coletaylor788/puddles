@@ -1,8 +1,8 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; DEV passed, repairing application-test cleanup
+**Status:** Production approved; refreshing after backup tooling repair
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
-**Last updated:** 2026-10-31
+**Last updated:** 2026-11-06
 
 ## Human section
 
@@ -102,86 +102,44 @@ DEV-only compatibility filter so qualification preserves the programmatic-tool
 settings already released for all tool-enabled agents. Existing agent tool
 permissions and native approvals stay unchanged.
 
-The requester resumed this candidate on 2026-10-24 and directed both repositories
-to use current main and the installed triggered CI process. The original source
-heads are preserved. Both candidates are rebased, and retained review cleared
-the rebased behavior. Fresh CI controls, build and DEV acceptance are pending;
-historical DEV results do not qualify this new output.
-
-Previously, the refreshed artifact passed all 12 managed DEV scenarios. The latest legacy release
-then stopped before deployment on two iMessage test assertions. Both checked
-that at least 14.9 seconds remained in a 15-second buffer after real asynchronous
-ingress work. Message count and content checks passed, but host scheduling used
-more than the implicit 100 ms allowance.
-
-The reviewed test-only correction fixes the date clock in those three table
-rows while keeping timer scheduling and ingress work real. Existing assertions
-and separate real-debouncer deadline tests remain intact. Production timing and
-agent communication behavior do not change. The patch and companion digest are
-updated. All three focused cases and all 64 tests in the affected file passed.
-The failed release is independently
-closed, with production healthy and unchanged.
-
-The legacy release envelopes remain historical evidence. They will not be
-replayed through the new workflow.
-
-The first triggered DEV run completed with a qualification timeout. The serial
-suite permits four minutes per case but its overall deadline allowed only 15
-minutes for all 12 cases. The overall deadline now covers every bounded case
-plus startup and cleanup. Individual case and provider limits remain unchanged.
-CI completed teardown and production was not reached. Both branches are refreshed
-for the installed output queue, which owns the next DEV attempt and its cleanup.
-
-The refreshed candidate passed DEV, including teardown and source cleanup.
-Production CI stopped in the application suite before deployment. Fixture
-shutdown counted an exited process awaiting reaping as live; macOS rejects
-signals to a group containing only those processes with `EPERM`. The cleanup
-helper now excludes zombies, matching the existing command runner. Identity
-checks and permission errors for live processes remain enforced. The repair
-needs retained review, a rebuilt candidate and fresh DEV qualification.
+DEV and the full application suite passed. Production stopped during backup
+capture before activating the candidate because the backup tool followed a
+dangling browser symlink. The shared tooling repair is merged and installed,
+the backup is valid again, and the failed submission is fully closed. Both
+feature branches are refreshed from main. The unchanged relay design now needs
+a fresh build and DEV qualification before another production submission.
 
 ## Agent section
 
 ### State
 
-The application-suite failure occurred after the affected gateway logged a clean
-shutdown. An isolated macOS reproduction confirmed `EPERM` when signaling a
-zombie-only process group. A regression holds a real exited child unreaped and
-checks that fixture cleanup neither signals nor waits on it. It failed before
-the change; all 12 fixture-process tests pass after it. Source queue and transfer
-cleanup are closed, and neither source base advanced. CI will repeat the full
-application suite after the repaired candidate passes DEV.
+DEV `gh-42328122394-1` passed with teardown and source cleanup closed.
+Production `gh-42329251893-1` passed the full application suite, then failed in
+backup capture before candidate activation. The terminal deployment receipt is
+`failed`, `phase=complete`, `child=null`. The source submission closed with
+`queueClosedAt=1794022810772` and transfer cleanup `already-clean`. Unchanged
+production restarted successfully.
 
-DEV `gh-40155125218-1` failed at `dev-tests` with the 900000 ms qualification
-deadline. Its terminal receipt is `failed`, `phase=complete`, `child=null`;
-the source submission has `queueClosedAt=1792975218717`. The DEV owner and slot
-are absent and transfer cleanup is already clean. A delayed workflow-started
-notification does not authorize replay of that candidate.
+The shared backup repair preserves literal symbolic links in snapshots. It is
+merged into main and installed on both hosts. A maintained backup capture has
+restored a valid recovery copy. Both feature branches are rebased onto current
+main; their behavior diffs are unchanged. Preserve the retained review and warm
+application and sandbox caches. Refresh the companion public-source pin and
+control source heads, then use installed `build` and `ci-dev`. A new DEV pass
+and exact-head repository checks are required before `ci-prod`. Record each
+submission and yield for its durable completion event.
 
-The shared qualification plan retains 12 routes at 240000 ms each. Its process
-deadline is 2940000 ms, including 60000 ms startup/teardown allowance, and the
-parent deadline is 2970000 ms to allow process-group shutdown first. Both fit
-within the installed CI phase limit. Regression checks cover the serial budget,
-bounded overrides and failure/timeout/signal/worker-exit cleanup. Fresh installed
-qualification remains required; no test assertion or native access rule changes.
+The prior fixture-process cleanup repair passed retained review and the full
+application suite. It excludes exited zombies while preserving live process
+identity and permission checks. Its real-child regression and all 12 focused
+fixture-process tests pass. No further runtime or communication changes are
+needed for the backup tooling failure.
 
-The active path is the installed `build`, `ci-dev`, and `ci-prod` workflow in
-[triggered CI](../../packages/release/CI.md). Both source branches were rebased
-on current main. The original heads are preserved under a task-owned backup
-branch. Main's newer flag-based readiness helper replaces the candidate's
-superseded readiness repair. All 38 patches apply to the pinned source.
-
-The companion CI entrypoint composes the maintained Household preparation and
-qualification with CI slot lifecycle and baseline acceptance. Frozen predecessor
-digests are checked again during acceptance; current mutable configuration cannot
-serve as its own expectation. The migration uses the candidate sandbox manifest
-before runtime installation. Main qualification accepts the maintained provider
-credential reference and the existing synthetic fixture shape. It does not copy
-credentials into a control bundle or runtime. The dependency closure includes
-dynamic fixture imports and child test scripts. CI owns slot teardown and scratch.
-Focused controls, configuration, guidance and authentication tests precede retained
-review of these integration changes. Build and installed DEV/TEST/PROD checks are
-still required. Record durable dispatch identifiers and yield after submission.
+The companion controls compose Household preparation and qualification with
+CI slot lifecycle and baseline acceptance. Frozen predecessor digests remain
+checked during acceptance. The migration uses the candidate sandbox manifest;
+provider qualification reads an existing credential reference without copying
+credentials into controls or runtime. CI owns teardown, recovery and cleanup.
 
 The following paragraphs retain the earlier release evidence.
 
