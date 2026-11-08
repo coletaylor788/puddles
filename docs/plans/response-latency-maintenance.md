@@ -2,7 +2,7 @@
 
 Status: Production approved, CI preparation
 Issue: To be linked
-Last updated: 2026-10-31
+Last updated: 2026-11-08
 Owner: Latency feature owner
 
 ## Human section
@@ -37,13 +37,13 @@ Retire blocking-gather and durable-handoff customizations together. Native paren
 
 **Approval:** Production approved. **Approval reference:** The requester approved implementation and shipping on October 18, approved shared code and Claude publication, then resumed work on October 24 using build, ci-dev and ci-prod. Public changes exclude other provider integrations.
 
-Native Claude manual compaction passes snapshot capture, independent saving and recall after gateway restart. Idle acceptance remains open. A new local regression through the real compaction entry point reproduced a missing native session binding; the minimal forwarding fix passes that regression. Installed idle completion and interruption still require DEV verification. Production is unchanged.
+Native Claude manual compaction passes snapshot capture, independent saving and recall after gateway restart. Installed idle tests now reach the hook and complete their compaction or cancellation assertions, but restart acceptance remains open. A fixture database ownership repair passes a real local gateway restart. The branch includes the released Household baseline; fresh DEV verification and independent review remain required. This feature has not changed production.
 
 ## Agent section
 
 ### State
 
-Refreshed public base: `6b1ce4478fe6c5bc22311344ec705cb16e96ad8a`. Preserved pre-rebase candidate: `db06e3f3930f8fd28fe7c2b900df469f34960b19`. Pinned OpenClaw: `eb377ac59e6c9fd6c7705028034812becf00271b` (2026.9.6). Publish from a clean feature branch based on the public base. Earlier unpublished investigation commits are retained outside the public branch. Public tests use a synthetic harness identity and Claude Code. Companion patches supply other native adapters and their specific regression bindings. Public CI requires no companion repository or deployment configuration.
+Refreshed public base: `d9af7b4e`. Preserved pre-rebase candidate: `db06e3f3930f8fd28fe7c2b900df469f34960b19`. Pinned OpenClaw: `eb377ac59e6c9fd6c7705028034812becf00271b` (2026.9.6). Publish from a clean feature branch based on the public base. Earlier unpublished investigation commits are retained outside the public branch. Public tests use a synthetic harness identity and Claude Code. Companion patches supply other native adapters and their specific regression bindings. Public CI requires no companion repository or deployment configuration.
 
 ### Scope and acceptance criteria
 
