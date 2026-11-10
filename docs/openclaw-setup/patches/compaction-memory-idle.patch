@@ -1505,7 +1505,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.test.ts b/src/auto-reply/r
  const runWithModelFallbackMock = vi.fn();
  const ensureSelectedAgentHarnessPluginMock = vi.fn();
  
-@@ -303,6 +307,103 @@
+@@ -303,6 +307,114 @@
  describe("runMemoryFlushIfNeeded", () => {
    let rootDir = "";
  
@@ -1538,9 +1538,14 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.test.ts b/src/auto-reply/r
 +    },
 +  );
 +
-+  it.each(["test-harness", "claude-cli"])(
-+    "runs an explicit %s snapshot below thresholds without updating the live checkpoint",
-+    async (harnessId) => {
++  it.each([
++    ["test-harness", true],
++    ["test-harness", false],
++    ["claude-cli", true],
++    ["claude-cli", false],
++  ] as const)(
++    "runs an explicit %s snapshot with explicit store %s without updating the live checkpoint",
++    async (harnessId, explicitStore) => {
 +      if (harnessId === "claude-cli") registerClaudeCliBackend(true);
 +      const storePath = path.join(rootDir, "sessions.json");
 +      const captured = createFlushSessionEntry({
@@ -1560,6 +1565,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.test.ts b/src/auto-reply/r
 +      const result = await runCompactionMemorySnapshot(
 +        {
 +          cfg: {
++            session: { store: storePath },
 +            agents: { defaults: { compaction: { memoryFlush: { compactionHooks: [harnessId] } } } },
 +          },
 +          followupRun,
@@ -1567,7 +1573,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.test.ts b/src/auto-reply/r
 +          resolvedVerboseLevel: "off",
 +          sessionEntry: captured,
 +          sessionKey: "main",
-+          storePath,
++          storePath: explicitStore ? storePath : undefined,
 +          isHeartbeat: false,
 +        },
 +        { entries: manager.getEntries(), turnTainted: true, contextTokens: 100000 },
@@ -1593,6 +1599,11 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.test.ts b/src/auto-reply/r
 +      } else expect(call.agentHarnessId).toBe(harnessId);
 +      expect(call.sessionId).not.toBe(captured.sessionId);
 +      expect(call.sessionPersistence).toBe("detached");
++      expect(call.sessionTarget).toMatchObject({
++        storePath,
++        sessionId: call.sessionId,
++        sessionKey: call.sessionKey,
++      });
 +      expect(call.userTurnTranscriptRecorder).toBeDefined();
 +      const maintenanceMessage = await call.userTurnTranscriptRecorder.resolveMessage();
 +      expect(maintenanceMessage).toMatchObject({ role: "user", content: call.prompt });
@@ -1609,7 +1620,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.test.ts b/src/auto-reply/r
    async function runDefaultMemoryFlush(
      sessionEntry: SessionEntry,
      overrides: Partial<MemoryFlushTestParams> = {},
-@@ -423,6 +524,7 @@
+@@ -423,6 +535,7 @@
        result: { tokensAfter: 42 },
      });
      runEmbeddedAgentMock.mockReset().mockResolvedValue({ payloads: [], meta: {} });
@@ -2144,7 +2155,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
        contextWindowTokens,
      });
      if (!plan) {
-@@ -1429,21 +1492,29 @@
+@@ -1429,21 +1492,32 @@
      const agentId = params.followupRun.run.agentId ?? resolveDefaultAgentId(params.cfg);
      const runtime = await memoryFlushSessionRuntimeLoader.load();
      assertMemoryFlushCurrent();
@@ -2166,7 +2177,10 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
 +    const memorySession = snapshot
 +      ? runtime.restoreMemoryFlushSession({
 +          agentId,
-+          storePath: params.storePath,
++          storePath: resolveSessionStorePathForScope(
++            { agentId, sessionKey: params.sessionKey, storePath: params.storePath },
++            params.cfg,
++          ),
 +          runId: flushRunId,
 +          workspaceDir: params.followupRun.run.workspaceDir,
 +          entries: snapshot.entries,
@@ -2189,7 +2203,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
      await runtime.ensureMemoryFlushTargetFile({
        workspaceDir: params.followupRun.run.workspaceDir,
        relativePath: writePath,
-@@ -1516,6 +1587,7 @@
+@@ -1516,6 +1590,7 @@
    });
    const flushedCompactionCount = activeSessionEntry?.compactionCount ?? 0;
    let visibleErrorPayloads: ReplyPayload[] = [];
@@ -2197,7 +2211,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
    // Only the bounded phase belongs to the parent turn; maintenance content stays private.
    const parentRunId = params.opts?.runId;
    if (parentRunId) {
-@@ -1556,7 +1628,7 @@
+@@ -1556,7 +1631,7 @@
          model: selection.model,
          requestedRouteResolution: selection.requestedRouteResolution,
          agentDir: selection.agentDir,
@@ -2206,7 +2220,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
          userLockedAuthProfileId:
            params.followupRun.run.authProfileIdSource === "user"
              ? params.followupRun.run.authProfileId
-@@ -1567,7 +1639,7 @@
+@@ -1567,7 +1642,7 @@
          agentId: params.followupRun.run.agentId,
          sessionId: memorySession.sessionId,
          sessionKey: memorySession.sessionKey,
@@ -2215,7 +2229,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
        },
        harness: {
          workspaceDir: params.followupRun.run.workspaceDir,
-@@ -1587,6 +1659,10 @@
+@@ -1587,6 +1662,10 @@
        sessionOverride: { kind: "preserve" },
        abortSignal: deferredLifecycle.signal,
        runCandidate: async (provider, model, runOptions) => {
@@ -2226,7 +2240,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
          const sessionRuntimeOverride = runOptions.agentHarnessRuntimeOverride;
          const candidateThinkLevel = resolveRunThinkingLevelForFallbackCandidate({
            cfg: params.cfg,
-@@ -1616,7 +1692,7 @@
+@@ -1616,7 +1695,7 @@
              promptCacheKey: params.opts?.promptCacheKey,
              allowTransientCooldownProbe: runOptions.allowTransientCooldownProbe,
            });
@@ -2235,7 +2249,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
            preparedRunAdmission,
            ...embeddedContext,
            ...senderContext,
-@@ -1633,9 +1709,24 @@
+@@ -1633,9 +1712,24 @@
            contextTokenBudget: contextWindowTokens,
            memoryFlushWritePath,
            initialTurnTainted:
@@ -2261,7 +2275,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
            extraSystemPrompt: flushSystemPrompt,
            isFinalFallbackAttempt: runOptions.isFinalFallbackAttempt,
            bootstrapPromptWarningSignaturesSeen,
-@@ -1648,7 +1739,19 @@
+@@ -1648,7 +1742,19 @@
            authProfileFailurePolicy: runOptions.authProfileFailurePolicy,
            contextEngineLogicalTurnLease: runOptions.contextEngineLogicalTurnLease,
            onContextEngineTurnCandidate: runOptions.onContextEngineTurnCandidate,
@@ -2282,7 +2296,7 @@ diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/
          visibleErrorPayloads = resolveVisibleMemoryFlushErrorPayloads(result.payloads);
          bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
            result.meta?.systemPromptReport,
-@@ -1661,7 +1764,7 @@
+@@ -1661,7 +1767,7 @@
        // Do not stamp memory-flush success for a resolved run that returned an error.
        throw buildVisibleMemoryFlushFailure(visibleErrorPayloads);
      }
@@ -2308,7 +2322,7 @@ index 5bace61ee7c..9145c64afb6 100644
  
  it.each([
    { boundary: "mkdir", owner: "operator" },
-@@ -519,3 +523,38 @@ it("rejects a partial bounded checkpoint instead of silently starting with less
+@@ -519,3 +523,40 @@ it("rejects a partial bounded checkpoint instead of silently starting with less
      expect(loadTranscriptEventsSync(scope)).toEqual(before);
    });
  });
@@ -2325,12 +2339,14 @@ index 5bace61ee7c..9145c64afb6 100644
 +  ];
 +  const first = restoreMemoryFlushSession({
 +    agentId: "main",
++    storePath: "/tmp/memory-workspace/sessions.json",
 +    runId: "save-first",
 +    workspaceDir: "/tmp/memory-workspace",
 +    entries: snapshot,
 +  });
 +  const retry = restoreMemoryFlushSession({
 +    agentId: "main",
++    storePath: "/tmp/memory-workspace/sessions.json",
 +    runId: "save-retry",
 +    workspaceDir: "/tmp/memory-workspace",
 +    entries: snapshot,
@@ -2359,7 +2375,7 @@ index e6562bcfcde..552a15a1722 100644
 +/** Restore exactly the retained view into a new internal session, never the source native binding. */
 +export function restoreMemoryFlushSession(params: {
 +  agentId: string;
-+  storePath?: string;
++  storePath: string;
 +  runId: string;
 +  workspaceDir: string;
 +  entries: readonly unknown[];

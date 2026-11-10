@@ -17,3 +17,5 @@ Each snapshot save creates its own hidden user-turn recorder from the maintenanc
 Claude transcript readiness and orphan-tool checks resolve the same account directory as the native process. An explicit prepared backend directory takes precedence over inherited `CLAUDE_CONFIG_DIR`; without either, the standard home directory remains the default. Cold restart and binding-flush checks therefore do not discard a persisted session merely because its transcript lives outside the standard directory. The selected directory is checked directly, without searching other accounts.
 
 Idle maintenance forwards the admitted persisted native session binding into the shared compaction entry point. Without it, native control rejects the request before PreCompact, even when the source session has a valid binding. A regression uses real SQLite persistence and the real memory-to-compaction path, replacing only the external CLI execution.
+
+Snapshot restoration requires a resolved session-store path. The caller uses the same native store resolver as ordinary memory saves, honoring either an explicit path or the configured default while keeping a distinct internal session identity.

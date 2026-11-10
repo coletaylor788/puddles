@@ -1,8 +1,8 @@
 # Response latency and native maintenance
 
-Status: Production approved, DEV passed; source refresh in progress
+Status: Production approved; memory-save repair awaiting fresh DEV
 Issue: To be linked
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 Owner: Latency feature owner
 
 ## Human section
@@ -37,7 +37,7 @@ Retire blocking-gather and durable-handoff customizations together. Native paren
 
 **Approval:** Production approved. **Approval reference:** The requester approved implementation and shipping on October 18, approved shared code and Claude publication, then resumed work on October 24 using build, ci-dev and ci-prod. Public changes exclude other provider integrations.
 
-Installed DEV now passes manual compaction, idle completion, foreground cancellation, one independent memory save and recall after restart. Deployment teardown and source cleanup are complete. A tooling baseline refresh requires a new candidate and DEV check. Independent review of the recent repairs remains required before PROD. This feature has not changed production.
+Installed DEV passed manual compaction, idle completion, foreground cancellation, one independent memory save and recall after restart. Independent review cleared that candidate. Production CI then found an optional session-store path passed to the snapshot saver, whose CLI target requires a resolved path. The repair uses the existing store resolver and passes focused tests and the failing type check. Retained review cleared the repair; it requires a new build and DEV acceptance. Deployment never started; cleanup is closed.
 
 ## Agent section
 
@@ -95,7 +95,7 @@ Use the installed build entrypoint and submit its frozen candidate through ci-de
 
 ### Review log
 
-The retained reviewer previously cleared snapshot ownership, native callback routing, idle admission, optional-policy serialization and native parent continuation. The previous CI integration and diagnostic repair are clear. The current rebase preserves all maintained patches. The prior reviewer is unavailable; recent binding and fixture repairs still require independent review. No replacement worker is spawned under the requester constraint.
+The existing Claude rollout owner completed independent review of the full paired behavior on November 10: CLEAR, no actionable findings or architecture deviations. This covers the earlier binding and fixture repairs. The same reviewer cleared the snapshot store-resolution repair and independently verified patch composition. No replacement worker was spawned.
 
 ### Checklist
 
@@ -107,3 +107,7 @@ The retained reviewer previously cleared snapshot ownership, native callback rou
 - [ ] Pass full application suite and TEST.
 - [ ] Deploy, verify PROD and merge through CI.
 - [ ] Finalize owned inputs and retained evidence.
+
+#### Snapshot store resolution repair, November 10
+
+Resolve the snapshot store through `resolveSessionStorePathForScope` with the source agent, session and configuration, matching the existing memory-save path. Require a resolved string in `restoreMemoryFlushSession`. Detached session identity, source policy, append-only target and hidden recorder remain unchanged. The expanded runner regression covers explicit and configured-default stores, asserts the internal target and verifies the source checkpoint stays unchanged. Both new default-store cases failed before repair. All 155 tests across the memory runner and memory-session suites pass in 76.77 seconds; the exact declaration-portability type check passes. The four changed prepared files reconstruct byte-for-byte from ordered maintained patches.
