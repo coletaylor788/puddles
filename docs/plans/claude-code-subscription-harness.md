@@ -159,16 +159,16 @@ and ship” after reviewing the phase-aware native approval design. Native Main,
 Household and Debug and restricted specialists are included. Haiku remains scoped
 to Reader and active-memory recall.
 
-The candidate is rebased onto current main after the requester resumed work on
-2026-10-24. Native profiles now compose with additive Code Mode. Delegated policy
-lookup retains the current conversation for execution and continuation ownership.
-Focused profile, approval, history and delegated-policy regressions pass, and
-retained source review is clear. Earlier
-subscription and boundary results remain historical evidence, not qualification
-of this rebuilt candidate. Shared compaction and idle-memory repairs remain with
-their owner; complete retention, recall and live provider acceptance are pending.
-Production routing is unchanged. Use installed `build`, `ci-dev` and `ci-prod`;
-CI owns deployment, tests, merge, recovery and cleanup.
+The candidate is rebased onto current main as of 2026-11-10. The shared
+compaction and idle-memory changes have landed after production acceptance.
+Native profiles preserve those hooks, transcript paths and delegated Code Mode
+policy. Compaction keeps native and MCP tools disabled under every profile.
+Retained review found and cleared an installed fixture that still expected the
+old command transport. The 100 focused provider checks pass; remaining focused
+integration checks and fresh installed qualification are pending.
+Earlier live results remain historical evidence. Production routing is unchanged.
+Use installed `build`, `ci-dev` and `ci-prod`; CI owns deployment, tests, merge,
+recovery and cleanup.
 
 ## Agent section
 
@@ -185,13 +185,13 @@ carries only the reviewer device from the admitted run into the existing native
 approval request. Installed regression rejects unrelated reviewers and denies
 requests without a capable route. Cleanup is verified. These results do not
 qualify shared DEV, broad sandbox behavior or production.
-The original feature head is preserved as `codex/claude-harness-pre-ci-20261024`.
-The candidate includes main `036cd88388955c5ad94e1133e8abf50f16335b69`.
-Apply the profile patch after both Code Mode patches. Its preparation intersects
-backend and caller caps before advertising controls and preserves the original
-mediated-tool provenance. New regressions cover native workspace and diagnostic
-node execution plus narrow and empty restricted-profile caps. Shared dependency
-work remains separate until its reviewed handoff is available.
+Both pre-rebase heads are preserved on `codex/claude-harness-pre-latency-20261110`.
+The public base is `06702663ad0552cd5ecb7d577ca93b0fc3c60f50`.
+Apply the profile patch after the shared compaction and Code Mode patches.
+Its preparation intersects backend and caller caps before advertising controls
+and preserves the original mediated-tool provenance. The native stdio fixture
+checks compact acknowledgment, session identity and tool isolation. Warm output
+must be rebuilt for these inputs before installed qualification.
 
 ### Scope and acceptance criteria
 
