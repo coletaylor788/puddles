@@ -37,7 +37,7 @@ Retire blocking-gather and durable-handoff customizations together. Native paren
 
 **Approval:** Production approved. **Approval reference:** The requester approved implementation and shipping on October 18, approved shared code and Claude publication, then resumed work on October 24 using build, ci-dev and ci-prod. Public changes exclude other provider integrations.
 
-Installed DEV passed manual compaction, idle completion, foreground cancellation, one independent memory save and recall after restart. Independent review cleared that candidate. Production CI then found an optional session-store path passed to the snapshot saver, whose CLI target requires a resolved path. The repair uses the existing store resolver and passes focused tests and the failing type check. Retained review cleared the repair; it requires a new build and DEV acceptance. Deployment never started; cleanup is closed.
+Fresh DEV passed the reviewed session-store repair, including manual and idle compaction, foreground cancellation, one independent memory save and recall after restart. Production CI then found stale test-project mappings before deployment. The mappings now follow the pinned upstream project ownership; all three affected test files pass. Runtime source is unchanged. Rebuild and fresh CI acceptance remain required; failed-run cleanup is closed.
 
 ## Agent section
 
@@ -111,3 +111,9 @@ The existing Claude rollout owner completed independent review of the full paire
 #### Snapshot store resolution repair, November 10
 
 Resolve the snapshot store through `resolveSessionStorePathForScope` with the source agent, session and configuration, matching the existing memory-save path. Require a resolved string in `restoreMemoryFlushSession`. Detached session identity, source policy, append-only target and hidden recorder remain unchanged. The expanded runner regression covers explicit and configured-default stores, asserts the internal target and verifies the source checkpoint stays unchanged. Both new default-store cases failed before repair. All 155 tests across the memory runner and memory-session suites pass in 76.77 seconds; the exact declaration-portability type check passes. The four changed prepared files reconstruct byte-for-byte from ordered maintained patches.
+
+#### Test project mapping repair, November 10
+
+Register the native-idle memory-runner regression under `auto-reply-reply`. It is not in the explicit database-worker list used by `infra`. Register requester-settle wake and results tests under `infra`, as required by the pinned upstream database-worker list. Their previous `agents-support` mapping excludes them. Preserve every regression and native project setup. The corrected native-idle test passes in 26.71 seconds; both requester-settle files pass all 45 tests in 12.72 seconds. No runtime source changes.
+
+The full paired discovery audit collects all 263 registered files across 30 native projects and verifies identical file/project pairs in the combined runner. This is collection evidence, not a full-suite pass. The retained reviewer cleared the mapping-only repair; prior behavior review remains valid.

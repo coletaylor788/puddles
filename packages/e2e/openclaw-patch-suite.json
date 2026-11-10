@@ -156,8 +156,8 @@
     "src/agents/subagents/registry/subagent-parent-recovery.restart-integration.test.ts": "agents-support",
     "src/agents/subagents/announce/subagent-announce-direct-delivery.test.ts": "agents-support",
     "src/agents/subagents/registry/subagent-registry.requester-wake.e2e.test.ts": "e2e",
-    "src/agents/subagents/announce/subagent-announce.requester-settle-wake.test.ts": "agents-support",
-    "src/agents/subagents/announce/subagent-announce.requester-settle-results.test.ts": "agents-support",
+    "src/agents/subagents/announce/subagent-announce.requester-settle-wake.test.ts": "infra",
+    "src/agents/subagents/announce/subagent-announce.requester-settle-results.test.ts": "infra",
     "src/agents/subagents/announce/subagent-announce.requester-settle-ownership.test.ts": "agents-support",
     "src/agents/subagents/announce/subagent-announce.requester-settle-dispatch.test.ts": "agents-support",
     "src/agents/cli-runner/mcp-grant-context.test.ts": "unit-fast",
@@ -213,7 +213,7 @@
     "src/agents/command/claude-cli-project-dir.test.ts": "agents-support",
     "src/agents/command/attempt-execution.test.ts": "agents-support",
     "src/agents/cli-runner/cli-run-settlement.test.ts": "agents-support",
-    "src/auto-reply/reply/agent-runner-memory.native-idle.test.ts": "infra"
+    "src/auto-reply/reply/agent-runner-memory.native-idle.test.ts": "auto-reply-reply"
   },
   "patches": [
     {
