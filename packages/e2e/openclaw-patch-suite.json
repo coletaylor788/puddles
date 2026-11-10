@@ -215,7 +215,7 @@
     "src/agents/cli-runner/cli-run-settlement.test.ts": "agents-support",
     "src/auto-reply/reply/agent-runner-memory.native-idle.test.ts": "auto-reply-reply",
     "extensions/anthropic/cli-profile.test.ts": "extension-providers",
-    "src/agents/cli-runner/execute-plugin.policy.test.ts": "infra",
+    "src/agents/cli-runner/execute-plugin.policy.test.ts": "agents-support",
     "src/agents/exec-defaults.test.ts": "agents-core",
     "src/gateway/cli-session-history.profile-dir.test.ts": "gateway-core",
     "src/gateway/cli-session-history.test.ts": "gateway-core",

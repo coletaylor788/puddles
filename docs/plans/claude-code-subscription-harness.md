@@ -164,8 +164,8 @@ compaction and idle-memory changes have landed after production acceptance.
 Native profiles preserve those hooks, transcript paths and delegated Code Mode
 policy. Compaction keeps native and MCP tools disabled under every profile.
 Retained review found and cleared an installed fixture that still expected the
-old command transport. The 100 focused provider checks pass; remaining focused
-integration checks and fresh installed qualification are pending.
+old command transport. All 559 focused runtime checks pass. The cumulative runner collects every
+registered regression. Fresh installed qualification is pending.
 Earlier live results remain historical evidence. Production routing is unchanged.
 Use installed `build`, `ci-dev` and `ci-prod`; CI owns deployment, tests, merge,
 recovery and cleanup.
