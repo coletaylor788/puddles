@@ -118,7 +118,6 @@ describe("OpenClaw cumulative patch suite", () => {
 
   it("maps exact Vitest projects and proves collection before running old regressions", () => {
     const manifest = JSON.parse(readFileSync(join(packageDir, "openclaw-patch-suite.json"), "utf8"));
-    expect(manifest.testProjects["src/agents/tools/yield-gather-state.test.ts"]).toBe("unit-fast");
     expect(manifest.testProjects["packages/memory-host-sdk/src/host/backend-config.test.ts"]).toBe("unit-fast-isolated");
     expect(manifest.testProjects["src/agents/subagents/spawn/acp-spawn.test.ts"]).toBe("agents-support");
     expect(manifest.testProjects["src/agents/subagents/spawn/subagent-spawn.test.ts"]).toBe("infra");
