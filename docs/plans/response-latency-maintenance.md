@@ -1,8 +1,8 @@
 # Response latency and native maintenance
 
-Status: Production approved, CI preparation
+Status: Production approved, DEV passed; source refresh in progress
 Issue: To be linked
-Last updated: 2026-11-08
+Last updated: 2026-11-09
 Owner: Latency feature owner
 
 ## Human section
@@ -37,7 +37,7 @@ Retire blocking-gather and durable-handoff customizations together. Native paren
 
 **Approval:** Production approved. **Approval reference:** The requester approved implementation and shipping on October 18, approved shared code and Claude publication, then resumed work on October 24 using build, ci-dev and ci-prod. Public changes exclude other provider integrations.
 
-Native Claude manual compaction passes snapshot capture, independent saving and recall after gateway restart. Installed idle tests now reach the hook and complete their compaction or cancellation assertions, but restart acceptance remains open. A fixture database ownership repair passes a real local gateway restart. The branch includes the released Household baseline; fresh DEV verification and independent review remain required. This feature has not changed production.
+Installed DEV now passes manual compaction, idle completion, foreground cancellation, one independent memory save and recall after restart. Deployment teardown and source cleanup are complete. A tooling baseline refresh requires a new candidate and DEV check. Independent review of the recent repairs remains required before PROD. This feature has not changed production.
 
 ## Agent section
 
@@ -69,15 +69,25 @@ Native yielded-parent ownership and terminal delivery guards are present in the 
 
 ### Validation
 
+The November 8 installed DEV candidate passed all native fixtures, including restart recall after idle completion and cancellation. The terminal deployment receipt is complete with no child process; source queue closure and transfer cleanup are verified. This evidence belongs to that exact candidate. The November 9 source refresh changes inherited cleanup tooling and status documentation only; new candidate identity and DEV acceptance are still required.
+
 The idle lifetime regression arms the real scheduler under a foreground AsyncWorkScope, drains that owner, then fires the timer with its inherited context. Native work tracking fails with independent-root admission and succeeds with detached admission. Twenty affected maintenance and memory tests pass in 17.42 seconds. The configured quiet period and cancellation guards are unchanged.
 
-Current manual DEV acceptance passes native compaction, one independent save and restart recall. Expanded idle fixtures found the truncated project key used an unsigned hash where the native CLI uses the absolute signed 32-bit value. The runtime lookup now matches both positive and negative native hash cases; all five project-directory tests pass. No timer or acceptance guard was weakened. Fresh installed acceptance remains pending.
+Current manual DEV acceptance passes native compaction, one independent save and restart recall. Expanded idle fixtures found the truncated project key used an unsigned hash where the native CLI uses the absolute signed 32-bit value. The runtime lookup now matches both positive and negative native hash cases; all five project-directory tests pass. No timer or acceptance guard was weakened. The subsequent installed DEV acceptance passed.
 
-The transport and asynchronous ownership repairs pass 127 tests across the CLI execution, plugin boundary and compaction-memory files (17.01 seconds). The new ownership regression failed on the prior API with `Async work scope is closed`. Native installed acceptance remains pending.
+The transport and asynchronous ownership repairs pass 127 tests across the CLI execution, plugin boundary and compaction-memory files (17.01 seconds). The new ownership regression failed on the prior API with `Async work scope is closed`. The subsequent installed DEV acceptance passed.
 
 Focused checks cover final Claude child-process arguments, native hook routing, source policy, snapshot retention, deduplication, append-only writes, restart recovery and idle admission. Installed synthetic Claude delegation passes with wrapping on and off. These checks use native processes with scripted inference and do not establish real-provider or deployed acceptance.
 
 Before release, qualify actual native compaction and independent memory saving with synthetic conversations, then confirm recall after restart. Separately exercise the real fifteen-minute idle trigger at the configured input ratio and native cancellation/resume. Use the real fifteen-minute timer with synthetic host usage metadata at the eighty-percent boundary. This qualifies scheduling and cancellation; it does not claim a naturally accumulated full-window history. Preserve exact source, artifact and process-closure evidence.
+
+#### Idle binding repair, November 5
+
+The scheduler validated the persisted native binding, but `runSessionCompactionIfNeeded` omitted it when calling `compactEmbeddedAgentSession`. Native control therefore returned `cannot manually compact without a resumable native session` before invoking the hook. Forward `getCliSessionBinding(entry, runtimeId)` only for admitted native idle work. The new registered regression persists a bound session, uses the real memory runner and queued compaction, and replaces only external CLI execution. It failed before the fix and passed afterward (20.31 seconds for the focused test command). The earlier async-scope repair remains necessary but did not solve this separate omission.
+
+#### CI tooling refresh, November 6
+
+Rebased the preserved feature onto current main after the backup tooling repair landed. The rebase leaves the latency patch and its focused runtime regression unchanged. Rebuild the candidate with the current installed tool and rerun installed DEV acceptance; the earlier candidate is stale. No production delivery is claimed.
 
 ### Rollout and rollback
 
@@ -85,22 +95,15 @@ Use the installed build entrypoint and submit its frozen candidate through ci-de
 
 ### Review log
 
-The retained reviewer previously cleared snapshot ownership, native callback routing, idle admission, optional-policy serialization and native parent continuation. The previous CI integration and diagnostic repair are clear. The current rebase preserves all maintained patches; refreshed controls retain the same reviewer.
+The retained reviewer previously cleared snapshot ownership, native callback routing, idle admission, optional-policy serialization and native parent continuation. The previous CI integration and diagnostic repair are clear. The current rebase preserves all maintained patches. The prior reviewer is unavailable; recent binding and fixture repairs still require independent review. No replacement worker is spawned under the requester constraint.
 
 ### Checklist
 
 - [x] Implement approved shared support and Claude integration.
 - [x] Complete focused checks and installed synthetic delegation.
 - [ ] Review the clean publication diff and companion composition.
-- [ ] Qualify actual native compaction, memory saving, idle trigger and cancellation/resume.
+- [x] Qualify actual native compaction, memory saving, idle trigger and cancellation/resume on the prior candidate.
+- [ ] Repeat DEV for the refreshed candidate.
 - [ ] Pass full application suite and TEST.
 - [ ] Deploy, verify PROD and merge through CI.
 - [ ] Finalize owned inputs and retained evidence.
-
-### Idle binding repair, November 5
-
-The scheduler validated the persisted native binding, but `runSessionCompactionIfNeeded` omitted it when calling `compactEmbeddedAgentSession`. Native control therefore returned `cannot manually compact without a resumable native session` before invoking the hook. Forward `getCliSessionBinding(entry, runtimeId)` only for admitted native idle work. The new registered regression persists a bound session, uses the real memory runner and queued compaction, and replaces only external CLI execution. It failed before the fix and passed afterward (20.31 seconds for the focused test command). The earlier async-scope repair remains necessary but did not solve this separate omission.
-
-### CI tooling refresh, November 6
-
-Rebased the preserved feature onto current main after the backup tooling repair landed. The rebase leaves the latency patch and its focused runtime regression unchanged. Rebuild the candidate with the current installed tool and rerun installed DEV acceptance; the earlier candidate is stale. No production delivery is claimed.
