@@ -107,9 +107,18 @@ it('tests the packaged sandbox image on a Docker-capable runner for every integr
   const job = workflow.jobs['sandbox-media'];
   expect(job['runs-on']).toBe('ubuntu-24.04-arm');
   expect(job.if).toBeUndefined();
-  const commands = job.steps.filter((step: any) => step.run).map((step: any) => step.run);
-  expect(commands).toEqual([
-    'node packages/sandbox-tools/build.mjs "$RUNNER_TEMP/sandbox-application"',
-    'node packages/sandbox-tools/installed.mjs test "$RUNNER_TEMP/sandbox-application"',
-  ]);
+  const build = job.steps.find((step: any) => step.name === 'Build and export the sandbox image');
+  const diagnostic = job.steps.find((step: any) => step.name === 'Diagnose sandbox image network failure');
+  const installed = job.steps.find((step: any) => step.name === 'Load the packaged image and test installed capabilities');
+  expect(build.run).toBe('node packages/sandbox-tools/build.mjs "$RUNNER_TEMP/sandbox-application"');
+  expect(build.id).toBe('sandbox_build');
+  expect(build['continue-on-error']).toBeUndefined();
+  expect(diagnostic.if).toBe("${{ failure() && steps.sandbox_build.outcome == 'failure' }}");
+  expect(diagnostic['continue-on-error']).toBe(true);
+  expect(diagnostic['timeout-minutes']).toBe(2);
+  expect(diagnostic.run).toContain('packages/sandbox-tools/Dockerfile');
+  expect(diagnostic.run).toContain('timeout 45s docker build --progress=plain');
+  expect(diagnostic.run).not.toContain('docker run');
+  expect(installed.run).toBe('node packages/sandbox-tools/installed.mjs test "$RUNNER_TEMP/sandbox-application"');
+  expect(installed.if).toBeUndefined();
 });

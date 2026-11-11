@@ -63,7 +63,32 @@ jobs:
         with:
           node-version: "26.1.0"
       - name: Build and export the sandbox image
+        id: sandbox_build
         run: node packages/sandbox-tools/build.mjs "$RUNNER_TEMP/sandbox-application"
+      - name: Diagnose sandbox image network failure
+        if: ${{ failure() && steps.sandbox_build.outcome == 'failure' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        run: |
+          docker version
+          awk '/^nameserver[[:space:]]/ { print }' /etc/resolv.conf
+          getent ahosts ports.ubuntu.com || true
+          curl --fail --head --show-error --max-time 15 \
+            https://ports.ubuntu.com/ubuntu-ports/dists/noble/InRelease || true
+
+          codecs_image=$(awk '$1 == "FROM" && $3 == "AS" && $4 == "codecs" { print $2; exit }' \
+            packages/sandbox-tools/Dockerfile)
+          test -n "$codecs_image"
+          diagnostic_root="$RUNNER_TEMP/sandbox-network-diagnostic"
+          mkdir -p "$diagnostic_root/context"
+          cat > "$diagnostic_root/Dockerfile" <<EOF
+          FROM $codecs_image
+          RUN grep '^nameserver[[:space:]]' /etc/resolv.conf || true; \
+              getent ahosts ports.ubuntu.com || true; \
+              python3 -c 'import urllib.request; request = urllib.request.Request("https://ports.ubuntu.com/ubuntu-ports/dists/noble/InRelease", method="HEAD"); print(urllib.request.urlopen(request, timeout=15).status)' || true
+          EOF
+          timeout 45s docker build --progress=plain \
+            --file "$diagnostic_root/Dockerfile" "$diagnostic_root/context"
       - name: Load the packaged image and test installed capabilities
         run: node packages/sandbox-tools/installed.mjs test "$RUNNER_TEMP/sandbox-application"
 
