@@ -45,13 +45,13 @@ Add a regression that reaches runtime selection with a native model and no API c
 
 **Scope and limits:** Repair realtime delegation on top of the current native CLI deployment. Preserve existing state and new work. Temporary realtime unavailability is acceptable. Do not restore a runtime from before native CLI adoption. Calendar filtering, email runtime bindings, and native call helper permissions are separate work.
 
-**Progress:** The native gateway command and completion lifecycle changes passed retained review. Installed validation exposed a missing execution identity in the native lifecycle handoff. The corrected handoff passed 174 independent checks and core typechecking. The rebuilt installed regression passes, including the adopted answer claim and rejection after session closure. A later DEV run reached the real native consultation, but the first voice turn reset the warm CLI session because Talk omitted the session's stable reply-policy fact. The repair now derives that fact from the admitted session entry without changing per-turn delivery. Required hosted CI remains the validation gate for the updated candidate.
+**Progress:** The native gateway command and completion lifecycle changes passed retained review. Installed validation exposed a missing execution identity in the native lifecycle handoff. The corrected handoff passed 174 independent checks and core typechecking. The rebuilt installed regression passes, including the adopted answer claim and rejection after session closure. The session-policy and synthetic fixture corrections then passed a fresh DEV run. Production CI stopped before deployment because the mapped application tests retained every selected Vitest project in one process until it reached V8's default heap limit. Host memory remained available. The runner now preserves exact discovery, native project configuration and worker policy while giving each selected project a separate process lifetime. Required production CI remains the validation gate.
 
 ## Agent section
 
 ### State
 
-Source remediation is reviewed on `codex/realtime-cli-consult-repair`. Preserve the current runtime baseline. The revised handoff keeps the exact admitted instance, defers completion promotion until actual CLI output and invalidates replaced requests immediately. Talk now supplies the canonical session-stable reply mode to native command preparation, so a warm text session can resume through voice without changing visible-reply behavior. The session-policy repair passed 178 affected checks, core typechecking and retained source review. A fresh build must prove installed warm-session reuse before the next DEV submission.
+Source remediation is reviewed on `codex/realtime-cli-consult-repair`. Preserve the current runtime baseline. DEV candidate `755fc7f6ba01409629839f1dabe64e976a3317def9ec0ed1cf8c565efb6b42f4` passed terminally and cleaned its target. Production CI `gh-43071029100-1` failed only its predeployment application job; no target run was created. Its source submission closed with transfer cleanup complete. The mapped-test runner correction needs affected review, a refreshed candidate and a fresh DEV pass before production is resubmitted.
 
 ### Scope and acceptance criteria
 
@@ -69,6 +69,8 @@ Prepared source entrypoints are `src/gateway/talk/client-agent-consult.ts`, `src
 
 The native revision passed 226 checks across six focused test files in 53.48 seconds and 19 public patch-manifest checks. The composed regression reaches the production runtime selector for both the configured model and an explicit model without a session runtime override. Embedded API execution is a failing double, and the CLI call must receive the session tool overrides. The continuity regression seeds a warm native session, then requires Talk to resume the same native identifier. Focused policy coverage verifies the session's persisted non-webchat reply mode. Those focused tests do not replace installed ownership validation. The installed regression must use a gateway-owned provider that adopts completion claims and invokes a recording native CLI. It must prove one claimable answer and cancellation, stale-owner and unsupported-steering behavior. DEV must exercise installed native CLI consultation, including tool use and session continuity. The accumulated application suite runs through production CI.
 
+The failed production application process reached 3816.7 MiB in a 4104.8 MiB V8 heap after 698 seconds. The host still reported 82 percent free memory. Upstream's full-suite runner already bounds project and worker lifetimes for this failure mode. The application runner now executes each exact mapped project in its own sequential process instead of importing all selected projects into one aggregate process. Focused runner checks pass 11/11. The exact mapped `agents-core` selection passes 480 tests across 15 files in 40.02 seconds with a 2.82 GB maximum resident set. No test, project mode or worker limit is removed.
+
 ### Rollout and rollback
 
 Refresh both mains and freeze the current production baseline. Use installed `build`, `ci-dev`, and `ci-prod`; record IDs and yield after dispatch. CI owns deployment, tests, recovery, merge and cleanup. Recovery captures the current native CLI deployment and state. A pre-adoption backup is not an allowed repair baseline.
@@ -82,5 +84,5 @@ Independent review found the existing authenticated gateway command is a smaller
 - [x] Record production approval and current-baseline constraint.
 - [x] Implement and register durable regressions.
 - [x] Complete focused checks and independent review.
-- [ ] Pass installed DEV consultation.
+- [x] Pass installed DEV consultation.
 - [ ] Confirm production terminal receipt, source merge and cleanup.
