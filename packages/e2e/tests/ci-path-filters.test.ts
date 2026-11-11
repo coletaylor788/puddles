@@ -108,8 +108,11 @@ it('tests the packaged sandbox image on a Docker-capable runner for every integr
   expect(job['runs-on']).toBe('ubuntu-24.04-arm');
   expect(job.if).toBeUndefined();
   const build = job.steps.find((step: any) => step.name === 'Build and export the sandbox image');
+  const dns = job.steps.find((step: any) => step.name === 'Configure Docker DNS after a runner resolver failure');
   const diagnostic = job.steps.find((step: any) => step.name === 'Diagnose sandbox image network failure');
   const installed = job.steps.find((step: any) => step.name === 'Load the packaged image and test installed capabilities');
+  expect(dns['timeout-minutes']).toBe(2);
+  expect(dns.run).toBe('bash packages/e2e/bin/configure-sandbox-docker-dns.sh');
   expect(build.run).toBe('node packages/sandbox-tools/build.mjs "$RUNNER_TEMP/sandbox-application"');
   expect(build.id).toBe('sandbox_build');
   expect(build['continue-on-error']).toBeUndefined();

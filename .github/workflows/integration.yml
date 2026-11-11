@@ -62,6 +62,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "26.1.0"
+      - name: Configure Docker DNS after a runner resolver failure
+        timeout-minutes: 2
+        run: bash packages/e2e/bin/configure-sandbox-docker-dns.sh
       - name: Build and export the sandbox image
         id: sandbox_build
         run: node packages/sandbox-tools/build.mjs "$RUNNER_TEMP/sandbox-application"
