@@ -597,10 +597,10 @@ index 9ca61eedc6d..9cafd2e89af 100644
      if (isAgentRunRestartAbortReason(restartAbortReason)) {
 diff --git a/src/gateway/talk/client-agent-consult.cli-runtime.test.ts b/src/gateway/talk/client-agent-consult.cli-runtime.test.ts
 new file mode 100644
-index 00000000000..69cb26dd7ed
+index 00000000000..3e79deaf6f1
 --- /dev/null
 +++ b/src/gateway/talk/client-agent-consult.cli-runtime.test.ts
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,132 @@
 +import path from "node:path";
 +import { afterEach, expect, it, vi } from "vitest";
 +import { testing as cliBackendsTesting } from "../../agents/cli-backends.test-support.js";
@@ -696,13 +696,14 @@ index 00000000000..69cb26dd7ed
 +  const sessionKey = "agent:main:talk-cli-runtime";
 +  const sessionId = "talk-cli-runtime-session";
 +  const storePath = path.join(state.sessionsDir("main"), "sessions.json");
++  const sessionEntry = {
++    sessionId,
++    updatedAt: Date.now(),
++    toolOverrides: { mcpServers: { private: false } },
++  };
 +  await replaceSessionEntry(
 +    { agentId: "main", sessionKey, storePath },
-+    {
-+      sessionId,
-+      updatedAt: Date.now(),
-+      toolOverrides: { mcpServers: { private: false } },
-+    },
++    sessionEntry,
 +  );
 +
 +  const runtime = talkConsultTesting.createTalkClientAgentRuntime({ config: cfg });
@@ -716,6 +717,7 @@ index 00000000000..69cb26dd7ed
 +    prompt: "Use the configured native runtime.",
 +    runId: "talk-cli-runtime-run",
 +    workspaceDir: state.workspaceDir,
++    execSession: sessionEntry,
 +    sessionTarget: { agentId: "main", sessionId, sessionKey, storePath },
 +  });
 +
@@ -732,10 +734,17 @@ index 00000000000..69cb26dd7ed
 +  expect(embeddedCandidate).not.toHaveBeenCalled();
 +});
 diff --git a/src/gateway/talk/client-agent-consult.ts b/src/gateway/talk/client-agent-consult.ts
-index f4248fd9518..39f1c593c01 100644
+index f4248fd9518..d812ea7b3a8 100644
 --- a/src/gateway/talk/client-agent-consult.ts
 +++ b/src/gateway/talk/client-agent-consult.ts
-@@ -9,6 +9,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
+@@ -4,11 +4,14 @@ import { prepareEmbeddedAgentRunCompletionClaim } from "../../agents/embedded-ag
+ import { registerRequesterFinalAttachment } from "../../agents/subagents/requester-final-attachment.js";
+ import { resolveCommandAuthorization } from "../../auto-reply/command-auth.js";
+ import { resolveInboundReplyToolAuthorityOverlay } from "../../auto-reply/reply/reply-tool-authority.js";
++import { resolveSessionStableReplyMode } from "../../auto-reply/reply/session-stable-reply-mode.js";
++import type { SessionEntry } from "../../config/sessions/types.js";
+ import { normalizeTalkSection } from "../../config/talk.js";
+ import type { OpenClawConfig } from "../../config/types.openclaw.js";
  import {
    getAgentEventLifecycleGeneration,
    isAgentEventLifecycleGenerationCurrent,
@@ -743,7 +752,7 @@ index f4248fd9518..39f1c593c01 100644
  } from "../../infra/agent-events.js";
  import { createPluginRuntime } from "../../plugins/runtime/index.js";
  import {
-@@ -16,6 +17,7 @@ import {
+@@ -16,6 +19,7 @@ import {
    runOutsideGatewayRootWorkAdmission,
    tryBeginGatewayRootWorkAdmission,
  } from "../../process/gateway-work-admission.js";
@@ -751,7 +760,7 @@ index f4248fd9518..39f1c593c01 100644
  import {
    buildRunUserTurnIdempotencyKey,
    createUserTurnTranscriptRecorder,
-@@ -54,23 +56,30 @@ import {
+@@ -54,23 +58,30 @@ import {
  import type { PreparedTalkSessionTarget } from "./session-target.types.js";
  
  const loadTalkAgentExecution = createLazyRuntimeModule(async () => {
@@ -786,10 +795,20 @@ index f4248fd9518..39f1c593c01 100644
  }) {
    const agentRuntime = createPluginRuntime().agent;
    const runEmbeddedAgent: typeof agentRuntime.runEmbeddedAgent = async (runParams) => {
-@@ -81,68 +90,107 @@ function createTalkClientAgentRuntime(params: {
+@@ -81,68 +92,126 @@ function createTalkClientAgentRuntime(params: {
      if (!agentId || !sessionId || !sessionKey || !storePath) {
        throw new Error("Talk consult requires its prepared transcript target");
      }
++    const execSession = runParams.execSession as Partial<SessionEntry> | undefined;
++    if (
++      !execSession ||
++      typeof execSession.sessionId !== "string" ||
++      typeof execSession.updatedAt !== "number" ||
++      execSession.sessionId !== sessionId
++    ) {
++      throw new Error("Talk consult transcript target changed before native execution");
++    }
++    const sessionEntry = execSession as SessionEntry;
 +    const additionalSystemPrompt = [
 +      runParams.extraSystemPrompt,
 +      params.getAdditionalSystemPrompt?.(),
@@ -858,16 +877,6 @@ index f4248fd9518..39f1c593c01 100644
 -            display: false,
 -            excludeFromContext: true,
 -            idempotencyKey: buildRunUserTurnIdempotencyKey(runParams.runId),
--          },
--          target: {
--            agentId,
--            sessionId,
--            sessionKey,
--            storePath,
--            expectedSessionId: sessionId,
--            sessionEntry: undefined,
--            config: params.config,
--            cwd: runParams.workspaceDir,
 +      const result = await execution.agentCommandFromGatewayIngress(
 +        {
 +          message: runParams.prompt,
@@ -911,8 +920,15 @@ index f4248fd9518..39f1c593c01 100644
 +                : String(runParams.messageThreadId)),
 +            senderId: runParams.senderId,
            },
--        }),
--      });
+-          target: {
+-            agentId,
+-            sessionId,
+-            sessionKey,
+-            storePath,
+-            expectedSessionId: sessionId,
+-            sessionEntry: undefined,
+-            config: params.config,
+-            cwd: runParams.workspaceDir,
 +          userTurnTranscriptRecorder: createUserTurnTranscriptRecorder({
 +            input: {
 +              text: runParams.prompt,
@@ -931,6 +947,17 @@ index f4248fd9518..39f1c593c01 100644
 +              cwd: runParams.workspaceDir,
 +            },
 +          }),
++          cliSessionBindingFacts: {
++            sourceReplyDeliveryMode: resolveSessionStableReplyMode({
++              cfg: params.config,
++              ctx: { CommandAuthorized: false },
++              sessionEntry,
++              sessionAgentId: agentId,
++              sessionKey,
++            }),
+           },
+-        }),
+-      });
 +        },
 +        talkCommandRuntime,
 +        undefined,
@@ -950,7 +977,7 @@ index f4248fd9518..39f1c593c01 100644
      }
    };
    Object.defineProperty(agentRuntime, "runEmbeddedAgent", {
-@@ -153,6 +201,10 @@ function createTalkClientAgentRuntime(params: {
+@@ -153,6 +222,10 @@ function createTalkClientAgentRuntime(params: {
    return agentRuntime;
  }
  
@@ -961,7 +988,7 @@ index f4248fd9518..39f1c593c01 100644
  export function prepareTalkClientControlAuthority(params: {
    config: OpenClawConfig;
    sessionTarget: PreparedTalkSessionTarget;
-@@ -251,6 +303,18 @@ export function createTalkClientAgentConsultRunner(params: {
+@@ -251,6 +324,18 @@ export function createTalkClientAgentConsultRunner(params: {
            throw new Error("The active Talk consult admission is no longer current");
          }
        },
@@ -980,7 +1007,7 @@ index f4248fd9518..39f1c593c01 100644
      });
    const runArgs = async (
      args: unknown,
-@@ -554,6 +618,15 @@ export function createTalkClientAgentConsultRunner(params: {
+@@ -554,6 +639,15 @@ export function createTalkClientAgentConsultRunner(params: {
      ) {
        throw new Error("The active Talk consult is no longer current");
      }
@@ -997,7 +1024,7 @@ index f4248fd9518..39f1c593c01 100644
      const result = await controlRealtimeVoiceAgentRun({
        sessionKey: canonicalKey,
 diff --git a/src/gateway/talk/client-gateway-control.agent-consult.test.ts b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
-index 448500f26ea..254fce4ea1a 100644
+index 448500f26ea..2f914a77508 100644
 --- a/src/gateway/talk/client-gateway-control.agent-consult.test.ts
 +++ b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
 @@ -13,6 +13,7 @@ import {
@@ -1035,15 +1062,27 @@ index 448500f26ea..254fce4ea1a 100644
  vi.mock("../../talk/agent-consult-runtime.js", async (importOriginal) => ({
    ...(await importOriginal<typeof import("../../talk/agent-consult-runtime.js")>()),
    consultRealtimeVoiceAgent: mocks.consultRealtimeVoiceAgent,
-@@ -113,6 +120,7 @@ function createRunner(
+@@ -84,6 +91,7 @@ const coreParams = {
+     sessionKey: "agent:researcher:talk",
+     storePath: "/tmp/sessions",
+   },
++  execSession: { sessionId: "session-talk", updatedAt: 1 },
+   timeoutMs: 1,
+   workspaceDir: "/tmp/workspace",
+ } as Parameters<PluginRuntime["agent"]["runEmbeddedAgent"]>[0];
+@@ -112,7 +120,11 @@ function createRunner(
+ 
  describe("Talk client agent consult admission", () => {
    beforeEach(() => {
++    delete config.messages;
++    delete config.tools;
++    coreParams.execSession = { sessionId: "session-talk", updatedAt: 1 };
      vi.clearAllMocks();
 +    mocks.controlRealtimeVoiceAgentRun.mockReset();
      embeddedRunsTesting.resetActiveEmbeddedRuns();
      mocks.createOperationalRunInstanceRef.mockImplementation((runId: string) => ({
        instanceId: `instance:${runId}`,
-@@ -126,6 +134,42 @@ describe("Talk client agent consult admission", () => {
+@@ -126,6 +138,42 @@ describe("Talk client agent consult admission", () => {
        }),
      );
      mocks.runEmbeddedAgentCore.mockResolvedValue({ payloads: [] });
@@ -1086,7 +1125,7 @@ index 448500f26ea..254fce4ea1a 100644
      mocks.controlRealtimeVoiceAgentRun.mockResolvedValue({
        ok: true,
        mode: "steer",
-@@ -143,6 +187,22 @@ describe("Talk client agent consult admission", () => {
+@@ -143,6 +191,22 @@ describe("Talk client agent consult admission", () => {
        params.onRunStarted?.({ runId: "run-talk", sessionId: "session-talk", timeoutMs: 60_000 });
        await params.agentRuntime.runEmbeddedAgent({
          ...coreParams,
@@ -1109,7 +1148,7 @@ index 448500f26ea..254fce4ea1a 100644
          ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
        });
        return { text: "done" };
-@@ -192,7 +252,7 @@ describe("Talk client agent consult admission", () => {
+@@ -192,7 +256,7 @@ describe("Talk client agent consult admission", () => {
          await request.drain();
          proceed.resolve();
          await expect(run).resolves.toEqual({ text: "done" });
@@ -1118,7 +1157,7 @@ index 448500f26ea..254fce4ea1a 100644
        } finally {
          proceed.resolve();
          await run.catch(() => undefined);
-@@ -200,28 +260,29 @@ describe("Talk client agent consult admission", () => {
+@@ -200,28 +264,30 @@ describe("Talk client agent consult admission", () => {
      },
    );
  
@@ -1153,6 +1192,7 @@ index 448500f26ea..254fce4ea1a 100644
 +        deliver: false,
 +        allowModelOverride: true,
 +        operationalRunInstance: { instanceId: "instance:run-talk", runId: "run-talk" },
++        cliSessionBindingFacts: { sourceReplyDeliveryMode: "automatic" },
        }),
 +      expect.objectContaining({ log: expect.any(Function) }),
 +      undefined,
@@ -1165,7 +1205,7 @@ index 448500f26ea..254fce4ea1a 100644
      expect(mocks.consultRealtimeVoiceAgent).toHaveBeenCalledWith(
        expect.objectContaining({
          agentId: "researcher",
-@@ -231,7 +292,89 @@ describe("Talk client agent consult admission", () => {
+@@ -231,7 +297,116 @@ describe("Talk client agent consult admission", () => {
          toolsAllow: ["read"],
        }),
      );
@@ -1177,6 +1217,33 @@ index 448500f26ea..254fce4ea1a 100644
 +          ingress: expect.objectContaining({ boundary: "agent-command.from-ingress" }),
 +        }),
 +      }),
++    );
++  });
++
++  it("uses the canonical session reply policy for native CLI binding continuity", async () => {
++    config.messages = { groupChat: { visibleReplies: "message_tool" } };
++    config.tools = { allow: ["message"] };
++    coreParams.execSession = {
++      sessionId: "session-talk",
++      updatedAt: 2,
++      chatType: "group",
++      groupId: "family",
++      deliveryContext: { channel: "imessage", to: "family-thread" },
++    };
++
++    await expect(createRunner().runPrompt({ prompt: "check" })).resolves.toEqual({ text: "done" });
++
++    expect(mocks.agentCommandFromGatewayIngress).toHaveBeenCalledWith(
++      expect.objectContaining({
++        deliver: false,
++        cliSessionBindingFacts: { sourceReplyDeliveryMode: "message_tool_only" },
++      }),
++      expect.objectContaining({ log: expect.any(Function) }),
++      undefined,
++      {},
++    );
++    expect(mocks.agentCommandFromGatewayIngress.mock.calls[0]?.[0]).not.toHaveProperty(
++      "sourceReplyDeliveryMode",
 +    );
 +  });
 +
@@ -1256,7 +1323,7 @@ index 448500f26ea..254fce4ea1a 100644
    });
  
    it("preserves full agent authority for administrator consults", async () => {
-@@ -273,7 +416,9 @@ describe("Talk client agent consult admission", () => {
+@@ -273,7 +448,9 @@ describe("Talk client agent consult admission", () => {
      async (adopted) => {
        const runner = createRunner();
        const onProgress = vi.fn();
@@ -1267,7 +1334,7 @@ index 448500f26ea..254fce4ea1a 100644
        mocks.consultRealtimeVoiceAgent.mockImplementationOnce(async (params: ConsultParams) => {
          params.onProgress?.("Current research context");
          return { text: "done" };
-@@ -367,6 +512,34 @@ describe("Talk client agent consult admission", () => {
+@@ -367,6 +544,34 @@ describe("Talk client agent consult admission", () => {
      },
    );
  
@@ -1302,7 +1369,7 @@ index 448500f26ea..254fce4ea1a 100644
    it("waits for backend publication and projects its registered caller authority", async () => {
      const announced = deferred<void>();
      const publish = deferred<void>();
-@@ -1007,7 +1180,9 @@ describe("Talk client agent consult admission", () => {
+@@ -1007,7 +1212,9 @@ describe("Talk client agent consult admission", () => {
          started.resolve();
          await finish.promise;
          clearActiveEmbeddedRun("session-talk", handle, "agent:researcher:talk");
@@ -1354,7 +1421,7 @@ index 40f69cc266a..f1a64106342 100644
    expect(mocks.prepareAgentRunAdmission).not.toHaveBeenCalled();
  });
 diff --git a/src/gateway/test/talk-client-agent-consult.requester-final.test.ts b/src/gateway/test/talk-client-agent-consult.requester-final.test.ts
-index 730731e3b0c..05b1f62de55 100644
+index 730731e3b0c..e82ed23cf97 100644
 --- a/src/gateway/test/talk-client-agent-consult.requester-final.test.ts
 +++ b/src/gateway/test/talk-client-agent-consult.requester-final.test.ts
 @@ -31,6 +31,7 @@ function deferred<T>() {
@@ -1375,7 +1442,15 @@ index 730731e3b0c..05b1f62de55 100644
  vi.mock("../../talk/agent-consult-runtime.js", async (importOriginal) => ({
    ...(await importOriginal<typeof import("../../talk/agent-consult-runtime.js")>()),
    consultRealtimeVoiceAgent: mocks.consultRealtimeVoiceAgent,
-@@ -102,6 +106,13 @@ describe("Talk requester-final consult ownership", () => {
+@@ -65,6 +69,7 @@ const coreParams = {
+     sessionKey: "agent:researcher:talk",
+     storePath: "/tmp/sessions",
+   },
++  execSession: { sessionId: "session-talk", updatedAt: 1 },
+   timeoutMs: 1,
+   workspaceDir: "/tmp/workspace",
+ } as Parameters<PluginRuntime["agent"]["runEmbeddedAgent"]>[0];
+@@ -102,6 +107,13 @@ describe("Talk requester-final consult ownership", () => {
        }),
      );
      mocks.runEmbeddedAgentCore.mockResolvedValue({ payloads: [] });
@@ -1389,7 +1464,7 @@ index 730731e3b0c..05b1f62de55 100644
      mocks.consultRealtimeVoiceAgent.mockImplementation(async (params: ConsultParams) => {
        params.onRunStarted?.({ runId: "run-talk", sessionId: "session-talk", timeoutMs: 60_000 });
        await params.agentRuntime.runEmbeddedAgent(coreParams);
-@@ -146,7 +157,7 @@ describe("Talk requester-final consult ownership", () => {
+@@ -146,7 +158,7 @@ describe("Talk requester-final consult ownership", () => {
      runner.runPrompt.adoptCompletionClaims();
  
      const run = runner.runPrompt({ prompt: "investigate", requesterFinal: { append } });
@@ -1398,7 +1473,7 @@ index 730731e3b0c..05b1f62de55 100644
      expect(
        promoteRequesterFinalAttachment({
          requesterAgentId: "researcher",
-@@ -181,7 +192,7 @@ describe("Talk requester-final consult ownership", () => {
+@@ -181,7 +193,7 @@ describe("Talk requester-final consult ownership", () => {
      runner.runPrompt.adoptCompletionClaims();
  
      const run = runner.runPrompt({ prompt: "investigate", requesterFinal: { append } });
