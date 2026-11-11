@@ -1821,3 +1821,90 @@ index 00000000000..78e571a2cf2
 +    cleanup: runtime.cleanup,
 +  };
 +}
+diff --git a/src/gateway/mcp-http.code-mode.test.ts b/src/gateway/mcp-http.code-mode.test.ts
+new file mode 100644
+index 00000000000..fd35d77ef5a
+--- /dev/null
++++ b/src/gateway/mcp-http.code-mode.test.ts
+@@ -0,0 +1,81 @@
++import { afterEach, describe, expect, it } from "vitest";
++import {
++  fakeTool,
++  resetCodeModeTestState,
++  resultDetails,
++  testing,
++} from "../agents/code-mode.test-support.js";
++import type { OpenClawConfig } from "../config/types.openclaw.js";
++import { createMcpCodeModeToolSurface } from "./mcp-http.code-mode.js";
++
++const surfaces: ReturnType<typeof createMcpCodeModeToolSurface>[] = [];
++afterEach(async () => {
++  for (const surface of surfaces.splice(0)) surface.cleanup();
++  await resetCodeModeTestState();
++});
++
++function surface(policyEnabled: boolean, sessionKey = "agent:main:current") {
++  const config: OpenClawConfig = {
++    agents: {
++      entries: {
++        main: { tools: { codeMode: !policyEnabled } },
++        worker: { tools: { codeMode: policyEnabled } },
++      },
++    },
++    tools: { codeMode: { enabled: true, surface: "additive", executor: "quickjs" } },
++  };
++  const value = createMcpCodeModeToolSurface({
++    config,
++    context: {
++      agentId: "main",
++      sessionKey,
++      sessionId: "current-session",
++      runId: "delegated-run",
++      runtimePolicyAgentId: "worker",
++      runtimePolicySessionKey: "agent:worker:policy",
++      toolsAllow: ["probe"],
++    },
++    tools: [fakeTool("probe", "Synthetic probe")],
++    executeTool: async ({ originalTool, toolCallId, input, signal }) =>
++      originalTool.execute!(toolCallId, input, signal),
++  });
++  surfaces.push(value);
++  return value;
++}
++
++describe("MCP Code Mode delegated policy", () => {
++  it.each([true, false])(
++    "selects worker policy %s without replacing the current session",
++    (enabled) => {
++      const current = surface(enabled);
++      expect(current.enabled).toBe(enabled);
++      expect(current.tools.some((tool) => tool.name === "code_exec")).toBe(enabled);
++      expect(current.tools.some((tool) => tool.name === "probe")).toBe(true);
++    },
++  );
++
++  it("keeps parked execution bound to the current conversation and joins it on cleanup", async () => {
++    const current = surface(true);
++    const exec = current.tools.find((tool) => tool.name === "code_exec")!;
++    const wait = current.tools.find((tool) => tool.name === "code_wait")!;
++    const parked = resultDetails(
++      await exec.execute("park", {
++        code: 'await yield_control("pause"); return await probe({value:"retained"});',
++      }),
++    );
++    expect(parked.status).toBe("waiting");
++    const runId = parked.runId as string;
++    expect(testing.activeRuns.get(runId)?.ctx.sessionKey).toBe("agent:main:current");
++    const foreign = surface(true, "agent:main:other");
++    await expect(
++      foreign.tools.find((tool) => tool.name === "code_wait")!.execute("foreign", { runId }),
++    ).rejects.toThrow("different session");
++    const completed = resultDetails(await wait.execute("resume", { runId }));
++    expect(completed).toMatchObject({
++      status: "completed",
++      value: { name: "probe", input: { value: "retained" } },
++    });
++    current.cleanup();
++    expect(testing.activeRuns.has(runId)).toBe(false);
++  });
++});
