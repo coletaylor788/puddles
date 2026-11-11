@@ -42,6 +42,7 @@ PATCHES=(
   wiki-get-mutation-metadata
   untrusted-agent-results
   talk-request-recovery
+  talk-native-agent-runtime-consult
   code-mode-additive-surface
   claude-code-mode-mcp
   compaction-memory-idle

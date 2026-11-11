@@ -16,7 +16,9 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 function combinedListing(args: string[]) {
   const config = args[args.indexOf('--config') + 1];
   if (!config?.endsWith('.mts')) return null;
-  const selection = JSON.parse(readFileSync(config, 'utf8').match(/^const selection = (.+);$/m)![1]);
+  const match = readFileSync(config, 'utf8').match(/^const selection = (.+);$/m);
+  if (!match) return null;
+  const selection = JSON.parse(match[1]);
   return selection.flatMap((group: {project: string; files: string[]}) => group.files.map(file => `[${group.project}] ${file}`)).join('\n');
 }
 function source(files: string[]) {
@@ -24,7 +26,7 @@ function source(files: string[]) {
   for (const file of files) { mkdirSync(join(root, file, '..'), { recursive: true }); writeFileSync(join(root, file), ''); }
   return root;
 }
-it('combines public and companion regressions into one discovery and run per project', async () => {
+it('combines public and companion regressions into one bounded run per project', async () => {
   const root = source(['old.test.ts', 'shared.test.ts', 'new.test.ts']);
   const calls: string[][] = [];
   const run = async (_: string, args: string[]) => { calls.push(args); return combinedListing(args) ?? args.filter(x => x.endsWith('.test.ts')).join('\n'); };
@@ -41,13 +43,20 @@ it('retains separate modes and resolves project alternatives without per-file su
   const calls: string[][] = [];
   const run = async (_: string, args: string[]) => {
     calls.push(args);
-    return combinedListing(args) ?? args.filter(x => x.endsWith('.test.ts') && (x !== 'fallback.test.ts' || args.includes('test/vitest/vitest.fallback.config.ts'))).join('\n');
+    const config = args[args.indexOf('--config') + 1];
+    return combinedListing(args) ?? args.filter(x => x.endsWith('.test.ts') &&
+      (x !== 'fallback.test.ts' || config.endsWith('vitest.fallback.config.ts') || config.endsWith('vitest.fallback.config.mts'))).join('\n');
   };
   expect(await runMappedTests(root, [
     { tests: ['shared.test.ts'], testProjects: { 'shared.test.ts': 'normal' } },
     { tests: ['shared.test.ts', 'fallback.test.ts'], testProjects: { 'shared.test.ts': ['isolated'], 'fallback.test.ts': ['normal', 'fallback'] } },
   ], run)).toEqual({ projects: 3, tests: 3 });
-  expect(calls.filter(args => args[1] === 'run')).toHaveLength(1);
+  expect(calls.filter(args => args[1] === 'run')).toHaveLength(3);
+  expect(calls.filter(args => args[1] === 'run').map(args => args[args.indexOf('--config') + 1].split('/').at(-1))).toEqual([
+    'vitest.normal.config.mts',
+    'vitest.isolated.config.mts',
+    'vitest.fallback.config.mts',
+  ]);
 });
 it('refuses an uncollected historical regression before running any project', async () => {
   const root = source(['old.test.ts']); const calls: string[][] = [];
@@ -89,10 +98,10 @@ it('the full application gate tests prepared output without invoking a build or 
   expect(native.filter(({args}) => args[1] === 'run').every(({options}) => options.env.OPENCLAW_VITEST_FS_MODULE_CACHE_PATH === '')).toBe(true);
 });
 
-it('rejects lost, added or reassigned regressions in combined discovery', async () => {
+it('rejects lost or added regressions in bounded project discovery', async () => {
   const root = source(['a.test.ts']);
-  for (const collected of ['', '[unit] extra.test.ts', '[other] a.test.ts']) {
-    await expect(runCombinedProjects(root, new Map([['unit', new Set(['a.test.ts'])]]), async () => collected, [])).rejects.toThrow('differs from mapped regressions');
+  for (const collected of ['', 'extra.test.ts', 'other.test.ts']) {
+    await expect(runCombinedProjects(root, new Map([['unit', new Set(['a.test.ts'])]]), async () => collected, [])).rejects.toThrow('discovery differs');
   }
 });
 
@@ -138,18 +147,34 @@ it('honors bounded companion check deadlines without changing other checks', asy
 });
 
 
-it('keeps combined configs deterministic inside owned scratch and cleans on failure', async () => {
-  const root = source(['a.test.ts']), scratch = scratchRoot();
-  const paths: string[] = [];
-  for (const fail of [false, true, false]) {
-    const operation = rawRunCombinedProjects(root, new Map([['unit', new Set(['a.test.ts'])]]), async (_: string, args: string[]) => {
-      const path = args[args.indexOf('--config') + 1]; paths.push(path);
-      expect(path).toBe(join(scratch, 'combined-projects/vitest.config.mts'));
-      if (fail && args[1] === 'run') throw new Error('owned failure');
-      return combinedListing(args);
-    }, [], scratch);
-    if (fail) await expect(operation).rejects.toThrow('owned failure'); else await operation;
-    expect(existsSync(join(scratch, 'combined-projects'))).toBe(false);
-  }
-  expect(new Set(paths).size).toBe(1);
+it('finishes one native project process before starting the next', async () => {
+  const root = source(['a.test.ts', 'b.test.ts']), calls: string[] = [];
+  await rawRunCombinedProjects(root, new Map([
+    ['unit', new Set(['a.test.ts'])],
+    ['agents', new Set(['b.test.ts'])],
+  ]), async (_: string, args: string[]) => {
+    const config = args[args.indexOf('--config') + 1].split('/').at(-1);
+    calls.push(`${args[1]}:${config}`);
+    return args.filter(arg => arg.endsWith('.test.ts')).join('\n');
+  }, [], scratchRoot());
+  expect(calls).toEqual([
+    'list:vitest.unit.config.mts',
+    'run:vitest.unit.config.mts',
+    'list:vitest.agents.config.mts',
+    'run:vitest.agents.config.mts',
+  ]);
+});
+
+it('stops before the next project when a bounded run fails', async () => {
+  const root = source(['a.test.ts', 'b.test.ts']), calls: string[] = [];
+  await expect(rawRunCombinedProjects(root, new Map([
+    ['unit', new Set(['a.test.ts'])],
+    ['agents', new Set(['b.test.ts'])],
+  ]), async (_: string, args: string[]) => {
+    const config = args[args.indexOf('--config') + 1].split('/').at(-1);
+    calls.push(`${args[1]}:${config}`);
+    if (args[1] === 'run') throw new Error('bounded project failed');
+    return args.filter(arg => arg.endsWith('.test.ts')).join('\n');
+  }, [], scratchRoot())).rejects.toThrow('bounded project failed');
+  expect(calls).toEqual(['list:vitest.unit.config.mts', 'run:vitest.unit.config.mts']);
 });

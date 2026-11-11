@@ -104,8 +104,9 @@ It declares additional application targets and checks. A companion check may dec
 `timeoutMs` from 1 millisecond through six hours when its sequential phases need
 a different bound. Omitted values retain the 30-minute default. The runner combines mapped
 public/private targets by Vitest project, preserves distinct required modes,
-checks collection, and runs each selected target once per project. Independent
-projects share four workers by default; explicitly serial tests keep one worker.
+checks collection, and runs each selected target once per project. Each project
+gets a separate process lifetime and up to four workers by default; explicitly
+serial tests keep one worker.
 Set `E2E_TEST_WORKERS` to change the full-suite worker count. Missing tests
 or failed checks fail the suite. It prints durations and does not build, deploy,
 archive reports, or run release-tool implementation tests.

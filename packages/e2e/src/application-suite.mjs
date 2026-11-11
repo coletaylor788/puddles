@@ -69,26 +69,30 @@ export async function runMappedTests(source, manifests, run, workers = 4, scratc
 
 export async function runCombinedProjects(source, selected, run, flags, scratch) {
   if (!isAbsolute(scratch ?? '') || realpathSync(scratch) !== scratch) throw new Error('Combined tests require owned canonical scratch');
-  const directory = join(scratch, 'combined-projects');
+  const directory = join(scratch, 'bounded-projects');
   mkdirSync(directory);
-  const path = join(directory, 'vitest.config.mts');
-  const selection = [...selected].map(([project, files]) => ({ project, files: [...files] }));
-  const targets = [...new Set(selection.flatMap(group => group.files))];
-  const imports = selection.map(({ project }, index) => `import p${index} from ${JSON.stringify(join(source, `test/vitest/vitest.${project}.config.ts`))};`).join('\n');
   const workers = Number(flags[flags.indexOf('--maxWorkers') + 1] ?? 4);
-  writeFileSync(path, `import base from ${JSON.stringify(join(source, 'vitest.config.ts'))};\nimport {applicationTestProject} from ${JSON.stringify(join(repository, 'packages/e2e/src/application-test-projects.mjs'))};\n${imports}\nconst selection = ${JSON.stringify(selection)};\nconst configs = [${selection.map((_, index) => `p${index}`).join(',')}];\nexport default {...base,test:{...base.test,root:${JSON.stringify(source)},projects:configs.map((config,index)=>applicationTestProject(config,selection[index].files,${JSON.stringify(source)},${workers}))}};\n`);
+  // Keep the native project config and worker policy, but bound each Vitest
+  // process to one project. A single aggregate process can retain transforms
+  // and project state until every mapped regression completes.
   try {
-    // Retain each existing project's runtime, isolation and setup. Verify the
-    // combined collector selects exactly the same file/project pairs.
-    const args = ['scripts/run-vitest.mjs', 'list', '--filesOnly', '--config', path, ...flags, ...targets];
-    const output = await run(process.execPath, args, { cwd: source, capture: true });
-    const expected = selection.flatMap(({ project, files }) => files.map(file => project + ':' + file)).sort();
-    const actual = output.split('\n').flatMap(line => {
-      const match = line.replace(/\x1b\[[0-9;]*m/g, '').trim().match(/^\[([^\]]+)\]\s+(.+)$/);
-      return match ? [match[1] + ':' + match[2].replace(source + '/', '')] : [];
-    }).sort();
-    if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error('Combined project discovery differs from mapped regressions');
-    await run(process.execPath, ['scripts/run-vitest.mjs', 'run', '--config', path, ...flags, ...targets], { cwd: source });
+    for (const [project, files] of selected) {
+      const targets = [...files];
+      const config = join(directory, `vitest.${project}.config.mts`);
+      writeFileSync(config, `import base from ${JSON.stringify(join(source, 'vitest.config.ts'))};\nimport project from ${JSON.stringify(join(source, `test/vitest/vitest.${project}.config.ts`))};\nimport {applicationTestProject} from ${JSON.stringify(join(repository, 'packages/e2e/src/application-test-projects.mjs'))};\nexport default {...base,test:{...base.test,root:${JSON.stringify(source)},projects:[applicationTestProject(project,${JSON.stringify(targets)},${JSON.stringify(source)},${workers})]}};\n`);
+      const args = ['scripts/run-vitest.mjs', 'list', '--filesOnly', '--config', config, ...flags, ...targets];
+      const output = await run(process.execPath, args, { cwd: source, capture: true });
+      const expected = [...targets].sort();
+      const actual = output.split('\n').flatMap(line => {
+        const cleaned = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
+        const prefixed = cleaned.match(/^\[([^\]]+)\]\s+(.+)$/);
+        const path = prefixed?.[2] ?? cleaned;
+        if (!path) return [];
+        return [expected.find(target => path === target || path.endsWith('/' + target)) ?? path];
+      }).sort();
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error('Mapped project discovery differs from selected regressions');
+      await run(process.execPath, ['scripts/run-vitest.mjs', 'run', '--config', config, ...flags, ...targets], { cwd: source });
+    }
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }
 
