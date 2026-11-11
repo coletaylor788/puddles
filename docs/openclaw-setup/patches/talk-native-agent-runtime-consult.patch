@@ -181,7 +181,7 @@ index 00000000000..69cb26dd7ed
 +  expect(embeddedCandidate).not.toHaveBeenCalled();
 +});
 diff --git a/src/gateway/talk/client-agent-consult.ts b/src/gateway/talk/client-agent-consult.ts
-index f4248fd9518..c40ab736816 100644
+index f4248fd9518..2eeed4e363b 100644
 --- a/src/gateway/talk/client-agent-consult.ts
 +++ b/src/gateway/talk/client-agent-consult.ts
 @@ -9,6 +9,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -228,7 +228,7 @@ index f4248fd9518..c40ab736816 100644
  function createTalkClientAgentRuntime(params: {
    config: OpenClawConfig;
    rawSourceRef?: string;
-@@ -81,68 +89,100 @@ function createTalkClientAgentRuntime(params: {
+@@ -81,68 +89,106 @@ function createTalkClientAgentRuntime(params: {
      if (!agentId || !sessionId || !sessionKey || !storePath) {
        throw new Error("Talk consult requires its prepared transcript target");
      }
@@ -310,7 +310,7 @@ index f4248fd9518..c40ab736816 100644
 -            sessionEntry: undefined,
 -            config: params.config,
 -            cwd: runParams.workspaceDir,
-+      return await execution.agentCommandFromGatewayIngress(
++      const result = await execution.agentCommandFromGatewayIngress(
 +        {
 +          message: runParams.prompt,
 +          transcriptMessage: runParams.prompt,
@@ -334,7 +334,6 @@ index f4248fd9518..c40ab736816 100644
 +          extraSystemPrompt: additionalSystemPrompt,
 +          senderIsOwner: runParams.senderIsOwner,
 +          toolsAllow: runParams.toolsAllow,
-+          operatorAuthority: runParams.operatorAuthority,
 +          abortSignal: runParams.abortSignal,
 +          assertSourceCurrent: params.assertCurrent,
 +          operationalRunInstance,
@@ -378,6 +377,13 @@ index f4248fd9518..c40ab736816 100644
 +        undefined,
 +        {},
 +      );
++      return {
++        ...result,
++        payloads: result.payloads.map((payload) => ({
++          ...payload,
++          mediaUrl: payload.mediaUrl ?? undefined,
++        })),
++      };
      } finally {
 -      runParams.abortSignal?.removeEventListener("abort", close);
 -      close();
@@ -385,7 +391,7 @@ index f4248fd9518..c40ab736816 100644
      }
    };
    Object.defineProperty(agentRuntime, "runEmbeddedAgent", {
-@@ -153,6 +193,10 @@ function createTalkClientAgentRuntime(params: {
+@@ -153,6 +199,10 @@ function createTalkClientAgentRuntime(params: {
    return agentRuntime;
  }
  
