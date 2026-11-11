@@ -1,20 +1,149 @@
+diff --git a/src/agents/agent-command-execution-identity.test.ts b/src/agents/agent-command-execution-identity.test.ts
+index c8907b1fe4d..4ee01d75563 100644
+--- a/src/agents/agent-command-execution-identity.test.ts
++++ b/src/agents/agent-command-execution-identity.test.ts
+@@ -44,6 +44,7 @@ describe("sanitizePublicAgentCommandIngressOpts", () => {
+       cronCreatorAuthorityCapability: forgedCapability,
+       pinnedWidgetAuthoring: true,
+       assertSourceCurrent: () => {},
++      onCliBackendReady: () => {},
+       operatorAuthority: {
+         profileId: "forged",
+         scopes: ["operator.admin"],
+@@ -56,6 +57,7 @@ describe("sanitizePublicAgentCommandIngressOpts", () => {
+       cronCreatorAuthorityCapability: undefined,
+       pinnedWidgetAuthoring: undefined,
+       assertSourceCurrent: undefined,
++      onCliBackendReady: undefined,
+       operatorAuthority: undefined,
+     });
+   });
 diff --git a/src/agents/agent-command-execution-identity.ts b/src/agents/agent-command-execution-identity.ts
-index 5ee156a6d2e..9d1d623370e 100644
+index 5ee156a6d2e..d1ded1f1e9b 100644
 --- a/src/agents/agent-command-execution-identity.ts
 +++ b/src/agents/agent-command-execution-identity.ts
-@@ -234,6 +234,7 @@ export function sanitizePublicAgentCommandIngressOpts(
+@@ -234,6 +234,8 @@ export function sanitizePublicAgentCommandIngressOpts(
      pinnedWidgetAuthoring: undefined,
      executionIdentityAdmission: undefined,
      operationalRunInstance: undefined,
 +    emitCommentaryText: undefined,
++    onCliBackendReady: undefined,
      assertSourceCurrent: undefined,
      operatorAuthority: undefined,
      cronCreatorAuthorityCapability: undefined,
+diff --git a/src/agents/cli-runner/execute-plugin.test.ts b/src/agents/cli-runner/execute-plugin.test.ts
+index 19c1ee3400e..6cde4db39d2 100644
+--- a/src/agents/cli-runner/execute-plugin.test.ts
++++ b/src/agents/cli-runner/execute-plugin.test.ts
+@@ -138,6 +138,57 @@ describe("plugin-owned CLI execution host boundary", () => {
+     );
+   });
+ 
++  it("reports backend readiness only after the first valid yielded event", async () => {
++    const { context } = await createExecution();
++    const ready = vi.fn();
++    context.params.onCliBackendReady = ready;
++
++    await runPlugin(context, async function* () {
++      expect(ready).not.toHaveBeenCalled();
++      yield { type: "system", subtype: "init", session_id: "sdk-session" };
++      expect(ready).toHaveBeenCalledTimes(1);
++      yield SUCCESS_RESULT;
++    });
++
++    expect(ready).toHaveBeenCalledTimes(1);
++  });
++
++  it("does not report backend readiness when execution throws before its first yield", async () => {
++    const { context } = await createExecution();
++    const ready = vi.fn();
++    context.params.onCliBackendReady = ready;
++
++    await expect(
++      runPlugin(context, async function* () {
++        throw new Error("failed before backend output");
++      }),
++    ).rejects.toThrow("failed before backend output");
++
++    expect(ready).not.toHaveBeenCalled();
++  });
++
++  it("rejects a readiness callback when its execution owner is already revoked", async () => {
++    const { context } = await createExecution();
++    const ready = vi.fn();
++    let current = true;
++    context.params.onCliBackendReady = ready;
++    context.params.assertCurrent = () => {
++      if (!current) {
++        throw new Error("caller revoked before readiness");
++      }
++    };
++
++    await expect(
++      runPlugin(context, async function* () {
++        current = false;
++        yield { type: "system", subtype: "init", session_id: "sdk-session" };
++        yield SUCCESS_RESULT;
++      }),
++    ).rejects.toThrow("caller revoked before readiness");
++
++    expect(ready).not.toHaveBeenCalled();
++  });
++
+   it.each([false, true])(
+     "runs plugin user questions with current caller authority (revoked=%s)",
+     async (revoked) => {
+diff --git a/src/agents/cli-runner/execute-plugin.ts b/src/agents/cli-runner/execute-plugin.ts
+index 2d5629da3d5..69bd51f31ac 100644
+--- a/src/agents/cli-runner/execute-plugin.ts
++++ b/src/agents/cli-runner/execute-plugin.ts
+@@ -718,6 +718,7 @@ export async function executePluginOwnedProcess(params: {
+     });
+     iterator = execution[Symbol.asyncIterator]();
+ 
++    let backendReady = false;
+     for (;;) {
+       const next = await waitForIteratorValue(iterator, signal);
+       if (next.done) {
+@@ -727,6 +728,12 @@ export async function executePluginOwnedProcess(params: {
+         outstanding.replayUnsafe = true;
+         throw new Error("CLI plugin runtime emitted an invalid structured stream event.");
+       }
++      if (!backendReady && run.onCliBackendReady) {
++        assertCurrent();
++        run.onCliBackendReady();
++        assertCurrent();
++        backendReady = true;
++      }
+       if (next.value.type === "result" && next.value.openclaw_interim_result !== true) {
+         terminalResult =
+           terminalResult === "error" ||
+diff --git a/src/agents/cli-runner/types.ts b/src/agents/cli-runner/types.ts
+index 2ccfeca02f1..b39f8bffd07 100644
+--- a/src/agents/cli-runner/types.ts
++++ b/src/agents/cli-runner/types.ts
+@@ -168,6 +168,8 @@ export type RunCliAgentParams = {
+   /** Caller-owned authority for credential use; cancellation alone is not authorization. */
+   assertCurrent?: () => void;
+   onExecutionStarted?: () => unknown;
++  /** Fires after the CLI backend yields its first valid structured event. */
++  onCliBackendReady?: () => void;
+   onExecutionPhase?: (info: {
+     phase: EmbeddedAgentExecutionPhase;
+     provider?: string;
 diff --git a/src/agents/command/attempt-execution.ts b/src/agents/command/attempt-execution.ts
-index e18b5d239e9..c854500786c 100644
+index e18b5d239e9..bf62d95fc89 100644
 --- a/src/agents/command/attempt-execution.ts
 +++ b/src/agents/command/attempt-execution.ts
-@@ -792,6 +792,8 @@ export function runAgentAttempt(params: {
+@@ -73,6 +73,7 @@ import { resolveConversationCapabilityProfile } from "../conversation-capability
+ import { resolveConversationToolPolicies } from "../conversation-tool-policy-pipeline.js";
+ import { resolveDelegationCapability } from "../delegation-capability.js";
+ import { mergeForcedEmbeddedAttemptToolsAllow } from "../embedded-agent-runner/run/attempt-tool-construction-plan.js";
++import { noteCliAgentBackendReady } from "../embedded-agent-runner/runs.js";
+ import type { DeferredEmbeddedRunLifecycleManager } from "../embedded-agent-runner/run/deferred-lifecycle-owner.js";
+ import type { RunEmbeddedAgentInternalParams } from "../embedded-agent-runner/run/internal-params.js";
+ import { runEmbeddedAgent, type EmbeddedAgentRunResult } from "../embedded-agent.js";
+@@ -792,8 +793,18 @@ export function runAgentAttempt(params: {
              modelProvider: params.providerOverride,
              requesterModel: { provider: params.providerOverride, model: params.modelOverride },
              provider: cliExecutionProvider,
@@ -22,28 +151,450 @@ index e18b5d239e9..c854500786c 100644
 +            toolOverrides: params.sessionEntry?.toolOverrides,
              abortSignal: params.deferredLifecycle?.signal ?? params.opts.abortSignal,
              onExecutionStarted: params.opts.onExecutionStarted,
++            onCliBackendReady: () => {
++              noteCliAgentBackendReady(
++                params.sessionId,
++                params.runId,
++                params.opts.operationalRunInstance,
++              );
++              params.opts.onCliBackendReady?.();
++            },
              cronCreatorCallerOrigin: params.opts.cronCreatorAuthorityCapability?.callerOrigin,
+             requireExplicitMessageTarget:
+               params.opts.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
+diff --git a/src/agents/command/run-embedded-attempt.ts b/src/agents/command/run-embedded-attempt.ts
+index 9058c2b1fd2..48cd489ff51 100644
+--- a/src/agents/command/run-embedded-attempt.ts
++++ b/src/agents/command/run-embedded-attempt.ts
+@@ -242,6 +242,7 @@ export async function runEmbeddedAgentAttempt(params: RunEmbeddedAgentAttemptPar
+     sessionKey,
+     sessionFile: attemptSessionFile,
+     abortSignal: params.opts.abortSignal,
++    operationalRunInstance: params.preparedRunAdmission.operationalRunInstance,
+   });
+   const logicalTurnOpts = { ...params.opts, abortSignal: deferredLifecycle.signal };
+   let liveSwitchMediaTaskIds: ReadonlySet<string> = new Set();
 diff --git a/src/agents/command/types.ts b/src/agents/command/types.ts
-index c7f9458872e..a7e87705bdc 100644
+index c7f9458872e..4e3a58e2125 100644
 --- a/src/agents/command/types.ts
 +++ b/src/agents/command/types.ts
-@@ -207,6 +207,8 @@ export type AgentCommandOpts = {
+@@ -207,6 +207,10 @@ export type AgentCommandOpts = {
    >;
    /** Gateway-owned exact operational instance shared with its abort controller. */
    operationalRunInstance?: import("../admitted-run-context.js").OperationalRunInstanceRef;
 +  /** Gateway-owned CLI commentary opt-in for an internal progress consumer. */
 +  emitCommentaryText?: boolean;
++  /** Gateway-owned hook fired only after the selected CLI backend yields its first valid event. */
++  onCliBackendReady?: () => void;
    skillLibraryAuthoring?: import("../../skills/library/authoring.js").SkillLibraryAuthoringCapability;
    /** Gateway-minted exact-run capability for late Codex creator-authority capture. */
    cronCreatorAuthorityCapability?: CronCreatorAuthorityCapability;
-@@ -246,6 +248,7 @@ type AgentCommandGatewayOnlyKey =
+@@ -246,6 +250,8 @@ type AgentCommandGatewayOnlyKey =
    | "pinnedWidgetAuthoring"
    | "executionIdentityAdmission"
    | "operationalRunInstance"
 +  | "emitCommentaryText"
++  | "onCliBackendReady"
    | "operatorAuthority"
    | "assertSourceCurrent"
    | "skillLibraryAuthoring"
+diff --git a/src/agents/embedded-agent-runner/run-state.ts b/src/agents/embedded-agent-runner/run-state.ts
+index 55d4b5f1349..6fd89542a9f 100644
+--- a/src/agents/embedded-agent-runner/run-state.ts
++++ b/src/agents/embedded-agent-runner/run-state.ts
+@@ -144,6 +144,7 @@ export type EmbeddedRunCompletionClaim = {
+   lifecycleGeneration: string;
+   operationalRunInstance?: OperationalRunInstanceRef;
+   promoted: boolean;
++  cliBackend: boolean;
+   settleRegistration: (registration: EmbeddedRunCompletionRegistration | undefined) => void;
+ };
+ 
+diff --git a/src/agents/embedded-agent-runner/run/deferred-lifecycle-owner.test.ts b/src/agents/embedded-agent-runner/run/deferred-lifecycle-owner.test.ts
+index 266ddaabe70..ef1b5b46397 100644
+--- a/src/agents/embedded-agent-runner/run/deferred-lifecycle-owner.test.ts
++++ b/src/agents/embedded-agent-runner/run/deferred-lifecycle-owner.test.ts
+@@ -15,6 +15,7 @@ import {
+   abortEmbeddedAgentRun,
+   clearActiveEmbeddedRun,
+   isEmbeddedAgentRunActive,
++  prepareEmbeddedAgentRunCompletionClaim,
+   setActiveEmbeddedRun,
+   type EmbeddedAgentQueueHandle,
+ } from "../runs.js";
+@@ -132,6 +133,51 @@ describe("deferred logical-turn lifecycle", () => {
+     expect(resolveReplyOperationAbortReason(undefined, manager.signal.reason)).toBe("user");
+   });
+ 
++  it("does not promote a completion claim when CLI handoff has not produced output", async () => {
++    const operationalRunInstance = { instanceId: "instance:logical-run", runId: "logical-run" };
++    const claim = prepareEmbeddedAgentRunCompletionClaim(sessionId, "logical-run");
++    expect(claim.bindOperationalRunInstance(operationalRunInstance)).toBe(true);
++    const manager = createDeferredEmbeddedRunLifecycleManager({
++      runId: "logical-run",
++      sessionId,
++      sessionKey,
++      operationalRunInstance,
++    });
++
++    manager.handoffToCli();
++
++    await expect(
++      Promise.race([
++        claim.registered.then(() => "settled"),
++        new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 10)),
++      ]),
++    ).resolves.toBe("pending");
++    expect(claim.isCliBackendCurrent()).toBe(false);
++    expect(claim.claimCompletion()).toBe(false);
++    await manager.complete();
++  });
++
++  it("revokes a prior completion claim when a replacement CLI handoff has not produced output", async () => {
++    const priorInstance = { instanceId: "instance:prior", runId: "logical-run" };
++    const replacementInstance = { instanceId: "instance:replacement", runId: "logical-run" };
++    const claim = prepareEmbeddedAgentRunCompletionClaim(sessionId, "logical-run");
++    expect(claim.bindOperationalRunInstance(priorInstance)).toBe(true);
++    expect(claim.promoteCliBackend(priorInstance)).toBe(true);
++    const manager = createDeferredEmbeddedRunLifecycleManager({
++      runId: "logical-run",
++      sessionId,
++      sessionKey,
++      operationalRunInstance: replacementInstance,
++    });
++
++    manager.handoffToCli();
++    try {
++      expect(claim.claimCompletion()).toBe(false);
++    } finally {
++      await manager.complete();
++    }
++  });
++
+   it("records only the accepted candidate terminal trajectory", async () => {
+     const recordEvent = vi.fn();
+     const flush = vi.fn(async () => undefined);
+diff --git a/src/agents/embedded-agent-runner/run/deferred-lifecycle-owner.ts b/src/agents/embedded-agent-runner/run/deferred-lifecycle-owner.ts
+index 5da64e8ce30..188e751aec2 100644
+--- a/src/agents/embedded-agent-runner/run/deferred-lifecycle-owner.ts
++++ b/src/agents/embedded-agent-runner/run/deferred-lifecycle-owner.ts
+@@ -5,6 +5,7 @@ import {
+   createDiagnosticEmbeddedRunOwner,
+   type DiagnosticEmbeddedRunOwner,
+ } from "../../../logging/diagnostic-run-activity.js";
++import type { OperationalRunInstanceRef } from "../../admitted-run-context.js";
+ import {
+   createAgentRunDirectAbortError,
+   createAgentRunRestartAbortError,
+@@ -141,6 +142,7 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
+   sessionKey?: string;
+   sessionFile?: string;
+   abortSignal?: AbortSignal;
++  operationalRunInstance?: OperationalRunInstanceRef;
+ }): DeferredEmbeddedRunLifecycleManager {
+   const controller = new AbortController();
+   const signal = params.abortSignal
+@@ -204,6 +206,9 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
+         params.sessionKey,
+         params.sessionFile,
+         params.agentId,
++        params.operationalRunInstance
++          ? { deferCompletionClaimUntilCliReady: params.operationalRunInstance }
++          : undefined,
+       );
+       const previous = current;
+       current = undefined;
+diff --git a/src/agents/embedded-agent-runner/runs.generation.test.ts b/src/agents/embedded-agent-runner/runs.generation.test.ts
+index 403aadd6cbf..702799157e4 100644
+--- a/src/agents/embedded-agent-runner/runs.generation.test.ts
++++ b/src/agents/embedded-agent-runner/runs.generation.test.ts
+@@ -19,6 +19,7 @@ import {
+   type DiagnosticEmbeddedRunOwner,
+ } from "../../logging/diagnostic-run-activity.js";
+ import { withGatewayToolCallerIdentity } from "../tools/gateway-caller-context.js";
++import { createOperationalRunInstanceRef } from "../admitted-run-context.js";
+ import {
+   listActiveEmbeddedRunSessionIds,
+   listActiveEmbeddedRunSessionKeys,
+@@ -31,6 +32,7 @@ import {
+   clearActiveEmbeddedRun,
+   isEmbeddedAgentRunAbortableForRunId,
+   prepareEmbeddedAgentRunCompletionClaim,
++  noteCliAgentBackendReady,
+   queueEmbeddedAgentMessageWithOutcomeAsync,
+   resolveActiveEmbeddedRunHandleSessionId,
+   resolveActiveEmbeddedRunHandleSessionIdBySessionFile,
+@@ -161,6 +163,74 @@ describe("embedded run registry lifecycle generations", () => {
+     expect(prepared.claimCompletion()).toBe(true);
+   });
+ 
++  it("promotes completion for only the exact current CLI operational instance", async () => {
++    const prepared = prepareEmbeddedAgentRunCompletionClaim("cli-claim-session", "cli-run");
++    const instance = createOperationalRunInstanceRef("cli-run");
++    const replacement = createOperationalRunInstanceRef("cli-run");
++
++    expect(prepared.bindOperationalRunInstance(instance)).toBe(true);
++    noteCliAgentBackendReady("cli-claim-session", "cli-run", instance);
++    expect(prepared.promoteCliBackend(replacement)).toBe(false);
++    expect(prepared.promoteCliBackend(instance)).toBe(true);
++    expect(prepared.promoteCliBackend(instance)).toBe(true);
++    await expect(prepared.registered).resolves.toBeUndefined();
++    expect(prepared.claimCompletion()).toBe(true);
++    expect(prepared.claimCompletion()).toBe(false);
++  });
++
++  it("revokes a retained CLI claim when another exact backend becomes ready", async () => {
++    const prepared = prepareEmbeddedAgentRunCompletionClaim("cli-replaced-session", "same-run");
++    const original = createOperationalRunInstanceRef("same-run");
++    const replacement = createOperationalRunInstanceRef("same-run");
++
++    expect(prepared.bindOperationalRunInstance(original)).toBe(true);
++    expect(prepared.promoteCliBackend(original)).toBe(true);
++    noteCliAgentBackendReady("cli-replaced-session", "same-run", replacement);
++
++    await expect(prepared.registered).resolves.toBeUndefined();
++    expect(prepared.claimCompletion()).toBe(false);
++  });
++
++  it("projects a same-owner embedded fallback after CLI readiness", async () => {
++    const prepared = prepareEmbeddedAgentRunCompletionClaim("cli-fallback-session", "fallback-run");
++    const instance = createOperationalRunInstanceRef("fallback-run");
++    const handle = createRunHandle({ runId: "fallback-run" });
++    expect(prepared.bindOperationalRunInstance(instance)).toBe(true);
++    expect(prepared.promoteCliBackend(instance)).toBe(true);
++
++    await withGatewayToolCallerIdentity(
++      {
++        agentId: "main",
++        sessionKey: "agent:main:main",
++        operationalRunInstance: instance,
++        embeddedRunToolAuthorityBinding: () => ({
++          source: "reply",
++          project: () => "authority",
++          assertActive: () => {},
++        }),
++      },
++      () => setActiveEmbeddedRun("cli-fallback-session", handle, "agent:main:main"),
++    );
++
++    expect(prepared.isCliBackendCurrent()).toBe(false);
++    expect(prepared.resolveCurrentRegistration()).toEqual({
++      toolAuthority: expect.objectContaining({ source: "reply" }),
++    });
++    expect(prepared.claimCompletion()).toBe(true);
++  });
++
++  it("does not promote a CLI claim after lifecycle rotation", async () => {
++    const prepared = prepareEmbeddedAgentRunCompletionClaim("cli-stale-session", "cli-run");
++    const instance = createOperationalRunInstanceRef("cli-run");
++    expect(prepared.bindOperationalRunInstance(instance)).toBe(true);
++
++    rotateAgentEventLifecycleGeneration();
++
++    expect(prepared.promoteCliBackend(instance)).toBe(false);
++    await expect(prepared.registered).resolves.toBeUndefined();
++    expect(prepared.claimCompletion()).toBe(false);
++  });
++
+   it("does not publish completion steering readiness without a tool authority binding", async () => {
+     const handle = createRunHandle({
+       queueMessage: vi.fn(async () => {}),
+diff --git a/src/agents/embedded-agent-runner/runs.ts b/src/agents/embedded-agent-runner/runs.ts
+index e1a60ae3876..41a9030ab68 100644
+--- a/src/agents/embedded-agent-runner/runs.ts
++++ b/src/agents/embedded-agent-runner/runs.ts
+@@ -887,6 +887,23 @@ function revokeCompletionClaim(sessionId: string, runId?: string): void {
+   }
+ }
+ 
++/** Revoke a retained completion owner when a different CLI run becomes live. */
++export function noteCliAgentBackendReady(
++  sessionId: string,
++  runId: string,
++  instance?: NonNullable<EmbeddedRunRegistration["operationalRunInstance"]>,
++): void {
++  const claim = EMBEDDED_RUN_COMPLETION_CLAIMS.get(sessionId);
++  if (
++    claim &&
++    (claim.runId !== runId ||
++      !instance ||
++      (claim.operationalRunInstance !== undefined && claim.operationalRunInstance !== instance))
++  ) {
++    revokeCompletionClaim(sessionId);
++  }
++}
++
+ /**
+  * Abort embedded OpenClaw runs.
+  *
+@@ -1022,6 +1039,10 @@ export function prepareEmbeddedAgentRunCompletionClaim(
+   bindOperationalRunInstance: (
+     instance: NonNullable<EmbeddedRunRegistration["operationalRunInstance"]>,
+   ) => boolean;
++  promoteCliBackend: (
++    instance: NonNullable<EmbeddedRunRegistration["operationalRunInstance"]>,
++  ) => boolean;
++  isCliBackendCurrent: () => boolean;
+   claimCompletion: () => boolean;
+   claimFailure: () => boolean;
+   resolveCurrentRegistration: () => EmbeddedRunCompletionRegistration | undefined;
+@@ -1042,6 +1063,7 @@ export function prepareEmbeddedAgentRunCompletionClaim(
+     runId,
+     lifecycleGeneration: getAgentEventLifecycleGeneration(),
+     promoted: false,
++    cliBackend: false,
+     settleRegistration,
+   };
+   revokeCompletionClaim(sessionId);
+@@ -1073,10 +1095,31 @@ export function prepareEmbeddedAgentRunCompletionClaim(
+     claim.operationalRunInstance = instance;
+     return true;
+   };
++  const promoteCliBackend = (
++    instance: NonNullable<EmbeddedRunRegistration["operationalRunInstance"]>,
++  ): boolean => {
++    if (
++      EMBEDDED_RUN_COMPLETION_CLAIMS.get(sessionId) !== claim ||
++      !isAgentEventLifecycleGenerationCurrent(claim.lifecycleGeneration) ||
++      claim.operationalRunInstance !== instance ||
++      instance.runId !== runId
++    ) {
++      return false;
++    }
++    if (claim.promoted) {
++      claim.cliBackend = true;
++      return true;
++    }
++    claim.promoted = true;
++    claim.cliBackend = true;
++    claim.settleRegistration(undefined);
++    return true;
++  };
+   const resolveCurrentRegistration = (): EmbeddedRunCompletionRegistration | undefined => {
+     if (
+       EMBEDDED_RUN_COMPLETION_CLAIMS.get(sessionId) !== claim ||
+-      !isAgentEventLifecycleGenerationCurrent(claim.lifecycleGeneration)
++      !isAgentEventLifecycleGenerationCurrent(claim.lifecycleGeneration) ||
++      claim.cliBackend
+     ) {
+       return undefined;
+     }
+@@ -1106,6 +1149,11 @@ export function prepareEmbeddedAgentRunCompletionClaim(
+   };
+   return {
+     bindOperationalRunInstance,
++    promoteCliBackend,
++    isCliBackendCurrent: () =>
++      EMBEDDED_RUN_COMPLETION_CLAIMS.get(sessionId) === claim &&
++      claim.cliBackend &&
++      isAgentEventLifecycleGenerationCurrent(claim.lifecycleGeneration),
+     claimCompletion: () => consume(false),
+     claimFailure: () => consume(true),
+     resolveCurrentRegistration,
+@@ -1648,6 +1696,11 @@ export function setActiveEmbeddedRun(
+   sessionKey?: string,
+   sessionFile?: string,
+   agentId?: string,
++  options?: {
++    deferCompletionClaimUntilCliReady?: NonNullable<
++      EmbeddedRunRegistration["operationalRunInstance"]
++    >;
++  },
+ ) {
+   const currentLifecycleGeneration = getAgentEventLifecycleGeneration();
+   const incomingLifecycleGeneration = setActiveEmbeddedRunLifecycleGeneration(
+@@ -1769,9 +1822,14 @@ export function setActiveEmbeddedRun(
+     completionClaim.runId === handle.runId &&
+     completionClaim.lifecycleGeneration === incomingLifecycleGeneration &&
+     (completionClaim.operationalRunInstance === undefined ||
+-      completionClaim.operationalRunInstance === operationalRunInstance)
++      completionClaim.operationalRunInstance ===
++        (options?.deferCompletionClaimUntilCliReady ?? operationalRunInstance))
+   ) {
++    if (options?.deferCompletionClaimUntilCliReady) {
++      return;
++    }
+     completionClaim.promoted = true;
++    completionClaim.cliBackend = false;
+     completionClaim.settleRegistration(toolAuthority ? { toolAuthority } : undefined);
+   } else if (completionClaim) {
+     revokeCompletionClaim(sessionId);
+diff --git a/src/auto-reply/reply/agent-runner-cli-dispatch.test.ts b/src/auto-reply/reply/agent-runner-cli-dispatch.test.ts
+index 20e278b7c05..d5c82470f7b 100644
+--- a/src/auto-reply/reply/agent-runner-cli-dispatch.test.ts
++++ b/src/auto-reply/reply/agent-runner-cli-dispatch.test.ts
+@@ -6,6 +6,8 @@ import { withTestAdmittedRunContext } from "../../agents/admitted-run-context.te
+ import { createCliTimeoutError } from "../../agents/cli-runner/no-output-timeout-policy.js";
+ import { clearCliSessionInStore } from "../../agents/cli-session-store.js";
+ import type { EmbeddedAgentRunResult } from "../../agents/embedded-agent-runner/types.js";
++import { prepareEmbeddedAgentRunCompletionClaim } from "../../agents/embedded-agent-runner/runs.js";
++import { createOperationalRunInstanceRef } from "../../agents/admitted-run-context.js";
+ import { createAgentRunRestartAbortError } from "../../agents/run-termination.js";
+ import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
+ import {
+@@ -52,6 +54,35 @@ afterEach(() => {
+ });
+ 
+ describe("runCliAgentWithLifecycle", () => {
++  it("revokes a retained Talk completion claim when an ordinary CLI reply becomes ready", async () => {
++    const retained = prepareEmbeddedAgentRunCompletionClaim("shared-session", "talk-run");
++    const retainedInstance = createOperationalRunInstanceRef("talk-run");
++    expect(retained.bindOperationalRunInstance(retainedInstance)).toBe(true);
++    expect(retained.promoteCliBackend(retainedInstance)).toBe(true);
++    cliDispatchState.runCliAgentMock.mockImplementationOnce(async (params) => {
++      params.onCliBackendReady?.();
++      return { payloads: [], meta: { durationMs: 1 } };
++    });
++
++    await runCliAgentWithLifecycle({
++      runId: "ordinary-run",
++      provider: "claude-cli",
++      runParams: {
++        sessionId: "shared-session",
++        sessionFile: "/tmp/session.jsonl",
++        workspaceDir: "/tmp/workspace",
++        prompt: "ordinary chat turn",
++        provider: "claude-cli",
++        model: "claude-opus-4-8",
++        thinkLevel: "high",
++        timeoutMs: 1_000,
++        runId: "ordinary-run",
++      },
++    });
++
++    expect(retained.claimCompletion()).toBe(false);
++  });
++
+   it("bridges completed CLI compaction lifecycles to reply callbacks", async () => {
+     cliDispatchState.runCliAgentMock.mockImplementationOnce(async (params: { runId: string }) => {
+       emitAgentEvent({
+diff --git a/src/auto-reply/reply/agent-runner-cli-dispatch.ts b/src/auto-reply/reply/agent-runner-cli-dispatch.ts
+index 9ca61eedc6d..9cafd2e89af 100644
+--- a/src/auto-reply/reply/agent-runner-cli-dispatch.ts
++++ b/src/auto-reply/reply/agent-runner-cli-dispatch.ts
+@@ -9,6 +9,7 @@ import type { RunCliAgentParams } from "../../agents/cli-runner/types.js";
+ import type { MediaImageLayout } from "../../agents/embedded-agent-runner/run/prompt-image-metadata.js";
+ import { extractToolResultText } from "../../agents/embedded-agent-tool-results.js";
+ import type { EmbeddedAgentRunResult } from "../../agents/embedded-agent.js";
++import { noteCliAgentBackendReady } from "../../agents/embedded-agent-runner/runs.js";
+ import {
+   DEFAULT_FAST_MODE_AUTO_ON_SECONDS,
+   formatFastModeAutoProgressText,
+@@ -613,6 +614,14 @@ async function runCliAgentWithLifecycleInternal(
+     const rawResult = await runCliAgent({
+       ...params.runParams,
+       emitCommentaryText: params.runParams.emitCommentaryText ?? Boolean(params.onCommentaryText),
++      onCliBackendReady: () => {
++        noteCliAgentBackendReady(
++          params.runParams.sessionId,
++          params.runParams.runId,
++          params.runParams.admittedRunContext?.operationalRunInstance,
++        );
++        params.runParams.onCliBackendReady?.();
++      },
+     });
+     const restartAbortReason = params.runParams.abortSignal?.reason;
+     if (isAgentRunRestartAbortReason(restartAbortReason)) {
 diff --git a/src/gateway/talk/client-agent-consult.cli-runtime.test.ts b/src/gateway/talk/client-agent-consult.cli-runtime.test.ts
 new file mode 100644
 index 00000000000..69cb26dd7ed
@@ -181,7 +732,7 @@ index 00000000000..69cb26dd7ed
 +  expect(embeddedCandidate).not.toHaveBeenCalled();
 +});
 diff --git a/src/gateway/talk/client-agent-consult.ts b/src/gateway/talk/client-agent-consult.ts
-index f4248fd9518..2eeed4e363b 100644
+index f4248fd9518..39f1c593c01 100644
 --- a/src/gateway/talk/client-agent-consult.ts
 +++ b/src/gateway/talk/client-agent-consult.ts
 @@ -9,6 +9,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -200,7 +751,7 @@ index f4248fd9518..2eeed4e363b 100644
  import {
    buildRunUserTurnIdempotencyKey,
    createUserTurnTranscriptRecorder,
-@@ -54,17 +56,23 @@ import {
+@@ -54,23 +56,30 @@ import {
  import type { PreparedTalkSessionTarget } from "./session-target.types.js";
  
  const loadTalkAgentExecution = createLazyRuntimeModule(async () => {
@@ -228,7 +779,14 @@ index f4248fd9518..2eeed4e363b 100644
  function createTalkClientAgentRuntime(params: {
    config: OpenClawConfig;
    rawSourceRef?: string;
-@@ -81,68 +89,106 @@ function createTalkClientAgentRuntime(params: {
+   assertCurrent?: () => void;
+   getAdditionalSystemPrompt?: () => string | undefined;
+   bindOperationalRunInstance?: (instance: OperationalRunInstanceRef) => void;
++  bindCliBackend?: (instance: OperationalRunInstanceRef) => void;
+ }) {
+   const agentRuntime = createPluginRuntime().agent;
+   const runEmbeddedAgent: typeof agentRuntime.runEmbeddedAgent = async (runParams) => {
+@@ -81,68 +90,107 @@ function createTalkClientAgentRuntime(params: {
      if (!agentId || !sessionId || !sessionKey || !storePath) {
        throw new Error("Talk consult requires its prepared transcript target");
      }
@@ -337,6 +895,7 @@ index f4248fd9518..2eeed4e363b 100644
 +          abortSignal: runParams.abortSignal,
 +          assertSourceCurrent: params.assertCurrent,
 +          operationalRunInstance,
++          onCliBackendReady: () => params.bindCliBackend?.(operationalRunInstance),
 +          emitCommentaryText: Boolean(runParams.onAgentEvent),
 +          messageProvider: runParams.messageProvider,
 +          accountId: runParams.agentAccountId,
@@ -391,7 +950,7 @@ index f4248fd9518..2eeed4e363b 100644
      }
    };
    Object.defineProperty(agentRuntime, "runEmbeddedAgent", {
-@@ -153,6 +199,10 @@ function createTalkClientAgentRuntime(params: {
+@@ -153,6 +201,10 @@ function createTalkClientAgentRuntime(params: {
    return agentRuntime;
  }
  
@@ -402,8 +961,43 @@ index f4248fd9518..2eeed4e363b 100644
  export function prepareTalkClientControlAuthority(params: {
    config: OpenClawConfig;
    sessionTarget: PreparedTalkSessionTarget;
+@@ -251,6 +303,18 @@ export function createTalkClientAgentConsultRunner(params: {
+           throw new Error("The active Talk consult admission is no longer current");
+         }
+       },
++      bindCliBackend: (instance) => {
++        const identity = owner.identity;
++        if (
++          promptOwner !== owner ||
++          !identity ||
++          identity.runId !== instance.runId ||
++          owner.isCurrent?.(identity.sessionId) !== true ||
++          owner.completionClaim?.promoteCliBackend(instance) !== true
++        ) {
++          throw new Error("The active Talk consult admission is no longer current");
++        }
++      },
+     });
+   const runArgs = async (
+     args: unknown,
+@@ -554,6 +618,15 @@ export function createTalkClientAgentConsultRunner(params: {
+     ) {
+       throw new Error("The active Talk consult is no longer current");
+     }
++    if (completionClaim.isCliBackendCurrent()) {
++      throw Object.assign(new Error("The active Talk consult backend does not accept steering"), {
++        code: "TALK_STEERING_NOT_ADMITTED",
++      });
++    }
++    const backendRegistration = completionClaim.resolveCurrentRegistration();
++    if (!backendRegistration) {
++      throw new Error("The active Talk consult backend is no longer current");
++    }
+     let confirmationRetryContext: string | undefined;
+     const result = await controlRealtimeVoiceAgentRun({
+       sessionKey: canonicalKey,
 diff --git a/src/gateway/talk/client-gateway-control.agent-consult.test.ts b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
-index 448500f26ea..b9f31ade655 100644
+index 448500f26ea..254fce4ea1a 100644
 --- a/src/gateway/talk/client-gateway-control.agent-consult.test.ts
 +++ b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
 @@ -13,6 +13,7 @@ import {
@@ -441,7 +1035,15 @@ index 448500f26ea..b9f31ade655 100644
  vi.mock("../../talk/agent-consult-runtime.js", async (importOriginal) => ({
    ...(await importOriginal<typeof import("../../talk/agent-consult-runtime.js")>()),
    consultRealtimeVoiceAgent: mocks.consultRealtimeVoiceAgent,
-@@ -126,6 +133,42 @@ describe("Talk client agent consult admission", () => {
+@@ -113,6 +120,7 @@ function createRunner(
+ describe("Talk client agent consult admission", () => {
+   beforeEach(() => {
+     vi.clearAllMocks();
++    mocks.controlRealtimeVoiceAgentRun.mockReset();
+     embeddedRunsTesting.resetActiveEmbeddedRuns();
+     mocks.createOperationalRunInstanceRef.mockImplementation((runId: string) => ({
+       instanceId: `instance:${runId}`,
+@@ -126,6 +134,42 @@ describe("Talk client agent consult admission", () => {
        }),
      );
      mocks.runEmbeddedAgentCore.mockResolvedValue({ payloads: [] });
@@ -484,7 +1086,7 @@ index 448500f26ea..b9f31ade655 100644
      mocks.controlRealtimeVoiceAgentRun.mockResolvedValue({
        ok: true,
        mode: "steer",
-@@ -143,6 +186,22 @@ describe("Talk client agent consult admission", () => {
+@@ -143,6 +187,22 @@ describe("Talk client agent consult admission", () => {
        params.onRunStarted?.({ runId: "run-talk", sessionId: "session-talk", timeoutMs: 60_000 });
        await params.agentRuntime.runEmbeddedAgent({
          ...coreParams,
@@ -507,7 +1109,7 @@ index 448500f26ea..b9f31ade655 100644
          ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
        });
        return { text: "done" };
-@@ -192,7 +251,7 @@ describe("Talk client agent consult admission", () => {
+@@ -192,7 +252,7 @@ describe("Talk client agent consult admission", () => {
          await request.drain();
          proceed.resolve();
          await expect(run).resolves.toEqual({ text: "done" });
@@ -516,7 +1118,7 @@ index 448500f26ea..b9f31ade655 100644
        } finally {
          proceed.resolve();
          await run.catch(() => undefined);
-@@ -200,28 +259,29 @@ describe("Talk client agent consult admission", () => {
+@@ -200,28 +260,29 @@ describe("Talk client agent consult admission", () => {
      },
    );
  
@@ -563,7 +1165,7 @@ index 448500f26ea..b9f31ade655 100644
      expect(mocks.consultRealtimeVoiceAgent).toHaveBeenCalledWith(
        expect.objectContaining({
          agentId: "researcher",
-@@ -231,7 +291,89 @@ describe("Talk client agent consult admission", () => {
+@@ -231,7 +292,89 @@ describe("Talk client agent consult admission", () => {
          toolsAllow: ["read"],
        }),
      );
@@ -654,7 +1256,7 @@ index 448500f26ea..b9f31ade655 100644
    });
  
    it("preserves full agent authority for administrator consults", async () => {
-@@ -273,7 +415,9 @@ describe("Talk client agent consult admission", () => {
+@@ -273,7 +416,9 @@ describe("Talk client agent consult admission", () => {
      async (adopted) => {
        const runner = createRunner();
        const onProgress = vi.fn();
@@ -665,7 +1267,42 @@ index 448500f26ea..b9f31ade655 100644
        mocks.consultRealtimeVoiceAgent.mockImplementationOnce(async (params: ConsultParams) => {
          params.onProgress?.("Current research context");
          return { text: "done" };
-@@ -1007,7 +1151,9 @@ describe("Talk client agent consult admission", () => {
+@@ -367,6 +512,34 @@ describe("Talk client agent consult admission", () => {
+     },
+   );
+ 
++  it("claims a native CLI result while refusing unsupported steering", async () => {
++    const backendReady = deferred<void>();
++    const finish = deferred<void>();
++    mocks.agentCommandFromGatewayIngress.mockImplementationOnce(async (opts) => {
++      opts.onCliBackendReady?.();
++      backendReady.resolve();
++      await finish.promise;
++      return { payloads: [] };
++    });
++    const runner = createRunner(vi.fn(), undefined, {
++      ownerConnId: "connection-owner",
++      isRunCurrent: () => true,
++    });
++    runner.runPrompt.adoptCompletionClaims();
++    const run = runner.runPrompt({ prompt: "first task" });
++    await backendReady.promise;
++
++    await expect(runner.runPrompt.steer?.({ prompt: "latest task" })).rejects.toMatchObject({
++      code: "TALK_STEERING_NOT_ADMITTED",
++    });
++    expect(mocks.controlRealtimeVoiceAgentRun).not.toHaveBeenCalled();
++
++    finish.resolve();
++    await expect(run).resolves.toEqual({ text: "done" });
++    expect(runner.runPrompt.claimAppend()).toBe(true);
++    expect(runner.runPrompt.claimAppend()).toBe(false);
++  });
++
+   it("waits for backend publication and projects its registered caller authority", async () => {
+     const announced = deferred<void>();
+     const publish = deferred<void>();
+@@ -1007,7 +1180,9 @@ describe("Talk client agent consult admission", () => {
          started.resolve();
          await finish.promise;
          clearActiveEmbeddedRun("session-talk", handle, "agent:researcher:talk");

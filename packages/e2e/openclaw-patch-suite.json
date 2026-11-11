@@ -229,7 +229,10 @@
     "src/agents/agent-command-execution-identity.test.ts": "agents-core",
     "src/agents/command/attempt-execution.cli.test.ts": "agents-support",
     "src/gateway/test/talk-client-agent-consult.requester-final.test.ts": "gateway-client",
-    "src/gateway/talk/client-gateway-control.agent-import-failure.test.ts": "gateway-client"
+    "src/gateway/talk/client-gateway-control.agent-import-failure.test.ts": "gateway-client",
+    "src/agents/embedded-agent-runner/runs.generation.test.ts": "agents-embedded-agent",
+    "src/auto-reply/reply/agent-runner-cli-dispatch.test.ts": "auto-reply-reply",
+    "src/agents/embedded-agent-runner/run/deferred-lifecycle-owner.test.ts": "agents-embedded-agent-run"
   },
   "patches": [
     {
@@ -591,7 +594,11 @@
         "src/gateway/talk/client-agent-consult.cli-runtime.test.ts",
         "src/gateway/talk/client-gateway-control.agent-consult.test.ts",
         "src/gateway/talk/client-gateway-control.agent-import-failure.test.ts",
-        "src/gateway/test/talk-client-agent-consult.requester-final.test.ts"
+        "src/gateway/test/talk-client-agent-consult.requester-final.test.ts",
+        "src/agents/cli-runner/execute-plugin.test.ts",
+        "src/agents/embedded-agent-runner/runs.generation.test.ts",
+        "src/auto-reply/reply/agent-runner-cli-dispatch.test.ts",
+        "src/agents/embedded-agent-runner/run/deferred-lifecycle-owner.test.ts"
       ]
     },
     {
