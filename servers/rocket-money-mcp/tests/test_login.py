@@ -92,7 +92,7 @@ class CheckboxTests(unittest.TestCase):
         page.goto("https://auth.rocketaccount.com/fixture", wait_until="load")
         return page
 
-    def complete(self, page, timeout=0.5):
+    def complete(self, page, timeout=5):
         handler = LoginVerification()
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -103,7 +103,7 @@ class CheckboxTests(unittest.TestCase):
 
     def test_one_click_waits_for_verification(self):
         page = self.fixture()
-        self.assertTrue(self.complete(page, 2))
+        self.assertTrue(self.complete(page))
         self.assertEqual(page.evaluate("checkboxClicks"), 1)
 
     def test_expired_deadline_does_not_click(self):
@@ -118,38 +118,44 @@ class CheckboxTests(unittest.TestCase):
 
     def test_incomplete_verification_never_repeats_click(self):
         page = self.fixture(completes=False)
-        self.assertFalse(self.complete(page))
+        handler = LoginVerification()
+        deadline = time.monotonic() + 5
+        self.assertFalse(handler(page, deadline))
+        page.wait_for_function("checkboxClicks === 1", timeout=5000)
+        for _ in range(3):
+            self.assertFalse(handler(page, deadline))
         self.assertEqual(page.evaluate("checkboxClicks"), 1)
 
     def test_ambiguous_checkboxes_are_not_clicked(self):
         page = self.fixture(controls=2)
         with self.assertRaisesRegex(GatewayError, "NEEDS_USER_LOGIN"):
-            self.complete(page)
+            LoginVerification()(page, time.monotonic() + 5)
         self.assertEqual(page.evaluate("checkboxClicks"), 0)
 
     def test_unknown_frame_is_not_clicked(self):
         page = self.fixture(frame_origin="https://other.example.invalid")
-        self.assertFalse(self.complete(page))
+        self.assertFalse(LoginVerification()(page, time.monotonic() + 5))
         self.assertEqual(page.evaluate("checkboxClicks"), 0)
 
     def test_missing_checkbox_is_not_success(self):
         page = self.fixture(controls=0)
-        self.assertFalse(self.complete(page))
+        self.assertFalse(LoginVerification()(page, time.monotonic() + 5))
 
     def test_missing_response_field_is_not_success(self):
         page = self.fixture(field=False, controls=0)
-        self.assertFalse(self.complete(page))
+        self.assertFalse(LoginVerification()(page, time.monotonic() + 5))
 
     def test_unexpected_login_origin_is_rejected(self):
         page = self.fixture()
         page.goto("about:blank")
         with self.assertRaisesRegex(GatewayError, "NEEDS_USER_LOGIN"):
-            self.complete(page)
+            LoginVerification()(page, time.monotonic() + 5)
 
     def test_checked_box_is_not_unchecked(self):
         page = self.fixture(completes=False)
         frame = page.frames[1]
         frame.get_by_role("checkbox").check()
+        page.wait_for_function("checkboxClicks === 1", timeout=5000)
         self.assertFalse(LoginVerification()(page, time.monotonic() + 2))
         self.assertTrue(frame.get_by_role("checkbox").is_checked())
         self.assertEqual(page.evaluate("checkboxClicks"), 1)

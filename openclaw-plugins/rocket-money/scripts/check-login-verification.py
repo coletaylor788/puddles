@@ -22,7 +22,9 @@ def main():
     spec = importlib.util.spec_from_file_location("installed_login_tests", tests)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    result = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromModule(module))
+    result = unittest.TextTestRunner(verbosity=2, failfast=True).run(
+        unittest.defaultTestLoader.loadTestsFromModule(module)
+    )
     raise SystemExit(0 if result.wasSuccessful() else 1)
 
 

@@ -125,8 +125,10 @@ Cleanup closes the scopes to new launches, joins every registered writer, and th
 The requester explicitly asked to script Rocket Money's verification checkbox and
 then instructed, “keep working until it's validated and deployed.” This extends
 the earlier owner-assisted challenge design only to the single checkbox above.
-Implementation is in progress. Synthetic checks do not establish compatibility
-with the live widget; that validation remains required before claiming a fix.
+DEV and the full application suite passed. TEST exposed a timing-sensitive
+synthetic assertion; its repair is returning through DEV. Synthetic checks do
+not establish compatibility with the live widget; that validation remains
+required before claiming a fix.
 
 The shared-session correction is merged. The saved-login timing correction and packaged synthetic check passed retained review and local validation. Renewal waits for delayed redirects and autofill, then verifies the pinned account before financial work. The check requires one connection across two native plugin instances and four calls.
 
@@ -145,8 +147,11 @@ The requester resumed this feature after the output queue passed production acce
 - Local browser fixtures intercept every page request. Coverage includes one
   checkbox click followed by delayed readiness, no repeat click, missing and
   ambiguous controls, changed origins and forms, deadline expiry, and account
-  verification after the login submission. Live widget compatibility and CI
-  qualification remain pending.
+  verification after the login submission. Negative cases inspect explicit
+  handler outcomes instead of polling into an artificial half-second deadline.
+  The installed runner reports the first failing case and traceback immediately.
+  A regression proves later cases do not run after that failure. Live widget
+  compatibility and final CI qualification remain pending.
 
 - Canonical repository design; supersedes the earlier combined gateway and browser-worker proposals.
 - The implementation uses the shared `browser-auth` Python package, official MCP SDK and a main-only OpenClaw stdio adapter. The adapter retains the host process across turns and applies outbound LeakGuard plus inbound classification and redaction.
