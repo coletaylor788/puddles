@@ -24,7 +24,7 @@ class FakeAuth:
     def mark(self, value):
         self.state = value
 
-    def open_login(self, *, verify):
+    def open_login(self, *, verify, before_submit=None):
         self.renewals += 1
         verify()
 
@@ -225,11 +225,11 @@ def test_renewal_verifies_pinned_identity_before_financial_operation(setup, monk
     auth.fail = "auth"
     original = auth.open_login
 
-    def renew(*, verify):
+    def renew(*, verify, before_submit):
         assert not mutations(auth)
         auth.fail = None
         auth.viewer = renewed_viewer
-        original(verify=verify)
+        original(verify=verify, before_submit=before_submit)
 
     monkeypatch.setattr(auth, "open_login", renew)
     result = service.call("rocket_money_set_category", params())

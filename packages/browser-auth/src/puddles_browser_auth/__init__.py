@@ -127,7 +127,8 @@ class BrowserAuth:
             # Deliberately host-private; never returned through MCP or logs.
             atomic_json(self.directory / "session.json", self.context.storage_state())
 
-    def open_login(self, interactive=False, *, verify: Callable[[], None] | None = None):
+    def open_login(self, interactive=False, *, verify: Callable[[], None] | None = None,
+                   before_submit: Callable[[object, float], bool] | None = None):
         if not interactive and verify is None:
             raise AuthError("INVALID_AUTH_CONFIG")
         self.mark("renewing")
@@ -170,6 +171,22 @@ class BrowserAuth:
                             and filled.evaluate("el => el.value.length > 0")
                             and submit.count() == 1 and submit.is_visible()
                             and submit.is_enabled()):
+                        # Site-specific readiness must not consume the single
+                        # saved-login submission while verification is pending.
+                        if before_submit is not None:
+                            if not before_submit(page, deadline):
+                                page.wait_for_timeout(250)
+                                continue
+                            parts = urlsplit(page.url)
+                            if f"{parts.scheme}://{parts.netloc}" not in self.site.login_origins:
+                                raise AuthError("NEEDS_USER_LOGIN")
+                            # The callback can navigate or replace the form.
+                            if not (filled.count() == 1 and filled.is_visible()
+                                    and filled.evaluate("el => el.value.length > 0")
+                                    and submit.count() == 1 and submit.is_visible()
+                                    and submit.is_enabled()):
+                                page.wait_for_timeout(250)
+                                continue
                         # Use only Chrome's already-filled credential, at most once.
                         # Never extract values, select accounts or dismiss OS/MFA prompts.
                         submitted = True

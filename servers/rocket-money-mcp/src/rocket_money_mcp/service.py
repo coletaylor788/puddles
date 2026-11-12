@@ -11,6 +11,7 @@ from puddles_browser_auth import BrowserAuth, Site, now
 from puddles_browser_auth.state import account_lock, atomic_json, private_directory, read_private
 
 from .errors import GatewayError
+from .login import LoginVerification
 from .policy import project_result, validate
 
 SITE = Site(
@@ -82,7 +83,7 @@ class RocketMoney:
                     self.auth.close()
                 raise
             try:
-                self.auth.open_login(verify=self.verify_identity)
+                self.auth.open_login(verify=self.verify_identity, before_submit=LoginVerification())
             except GatewayError:
                 self.auth.mark("needs_user_login")
                 self.auth.close()

@@ -20,6 +20,13 @@ unattended renewal depends on the site's challenge and Chrome's unlock state.
 Never send credentials through chat. Each later call checks the pinned account.
 Opening login again focuses an existing private session when it is already owned.
 
+Automatic renewal waits for Rocket Money's verification response before submitting
+the saved login. It can click one visible, uniquely named “Verify you are human”
+checkbox in the site's direct Cloudflare verification frame. The click is never
+repeated during that renewal. A missing control, additional challenge or failed
+verification stops recovery at its existing deadline. No verification tokens are
+extracted or synthesized. The pinned account must still verify before API work.
+
 ## Deploy
 
 `requirements.lock` pins and hashes all runtime dependencies. Build the plugin,
