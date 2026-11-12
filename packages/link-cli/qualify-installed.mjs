@@ -27,10 +27,11 @@ export async function qualifyInstalled(runtime, config, scratch) {
   }
   const service = await fixture(Number(new URL(urls[0]).port));
   const { materializeStaticMcpToolsForHarnessRun } = await import(pathToFileURL(join(runtime, 'dist/plugin-sdk/codex-mcp-projection.js')));
+  const { resolveAgentWorkspaceDir } = await import(pathToFileURL(join(runtime, 'dist/plugin-sdk/agent-runtime.js')));
   const held = [];
   async function materialize(agentId, model) {
     const agent = config.agents.entries[agentId];
-    const workspaceDir = agent.workspace ?? join(scratch, agentId);
+    const workspaceDir = resolveAgentWorkspaceDir(config, agentId);
     mkdirSync(workspaceDir, { recursive: true });
     const sessionId = randomUUID(), sessionKey = `agent:${agentId}:link-fixture-${sessionId}`;
     const slash = model.indexOf('/');

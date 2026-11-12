@@ -21,7 +21,7 @@ export function configureLink(before, { node, cli, authFile, clientName, apiBase
   for (const [id, agent] of Object.entries(entries)) {
     agent.tools ??= {};
     const role = id === mainAgent ? 'insights' : id === browserAgent ? 'payments' : null;
-    agent.tools.deny = add(agent.tools.deny, Object.entries(namespaces).filter(([key]) => key !== role).map(([, name]) => name + '__*'));
+    agent.tools.deny = add(agent.tools.deny, Object.entries(namespaces).filter(([key]) => key !== role).map(([, name]) => name + '__*')).sort();
     if (role) {
       const allowed = [...authTools, ...(role === 'insights' ? insightTools : paymentTools)].map(name => namespaces[role] + '__' + name);
       const field = Array.isArray(agent.tools.allow) ? 'allow' : 'alsoAllow';
