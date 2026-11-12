@@ -1,8 +1,8 @@
 # Plan 031: Rocket Money MCP and shared browser authentication
 
-**Status:** Refreshed onto main for triggered CI; fresh build and DEV pending
+**Status:** Saved-login checkbox repair in development; live validation and CI pending
 **Issue:** [#135](https://github.com/coletaylor788/puddles/issues/135)
-**Last updated:** 2026-10-24
+**Last updated:** 2026-11-11
 
 ## Human section
 
@@ -59,6 +59,22 @@ The shared provider can serve other host integrations. Rocket Money remains a sm
 
 The provider owns browser-to-HTTP session synchronization. Start with Chrome's password manager in the private host profile; an external password manager is optional. Renewal waits for delayed redirects and autofill, submits an already-filled form at most once on an approved login origin, and returns success only after verifying the pinned account. The browser runs in the owner's desktop login session. MFA and OS prompts still require owner interaction. Authentication is an internal host dependency, not a model-facing tool.
 
+#### Rocket Money verification checkbox
+
+The saved credentials can fill correctly while Rocket Money rejects submission
+until its security check completes. Rocket Money supplies a small form-readiness
+callback to the shared auth loop. It waits for the site's verification response,
+and can click one uniquely named, visible checkbox in the direct Cloudflare
+verification frame. One callback instance owns the entire renewal attempt, so
+polling does not repeat the click. The callback shares the renewal deadline.
+
+The shared loop waits before consuming its one login submission. After the
+callback completes, it checks the login origin and autofilled form again. The
+response indicates readiness to submit, not authenticated identity. The existing
+pinned-account check remains the success criterion. There is no puzzle solving,
+token injection, browser fingerprint change or general challenge handler. Other
+integrations keep their existing behavior.
+
 #### Access boundary
 
 | Stays on the trusted host | Available to the model |
@@ -105,6 +121,15 @@ Cleanup closes the scopes to new launches, joins every registered writer, and th
 **Approval reference:** Owner instruction, “this design is approved, implement and ship it, giving me directions to login when ready”; subsequent approval covers publication and retained independent review.
 **Scope:** The approved five tools, shared host authentication, private main skill and desktop login shortcut. No live financial mutations during validation.
 
+**Checkbox repair approval:** Production approved by the requester on 2026-11-11.
+The requester explicitly asked to script Rocket Money's verification checkbox and
+then instructed, “keep working until it's validated and deployed.” This extends
+the earlier owner-assisted challenge design only to the single checkbox above.
+DEV and the full application suite passed. TEST exposed a timing-sensitive
+synthetic assertion; its repair is returning through DEV. Synthetic checks do
+not establish compatibility with the live widget; that validation remains
+required before claiming a fix.
+
 The shared-session correction is merged. The saved-login timing correction and packaged synthetic check passed retained review and local validation. Renewal waits for delayed redirects and autofill, then verifies the pinned account before financial work. The check requires one connection across two native plugin instances and four calls.
 
 The requester resumed this feature after the output queue passed production acceptance. Both source branches are refreshed onto current main. CI queues a reference to the owned incremental output, which stays unchanged until submission closure. Historical DEV and staging receipts remain evidence for their original inputs, not qualification of the refreshed candidate. The test-only Active Memory retry repair remains included. The installed build entrypoint, ci-dev and ci-prod now own the release path; CI handles tests, deployment, exact merge, recovery and cleanup. Account readiness remains a separate owner login check.
@@ -112,6 +137,21 @@ The requester resumed this feature after the output queue passed production acce
 ## Agent section
 
 ### State
+
+- The current repair starts from refreshed main in `codex/rocket-money-autofill`.
+  It adds Rocket Money's per-renewal checkbox handler and a shared form-readiness
+  callback. The prior feature branch remains preserved.
+- Host diagnosis found saved credentials filling correctly in the desktop login
+  session. The provider explicitly asked to complete its security check. No
+  credential rejection or successful renewed identity was observed.
+- Local browser fixtures intercept every page request. Coverage includes one
+  checkbox click followed by delayed readiness, no repeat click, missing and
+  ambiguous controls, changed origins and forms, deadline expiry, and account
+  verification after the login submission. Negative cases inspect explicit
+  handler outcomes instead of polling into an artificial half-second deadline.
+  The installed runner reports the first failing case and traceback immediately.
+  A regression proves later cases do not run after that failure. Live widget
+  compatibility and final CI qualification remain pending.
 
 - Canonical repository design; supersedes the earlier combined gateway and browser-worker proposals.
 - The implementation uses the shared `browser-auth` Python package, official MCP SDK and a main-only OpenClaw stdio adapter. The adapter retains the host process across turns and applies outbound LeakGuard plus inbound classification and redaction.

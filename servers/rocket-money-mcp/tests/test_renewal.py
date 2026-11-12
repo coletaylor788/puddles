@@ -140,3 +140,45 @@ def test_operator_login_returns_control_without_submitting(renewal):
     auth.open_login(interactive=True)
     assert page.elapsed == 0
     assert page.submissions == 0
+
+
+def test_pending_site_verification_preserves_single_submission(renewal):
+    auth, page = renewal
+    checks = []
+
+    def prepare(_page, deadline):
+        checks.append(page.elapsed)
+        assert deadline == 60
+        return page.elapsed >= 10
+
+    def verify():
+        if page.ready_at is None or page.elapsed < page.ready_at:
+            raise AuthError("NEEDS_USER_LOGIN")
+
+    auth.open_login(verify=verify, before_submit=prepare)
+    assert len(checks) > 1
+    assert page.submissions == 1
+    assert page.elapsed >= 14
+
+
+@pytest.mark.parametrize("change", ["origin", "form", "error", "deadline"])
+def test_callback_changes_cannot_submit_stale_form(renewal, change):
+    auth, page = renewal
+
+    def prepare(_page, _deadline):
+        if change == "origin":
+            page.login_origin = "https://unexpected.example.invalid"
+        elif change == "form":
+            page.password_count = 2
+        elif change == "error":
+            raise AuthError("NEEDS_USER_LOGIN")
+        else:
+            page.elapsed = 60
+        return True
+
+    def verify():
+        raise AuthError("NEEDS_USER_LOGIN")
+
+    with pytest.raises(AuthError, match="NEEDS_USER_LOGIN"):
+        auth.open_login(verify=verify, before_submit=prepare)
+    assert page.submissions == 0

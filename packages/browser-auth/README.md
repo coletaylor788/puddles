@@ -11,6 +11,12 @@ already autofilled password once on an approved login origin. MFA,
 passkeys and OS unlock prompts require the owner. The library never extracts a
 password or exports session data to a caller outside the trusted host.
 
+An integration may supply a `before_submit` callback for site-specific form
+readiness. It receives the page and the renewal deadline, and returns false while
+the form is not ready. The library rechecks the origin and autofilled form after
+the callback before consuming the single submission. Account verification still
+determines whether renewal succeeded.
+
 Automatic renewal requires a trusted account-verification callback. Only an
 expired-session result is retried; other verification failures stop recovery.
 The recovery loop has a 60-second deadline, with each in-flight HTTP check bounded
