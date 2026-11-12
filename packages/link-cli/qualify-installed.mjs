@@ -6,6 +6,13 @@ import { randomUUID } from 'node:crypto';
 import { authTools, paymentTools, insightTools } from './policy.mjs';
 import { fixture } from './test/fixture.mjs';
 
+export function configuredModels(config, agentId) {
+  const agent = config.agents.entries[agentId];
+  const models = Object.keys(agent.models ?? config.agents.defaults.models ?? {});
+  assert.ok(models.length > 0, 'Configured model inventory is required');
+  return models;
+}
+
 // Operator-only DEV/TEST check. Never point it at production state. CI supplies
 // the installed candidate and its frozen recording endpoints.
 export async function qualifyInstalled(runtime, config, scratch) {
@@ -30,16 +37,13 @@ export async function qualifyInstalled(runtime, config, scratch) {
     const result = await materializeStaticMcpToolsForHarnessRun({ cfg: config, agentId,
       workspaceDir, agentDir: join(scratch, agentId, 'agent'), sessionId, sessionKey,
       manifestRegistry: { plugins: [] }, retireSessionRuntimeAfterDispose: true,
-      requestInteractiveCodexApproval: async () => {},
+      requestInteractiveCodexApproval: async () => { throw new Error('Read-only catalog/status qualification unexpectedly requested approval'); },
       policyContext: { config, agentId, workspaceDir, sessionId, sessionKey,
         modelProvider: model.slice(0, slash), modelId: model.slice(slash + 1) } });
     held.push(result); return result.tools;
   }
   try {
-    const models = [...new Set(['main', 'browser-agent'].flatMap(id => {
-      const selection = config.agents.entries[id].model ?? config.agents.defaults.model;
-      return typeof selection === 'string' ? [selection] : [selection.primary, ...(selection.fallbacks ?? [])];
-    }))];
+    const models = [...new Set(['main', 'browser-agent'].flatMap(id => configuredModels(config, id)))];
     assert.ok(models.length >= 2, 'Both configured model selections are required');
     for (const model of models) {
       for (const [id, prefix, allowed] of [['main', 'link_financial', insightTools], ['browser-agent', 'link_payments', paymentTools]]) {
