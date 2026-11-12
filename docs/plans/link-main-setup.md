@@ -1,7 +1,7 @@
 # Link payments for the browser and financial insights for main
 
 Status: In progress
-Issue: Not created
+Issue: [350](https://github.com/coletaylor788/puddles/issues/350)
 Last updated: 2026-11-11
 
 ## Human section
@@ -253,7 +253,9 @@ so retain non-secret request identifiers needed to reconcile unresolved purchase
 
 The retained independent reviewer examined the complete implementation and caught
 a production-only baseline option incorrectly used during DEV/TEST preparation.
-That defect is fixed and covered by functional callback tests. Final clearance
+That defect is fixed and covered by functional callback tests. Review also corrected model discovery to use configured adapters rather than
+routing fallbacks, and replaced transcript text searches with structured tool
+call/result checks. Those corrections have focused regressions. Final clearance
 requires installed provider evidence and review of the final paired diff.
 
 ### Checklist
