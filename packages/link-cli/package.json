@@ -1,0 +1,14 @@
+{
+  "name": "@puddles/link-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@stripe/link-cli": "1.4.1"
+  },
+  "scripts": {
+    "build": "node --check build.mjs && node --check policy.mjs && node --check configuration.mjs && node --check skills.mjs && node --check qualify-installed.mjs",
+    "lint": "node --check build.mjs && node --check policy.mjs && node --check configuration.mjs && node --check skills.mjs && node --check qualify-installed.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 const spawnSync = vi.hoisted(() => vi.fn());
 vi.mock("node:child_process", async (importOriginal) => ({
@@ -33,6 +35,20 @@ afterEach(() => {
 });
 
 describe("runtime package selection", () => {
+  it("preserves package self-imports beneath a nested ESM package boundary", async () => {
+    const { root, source } = fixture();
+    const dependency = join(source, "node_modules/@fixture/self");
+    mkdirSync(join(dependency, "esm"), { recursive: true });
+    writeFileSync(join(source, "package.json"), JSON.stringify({ name: "app", version: "1.0.0", files: ["index.js"], dependencies: { "@fixture/self": "1.0.0" } }));
+    writeFileSync(join(dependency, "package.json"), JSON.stringify({ name: "@fixture/self", version: "1.0.0", exports: { ".": "./esm/index.js", "./value": "./esm/value.js" } }));
+    writeFileSync(join(dependency, "esm/package.json"), JSON.stringify({ type: "module" }));
+    writeFileSync(join(dependency, "esm/index.js"), "export { value } from '@fixture/self/value';");
+    writeFileSync(join(dependency, "esm/value.js"), "export const value = 42;");
+    const output = join(root, "runtime");
+    await materializeRuntimeForDev(source, output);
+    const entry = pathToFileURL(join(output, "node_modules/@fixture/self/esm/index.js")).href;
+    expect(execFileSync(process.execPath, ["--input-type=module", "-e", `console.log((await import(${JSON.stringify(entry)})).value)`], { encoding: "utf8" }).trim()).toBe("42");
+  });
   it("keeps release materialization on its synchronous 60-second selection", () => {
     const { root, source } = fixture();
     spawnSync.mockReturnValue({

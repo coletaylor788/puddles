@@ -299,6 +299,24 @@ flowchart TB
 - Treat logged-in browser profiles as credentials. Login does not make page
   content trusted.
 
+##### Link integration
+
+The approved [Link integration](../plans/link-main-setup.md) makes one narrow
+exception to the credential-result and reader rules. The pinned official Link
+CLI runs on the host through native MCP. Main may receive financial results
+directly. Only the personal browser may receive an issued payment credential
+after direct owner approval in Link and enter it into the approved checkout.
+Neither agent receives OAuth tokens. The CLI's persistent auth file stays in
+protected host state. Native tool permissions separate both capabilities and
+deny Link to all other agents. Login and access upgrades require owner action
+in Link. Connection approval does not approve a purchase.
+
+The browser never routes payments or approvals through main. Returned service
+content and merchant pages remain untrusted. Credentials must stay out of
+replies and durable notes. Manual approval is required for each purchase;
+automatic spending, delegated approval, recurring purchases, arbitrary credential
+file output, and saved-payment fallback are outside this integration.
+
 ##### Keychain and macOS privacy access
 
 | Application | Access | Identity used for permission |

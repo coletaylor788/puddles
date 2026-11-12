@@ -34,6 +34,14 @@ function materializeSelectedRuntime(source, destination, pack) {
       filter: (path) => !["node_modules", ".git"].includes(relative(real, path).split("/")[0]),
     });
     const deps = { ...manifest.peerDependencies, ...manifest.dependencies, ...manifest.optionalDependencies };
+    // Nested package.json files (for example an ESM subtree) can end Node's
+    // package self-reference lookup. Preserve the enclosing npm name as well
+    // as the flattened storage path for imports back into the same package.
+    if (manifest.name && !Object.hasOwn(deps, manifest.name)) {
+      const self = join(to, 'node_modules', manifest.name);
+      mkdirSync(dirname(self), { recursive: true });
+      symlinkSync(relative(dirname(self), to), self);
+    }
     for (const name of Object.keys(deps)) {
       let current = real;
       let dependency;

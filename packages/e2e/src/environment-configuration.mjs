@@ -8,6 +8,10 @@ const equal = (a, b) => canonicalValueDigest(a) === canonicalValueDigest(b);
 function environmentLeaf(path, category) {
   const leaf = path.at(-1);
   const joined = path.join("/");
+  if (/^mcp\/servers\/link_(?:financial|payments)\//.test(joined)) {
+    if (category === "path") return /\/(?:command|env\/LINK_AUTH_FILE)$/.test(joined);
+    if (category === "fixture") return /\/env\/LINK_(?:API|AUTH)_BASE_URL$/.test(joined);
+  }
   if (category === "port") return /^(?:port|[a-zA-Z]+Port)$/.test(leaf);
   if (category === "credential-reference") return /^secrets\/providers\/[^/]+\/path$/.test(joined);
   if (category === "account" && /^approvals\/plugin\/targets\/\d+\/(?:to|accountId)$/.test(joined)) return true;
