@@ -1,8 +1,8 @@
 # Link payments for the browser and financial insights for main
 
-Status: In progress
+Status: Released; owner connection and retained-build cleanup pending
 Issue: [350](https://github.com/coletaylor788/puddles/issues/350)
-Last updated: 2026-11-11
+Last updated: 2026-11-12
 
 ## Human section
 
@@ -142,19 +142,21 @@ and interactive first-use authentication. Approval includes the described policy
 exception, implementation, publication, CI deployment, rollback, and cleanup.
 No real purchase is authorized by setup.
 
-Implementation is in progress in isolated paired worktrees. Installed qualification found that Copilot and restricted Claude runs omitted
-configured MCP tools from their host bridges. The integration includes focused
-native adapter repairs using the existing MCP runtime, policy checks, and host
-execution hooks. Link is not installed or connected in production.
-The pinned CLI, scoped catalogs, shared interactive login, permission rules, and
-application packaging are implemented. Focused tests pass. Installed provider
-qualification and CI delivery remain pending.
+Link is installed in production. Main has financial insights and the personal
+browser has payments, with direct Link owner approval. Interactive login remains
+available on first use; no live account connection or purchase was performed.
+
+The full application suite, installed DEV and TEST qualification, production
+checks, and exact source merges passed. Transaction cleanup is complete. The
+build retirement command retains the warm output and source because CI still
+references the candidates. Preserve those resources until guarded retirement
+can prove they are no longer needed.
 
 ## Agent section
 
 ### State
 
-- Assigned public worktree, branch `codex/link-main-setup`.
+- Implementation branch `codex/link-main-setup` landed through PR #349.
 - Public starting revision: `a2a5338d`.
 - The earlier CLI-only purchase proposal is retained unchanged in its own worktree.
 - Two independent capabilities: main reads financial insights; the personal
@@ -275,8 +277,38 @@ The retained independent reviewer examined the complete implementation and caugh
 a production-only baseline option incorrectly used during DEV/TEST preparation.
 That defect is fixed and covered by functional callback tests. Review also corrected model discovery to use configured adapters rather than
 routing fallbacks, and replaced transcript text searches with structured tool
-call/result checks. Those corrections have focused regressions. Final clearance
-requires installed provider evidence and review of the final paired diff.
+call/result checks. Those corrections have focused regressions. The retained reviewer cleared the
+final paired source and exact frozen candidate after installed provider proof.
+
+### Release evidence
+
+Candidate `606c08ea5915a136d88f65a8ab5ecb49a0c0f4a40b3c34fc395918102c70a2b2`
+contains the reviewed source. Its artifact digest is
+`1d86b2f451d0c78c31013030d0601f71718275ce3a1f3cb9634421d05095437a`.
+DEV run `gh-43216721009-1` passed with a complete terminal receipt and source
+cleanup. Production run `gh-43218196644-1` passed the full application suite in
+about 48 minutes, then TEST, backup, read-only production acceptance, and exact
+source merges. Its target receipt is `passed`, `phase=complete`, `child=null`;
+the source queue and transfer cleanup are closed.
+
+Public PR [#349](https://github.com/coletaylor788/puddles/pull/349) merged the
+reviewed head `6cf8516c6c31edf078d89f3dd9fc5904f731a75b` as
+`82de818e219cf3305278f9daa5561e4de679c725`. The companion source merged in the
+same production transaction. Private configuration and operational paths stay
+in the companion records.
+
+Installed DEV and TEST each exercised all four agent/provider onboarding turns
+with local fixtures. Later CI repairs preserved tool-grant order and completed
+an older synthetic application fixture. The companion inventory passed 632 tests
+with 16 checks reserved for installed environments. One synthetic browser timeout
+did not recur in 12 isolated repetitions or the subsequent full production suite;
+no timeout or release gate was weakened.
+
+The guarded build retirement command returned `Retained candidate references
+build`. Generated output, controls, and source remain protected pending eligible
+retirement. Owner login, real financial access, and the owner-visible payment
+approval notification still require interactive validation. No real purchase is
+authorized by this release.
 
 ### Checklist
 
@@ -285,6 +317,7 @@ requires installed provider evidence and review of the final paired diff.
 - [x] Inspect installed runtime and native MCP policy support.
 - [x] Revise both plan sections for the selected split and approval limits.
 - [x] Approve native MCP design, interactive auth, and specific policy exception.
-- [ ] Implement and validate the pinned integration.
-- [ ] Complete review, DEV, CI delivery, and cleanup.
+- [x] Implement and validate the pinned integration.
+- [x] Complete review, DEV, TEST, production validation, merges, and transaction cleanup.
+- [ ] Retire generated build resources after CI releases retained candidate references.
 - [ ] Complete owner login and verify each agent's permitted access.
