@@ -6,6 +6,7 @@ packages:
 # Preserve the existing policy: only esbuild may run an install script.
 # pnpm 12 requires every discovered build to be classified explicitly.
 allowBuilds:
+  "@stripe/link-cli": false
   "@google/genai": false
   esbuild: true
   keytar: false
