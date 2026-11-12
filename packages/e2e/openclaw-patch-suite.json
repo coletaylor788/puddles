@@ -226,7 +226,9 @@
     "src/commands/doctor-claude-cli.test.ts": "commands",
     "src/gateway/mcp-http.code-mode.test.ts": "gateway-core",
     "src/agents/agent-bundle-mcp-harness.test.ts": "agents-core",
-    "extensions/copilot/src/tool-bridge.host-surface.test.ts": "extensions"
+    "extensions/copilot/src/tool-bridge.host-surface.test.ts": "extensions",
+    "src/agents/cli-runner/prepare.configured-mcp.test.ts": "agents-support",
+    "src/gateway/mcp-http.configured-tools.test.ts": "gateway-core"
   },
   "patches": [
     {
@@ -678,6 +680,17 @@
         "extensions/copilot/src/tool-bridge.host-surface.test.ts",
         "extensions/copilot/src/tool-bridge.test.ts",
         "extensions/copilot/src/attempt.test.ts"
+      ]
+    },
+    {
+      "name": "claude-configured-mcp",
+      "tests": [
+        "src/agents/cli-runner/prepare.configured-mcp.test.ts",
+        "src/agents/cli-runner/prepare.test.ts",
+        "src/gateway/mcp-http.configured-tools.test.ts",
+        "src/gateway/mcp-http.runtime.test.ts",
+        "src/gateway/mcp-grant-store.test.ts",
+        "src/gateway/tool-resolution.test.ts"
       ]
     }
   ],

@@ -47,6 +47,7 @@ PATCHES=(
   compaction-memory-idle
   claude-native-agent-profiles
   copilot-configured-mcp
+  claude-configured-mcp
 )
 
 if [ -n "${MINI_HOST:-}" ]; then

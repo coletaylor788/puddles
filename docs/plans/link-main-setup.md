@@ -142,9 +142,10 @@ and interactive first-use authentication. Approval includes the described policy
 exception, implementation, publication, CI deployment, rollback, and cleanup.
 No real purchase is authorized by setup.
 
-Implementation is in progress in isolated paired worktrees. Installed qualification found that Copilot did not yet connect configured MCP
-servers to its host tool bridge. The integration includes a focused native adapter
-repair using the existing MCP runtime, policy checks, and host execution hooks. Link is not installed or connected in production.
+Implementation is in progress in isolated paired worktrees. Installed qualification found that Copilot and restricted Claude runs omitted
+configured MCP tools from their host bridges. The integration includes focused
+native adapter repairs using the existing MCP runtime, policy checks, and host
+execution hooks. Link is not installed or connected in production.
 The pinned CLI, scoped catalogs, shared interactive login, permission rules, and
 application packaging are implemented. Focused tests pass. Installed provider
 qualification and CI delivery remain pending.
@@ -217,6 +218,13 @@ materializing configured MCP servers. Its bridge now uses the existing session
 MCP runtime before tool selection and contained scripting. The shared policy
 checks apply agent, sandbox, and per-run limits; host binding preserves execution
 hooks. Normal completion, cancellation, and construction failures await cleanup.
+Restricted Claude runs also materialize permitted configured MCP tools into
+their existing host bridge. The run owns the MCP lease and retains the tools only
+in its host-side grant. The gateway applies its ordinary role and sandbox policy,
+then the exact grant allowlist and execution hooks. Native tools remain disabled,
+and the child receives only the loopback server. Preparation failure and normal
+cleanup release the lease.
+
 The SDK's separate native MCP path stays disabled. This adds no payment service,
 new agent, broader shell permission, or different purchase approval path.
 
