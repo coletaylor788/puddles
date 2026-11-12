@@ -1,0 +1,647 @@
+--- a/extensions/copilot/src/attempt-cleanup.ts
++++ b/extensions/copilot/src/attempt-cleanup.ts
+@@ -53,7 +53,7 @@
+   handle: PooledClient;
+   pool: CopilotClientPool;
+   cleanupByokProxy?: () => Promise<void>;
+-  cleanupToolBridge?: () => void;
++  cleanupToolBridge?: () => void | Promise<void>;
+   deleteSessionOnIncompleteCleanup: boolean;
+   finalizeNativeSubagents?: () => void;
+   sdkSessionId?: string;
+@@ -85,7 +85,7 @@
+       try {
+         await params.session.disconnect();
+       } catch {}
+-      params.cleanupToolBridge?.();
++      await params.cleanupToolBridge?.();
+       await params.cleanupByokProxy?.();
+       if (
+         outcome !== "completed" &&
+--- a/extensions/copilot/src/attempt-execution.ts
++++ b/extensions/copilot/src/attempt-execution.ts
+@@ -120,7 +120,7 @@
+   });
+   let activeRunHandleRef: ReturnType<typeof registerCopilotActiveRun> | undefined;
+   let userInputBridgeRef: CopilotUserInputBridge | undefined;
+-  let cleanupToolBridge: (() => void) | undefined;
++  let cleanupToolBridge: (() => void | Promise<void>) | undefined;
+   let releaseError: Error | undefined;
+   let downgradedFromResume = false;
+   let resumeFailureRecovered = false;
+@@ -636,8 +636,15 @@
+       } catch (error) {
+         promptError ??= toCopilotError(error);
+       }
+-      cleanupToolBridge?.();
+-      await cleanupByokProxy?.();
++      for (const cleanup of [cleanupToolBridge, cleanupByokProxy]) {
++        try {
++          await cleanup?.();
++        } catch (error) {
++          promptError = promptError
++            ? new AggregateError([promptError, error], "Copilot attempt and cleanup failed")
++            : toCopilotError(error);
++        }
++      }
+       bridge?.detach();
+       params.abortSignal?.removeEventListener("abort", onAbort);
+       if (session) {
+--- a/extensions/copilot/src/attempt.test.ts
++++ b/extensions/copilot/src/attempt.test.ts
+@@ -162,7 +162,7 @@
+ function createStubToolBridge(
+   sdkTools: SdkTool[] = [],
+   sourceTools: AnyAgentTool[] = [],
+-  extras: { cleanup?: () => void; codeModeEngaged?: boolean } = {},
++  extras: { cleanup?: () => void | Promise<void>; codeModeEngaged?: boolean } = {},
+ ) {
+   return {
+     ...extras,
+@@ -3407,6 +3407,25 @@
+     expect(pool["release"]).toHaveBeenCalledTimes(1);
+   });
+ 
++  it("joins the SDK and releases its pool when MCP disposal rejects", async () => {
++    const sdk = makeFakeSdk();
++    const pool = makeFakePool(sdk);
++    const failure = new Error("MCP disposal failed");
++    const cleanup = vi.fn(async () => {
++      throw failure;
++    });
++    const result = await runCopilotAttempt(makeParams(), {
++      pool,
++      createToolBridge: async () => createStubToolBridge([], [], { cleanup }),
++    });
++    expect(cleanup).toHaveBeenCalledTimes(1);
++    expect(projectAgentRunAttemptTerminal(result.terminal).promptError).toBe(failure);
++    const session = requireSession(sdk);
++    expect(session.off).toHaveBeenCalledTimes(session.on.mock.calls.length);
++    expect(session.disconnect).toHaveBeenCalledTimes(1);
++    expect(pool.release).toHaveBeenCalledTimes(1);
++  });
++
+   it("cleanup on send error", async () => {
+     const error = new Error("send failed");
+     const sdk = makeFakeSdk((session) => {
+--- a/extensions/copilot/src/tool-bridge.host-surface.test.ts
++++ b/extensions/copilot/src/tool-bridge.host-surface.test.ts
+@@ -6,10 +6,16 @@
+ import { createCopilotTestHostCapabilities } from "./host-capability.test-support.js";
+ import { createCopilotToolBridge } from "./tool-bridge.js";
+ 
+-const mocks = vi.hoisted(() => ({ publicFactory: vi.fn(() => []) }));
++const mocks = vi.hoisted(() => ({ publicFactory: vi.fn(() => []), materializeMcp: vi.fn() }));
+ vi.mock("openclaw/plugin-sdk/agent-harness", () => ({
+   createOpenClawCodingTools: mocks.publicFactory,
+ }));
++
++vi.mock("openclaw/plugin-sdk/agent-harness-tool-runtime", async (importOriginal) => {
++  const actual =
++    await importOriginal<typeof import("openclaw/plugin-sdk/agent-harness-tool-runtime")>();
++  return { ...actual, materializeConfiguredMcpToolsForHarnessRun: mocks.materializeMcp };
++});
+ 
+ afterEach(() => vi.clearAllMocks());
+ 
+@@ -100,3 +106,113 @@
+     expect(mocks.publicFactory).not.toHaveBeenCalled();
+   });
+ });
++
++describe("Copilot configured MCP ownership", () => {
++  const input = (
++    bindToolSurface: ReturnType<typeof createCopilotTestHostCapabilities>["bindToolSurface"],
++  ) => ({
++    agentId: "main",
++    modelProvider: "github-copilot",
++    modelId: "test-model",
++    sessionId: "mcp-session",
++    workspaceDir: "/workspace",
++    spawnWorkspaceDir: undefined,
++    attemptParams: {
++      config: {
++        tools: { toolSearch: false },
++        mcp: { servers: { fixture: { command: "node", args: [] } } },
++      },
++      codeModeOverride: false,
++      toolsAllow: ["fixture__read"],
++      hostCapabilities: createCopilotTestHostCapabilities(() => [], bindToolSurface),
++    },
++  });
++  it("binds MCP execution before compaction and waits for cleanup", async () => {
++    const execute = vi.fn(async () => textToolResult("MCP_RESULT"));
++    const source = {
++      ...createOwnerBackedContractTool({
++        pluginId: "fixture",
++        name: "fixture__read",
++        result: textToolResult("unused"),
++      }),
++      execute,
++    };
++    let release!: () => void;
++    const dispose = vi.fn(
++      () =>
++        new Promise<void>((resolve) => {
++          release = resolve;
++        }),
++    );
++    mocks.materializeMcp.mockResolvedValue({ tools: [source], dispose });
++    let active = true;
++    const bind = vi.fn((tools: (typeof source)[]) =>
++      tools.map((tool) => ({
++        ...tool,
++        execute: async (...args: Parameters<typeof tool.execute>) => {
++          if (!active) throw Error("host closed");
++          return tool.execute(...args);
++        },
++      })),
++    );
++    const bridge = await createCopilotToolBridge(input(bind));
++    expect(mocks.materializeMcp).toHaveBeenCalledWith(
++      expect.objectContaining({
++        agentId: "main",
++        toolsAllow: ["fixture__read"],
++        policyContext: expect.objectContaining({ agentId: "main" }),
++      }),
++    );
++    const tool = bridge.promptToolPolicy
++      .apply()
++      .tools.find((tool) => tool.name === "fixture__read")!;
++    const invoke = {
++      sessionId: "mcp-session",
++      toolCallId: "mcp-call",
++      toolName: "fixture__read",
++      arguments: {},
++    };
++    expect(await tool.handler!({}, invoke)).toMatchObject({
++      resultType: "success",
++      textResultForLlm: expect.stringContaining("MCP_RESULT"),
++    });
++    active = false;
++    expect(await tool.handler!({}, { ...invoke, toolCallId: "closed" })).toMatchObject({
++      resultType: "failure",
++      error: expect.stringContaining("host closed"),
++    });
++    expect(execute).toHaveBeenCalledTimes(1);
++    let settled = false;
++    const cleanup = Promise.resolve(bridge.cleanup!()).then(() => {
++      settled = true;
++    });
++    await Promise.resolve();
++    expect(settled).toBe(false);
++    release();
++    await cleanup;
++    await bridge.cleanup!();
++    expect(dispose).toHaveBeenCalledTimes(1);
++  });
++  it("releases MCP resources when host binding fails", async () => {
++    const dispose = vi.fn(async () => {});
++    mocks.materializeMcp.mockResolvedValue({
++      tools: [
++        createOwnerBackedContractTool({
++          pluginId: "fixture",
++          name: "fixture__read",
++          result: textToolResult("unused"),
++        }),
++      ],
++      dispose,
++    });
++    await expect(
++      createCopilotToolBridge(
++        input((tools) => {
++          if (tools.length) throw Error("binding failed");
++          return tools;
++        }),
++      ),
++    ).rejects.toThrow("binding failed");
++    expect(dispose).toHaveBeenCalledTimes(1);
++  });
++});
+--- a/extensions/copilot/src/tool-bridge.ts
++++ b/extensions/copilot/src/tool-bridge.ts
+@@ -23,6 +23,7 @@
+ } from "openclaw/plugin-sdk/agent-harness-runtime";
+ import {
+   createAgentHarnessToolSurfaceRuntime,
++  materializeConfiguredMcpToolsForHarnessRun,
+   isCodeModeControlTool,
+   resolveScheduledDirectToolSource,
+   TOOL_SEARCH_CONTROL_TOOL_NAMES,
+@@ -92,7 +93,7 @@
+ }
+ 
+ interface CopilotToolBridge {
+-  cleanup?: () => void;
++  cleanup?: () => void | Promise<void>;
+   codeModeEngaged?: boolean;
+   promptToolPolicy: {
+     requireExplicitMessageTarget?: boolean;
+@@ -180,114 +181,161 @@
+   if (!createToolSurface) {
+     throw new Error("Copilot tool construction requires a current host capability");
+   }
+-  const sourceTools = createToolSurface(toolOptions, bindingOptions);
+-  const boundSourceTools = new Set(sourceTools);
+-
+-  const allowedSourceTools = applyEmbeddedAttemptToolsAllow(
+-    sourceTools,
+-    toolSurfaceRuntime.runtimeToolAllowlist,
+-    { toolMeta: getPluginToolMeta },
+-  );
+-  const skillInputs = toolSurfaceRuntime.codeModeControlsEnabled
+-    ? resolveSandboxSkillRuntimeInputs({
+-        sandbox: input.sandbox,
+-        skillsAnchorWorkspace:
+-          attemptParams.bootstrapWorkspaceDir ?? toolOptions.workspaceDir ?? ".",
+-        skillsSnapshot: attemptParams.skillsSnapshot,
+-      })
+-    : undefined;
+-  const compactedTools = toolSurfaceRuntime.compactTools(allowedSourceTools, {
+-    localModelLeanApplied: true,
+-    codeModeSkills: skillInputs
+-      ? resolveRuntimeCodeModeSkills({
+-          skillsPrompt: attemptParams.skillsSnapshot?.prompt ?? "",
+-          candidates:
+-            skillInputs.skillsSnapshot?.resolvedSkills ??
+-            attemptParams.skillsSnapshot?.resolvedSkills ??
+-            [],
+-          skillsSnapshot: skillInputs.skillsSnapshot ?? attemptParams.skillsSnapshot,
+-          skillsWorkspaceDir: skillInputs.skillsWorkspaceDir,
++  let configuredMcp:
++    | Awaited<ReturnType<typeof materializeConfiguredMcpToolsForHarnessRun>>
++    | undefined;
++  let cleaned = false;
++  const cleanup = async () => {
++    if (cleaned) return;
++    cleaned = true;
++    try {
++      toolSurfaceRuntime.cleanup();
++    } finally {
++      await configuredMcp?.dispose();
++    }
++  };
++  try {
++    const sourceTools = createToolSurface(toolOptions, bindingOptions);
++    if (
++      !attemptParams.forceRestartSafeTools &&
++      Object.keys(attemptParams.config?.mcp?.servers ?? {}).length
++    ) {
++      const workspaceDir = toolOptions.workspaceDir ?? input.workspaceDir ?? bindingCwd;
++      if (!workspaceDir) throw new Error("Configured MCP requires an explicit workspace");
++      configuredMcp = await materializeConfiguredMcpToolsForHarnessRun({
++        sessionId: input.sessionId,
++        sessionKey: attemptParams.sandboxSessionKey ?? attemptParams.sessionKey,
++        agentId: attemptParams.sandboxAgentId ?? input.agentId,
++        workspaceDir,
++        agentDir: input.agentDir,
++        cfg: attemptParams.config,
++        toolOverrides: attemptParams.toolOverrides,
++        toolsAllow: toolSurfaceRuntime.runtimeToolAllowlist,
++        reservedToolNames: sourceTools.map((tool) => tool.name),
++        policyContext: {
++          ...toolOptions,
++          config: attemptParams.config,
++          agentId: attemptParams.sandboxAgentId ?? input.agentId,
++          agentDir: input.agentDir,
++          workspaceDir,
++          sandboxToolPolicy: input.sandbox?.tools,
++          modelProvider: input.modelProvider,
++          modelId: input.modelId,
++        },
++      });
++      sourceTools.push(...hostCapabilities.bindToolSurface(configuredMcp.tools, bindingOptions));
++    }
++    const boundSourceTools = new Set(sourceTools);
++
++    const allowedSourceTools = applyEmbeddedAttemptToolsAllow(
++      sourceTools,
++      toolSurfaceRuntime.runtimeToolAllowlist,
++      { toolMeta: getPluginToolMeta },
++    );
++    const skillInputs = toolSurfaceRuntime.codeModeControlsEnabled
++      ? resolveSandboxSkillRuntimeInputs({
+           sandbox: input.sandbox,
+-          skillReadLocations: skillInputs.skillUsagePaths,
++          skillsAnchorWorkspace:
++            attemptParams.bootstrapWorkspaceDir ?? toolOptions.workspaceDir ?? ".",
++          skillsSnapshot: attemptParams.skillsSnapshot,
+         })
+-      : [],
+-  });
+-  // The constructor output is bound before catalog compaction so hidden tools
+-  // cannot outlive the attempt. Bind only controls created by compaction here;
+-  // rebinding retained tools would stack the before-tool hook.
+-  const newlyConstructedTools = compactedTools.tools.filter(
+-    (tool) => !boundSourceTools.has(resolveScheduledDirectToolSource(tool) as AnyAgentTool),
+-  );
+-  const boundNewlyConstructedTools =
+-    newlyConstructedTools.length > 0
+-      ? hostCapabilities.bindToolSurface(newlyConstructedTools, bindingOptions)
+-      : newlyConstructedTools;
+-  if (boundNewlyConstructedTools.length !== newlyConstructedTools.length) {
+-    throw new Error("Copilot host capability changed the tool surface length.");
+-  }
+-  const newlyBoundTools = new Map<AnyAgentTool, AnyAgentTool>();
+-  for (let index = 0; index < newlyConstructedTools.length; index += 1) {
+-    newlyBoundTools.set(newlyConstructedTools[index]!, boundNewlyConstructedTools[index]!);
+-  }
+-  const exposedTools = compactedTools.tools.map((tool) => newlyBoundTools.get(tool) ?? tool);
+-
+-  // Run duplicate detection after filtering so a duplicate in a
+-  // suppressed tool does not fail a narrow run (PI parity: PI never
+-  // sees the duplicate either when the allowlist excludes it).
+-  const duplicateNames = findDuplicateToolNames(exposedTools);
+-  if (duplicateNames.length > 0) {
+-    throw new Error(`[copilot-tool-bridge] duplicate tool names: ${duplicateNames.join(", ")}`);
+-  }
+-
+-  let sequentialBarrier = Promise.resolve();
+-  const pendingCalls = new Set<Promise<void>>();
+-  const scheduleToolExecution: ScheduleToolExecution = (executionMode, execute) => {
+-    // SDK handlers arrive independently. An exclusive call waits for earlier
+-    // work across the attempt and blocks later calls, regardless of tool name.
+-    const ready = executionMode === "sequential" ? Promise.all(pendingCalls) : sequentialBarrier;
+-    const run = ready.then(execute);
+-    const settled = run.then(
+-      () => undefined,
+-      () => undefined,
++      : undefined;
++    const compactedTools = toolSurfaceRuntime.compactTools(allowedSourceTools, {
++      localModelLeanApplied: true,
++      codeModeSkills: skillInputs
++        ? resolveRuntimeCodeModeSkills({
++            skillsPrompt: attemptParams.skillsSnapshot?.prompt ?? "",
++            candidates:
++              skillInputs.skillsSnapshot?.resolvedSkills ??
++              attemptParams.skillsSnapshot?.resolvedSkills ??
++              [],
++            skillsSnapshot: skillInputs.skillsSnapshot ?? attemptParams.skillsSnapshot,
++            skillsWorkspaceDir: skillInputs.skillsWorkspaceDir,
++            sandbox: input.sandbox,
++            skillReadLocations: skillInputs.skillUsagePaths,
++          })
++        : [],
++    });
++    // The constructor output is bound before catalog compaction so hidden tools
++    // cannot outlive the attempt. Bind only controls created by compaction here;
++    // rebinding retained tools would stack the before-tool hook.
++    const newlyConstructedTools = compactedTools.tools.filter(
++      (tool) => !boundSourceTools.has(resolveScheduledDirectToolSource(tool) as AnyAgentTool),
+     );
+-    pendingCalls.add(settled);
+-    void settled.then(() => pendingCalls.delete(settled));
+-    if (executionMode === "sequential") {
+-      sequentialBarrier = settled;
+-    }
+-    return run;
+-  };
+-  const sdkTools = exposedTools.map((sourceTool) =>
+-    convertOpenClawToolToSdkTool(sourceTool, input, scheduleToolExecution),
+-  );
+-  return {
+-    cleanup: toolSurfaceRuntime.cleanup,
+-    // Harness runs resolve `tools.codeMode: "auto"` inside the tool surface
+-    // bridge, so this is the only place that knows whether the turn actually
+-    // got code-mode controls. Without it the run reports `codeModeEngaged`
+-    // as unset and telemetry cannot tell "off" from "harness did not report".
+-    codeModeEngaged: toolSurfaceRuntime.codeModeControlsEnabled,
+-    promptToolPolicy: {
+-      requireExplicitMessageTarget: toolOptions.requireExplicitMessageTarget,
+-      apply: (params: { toolsAllow?: string[]; forceToolNames?: readonly string[] } = {}) => {
+-        const result = compactedTools.promptToolPolicy.apply({
+-          ...params,
+-          toolsAllow: buildEmbeddedAttemptToolRunContext({
+-            ...attemptParams,
+-            toolsAllow: params.toolsAllow,
+-            forceMessageTool: shouldForceCopilotMessageTool(attemptParams),
+-          }).runtimeToolAllowlist,
+-        });
+-        const directToolNames = new Set(result.tools.map((tool) => tool.name));
+-        return {
+-          tools: sdkTools.filter((tool) => directToolNames.has(tool.name)),
+-          callableToolNames: result.callableToolNames,
+-          toolSchemaDirectoryPrompt: result.toolSchemaDirectoryPrompt,
+-        };
++    const boundNewlyConstructedTools =
++      newlyConstructedTools.length > 0
++        ? hostCapabilities.bindToolSurface(newlyConstructedTools, bindingOptions)
++        : newlyConstructedTools;
++    if (boundNewlyConstructedTools.length !== newlyConstructedTools.length) {
++      throw new Error("Copilot host capability changed the tool surface length.");
++    }
++    const newlyBoundTools = new Map<AnyAgentTool, AnyAgentTool>();
++    for (let index = 0; index < newlyConstructedTools.length; index += 1) {
++      newlyBoundTools.set(newlyConstructedTools[index]!, boundNewlyConstructedTools[index]!);
++    }
++    const exposedTools = compactedTools.tools.map((tool) => newlyBoundTools.get(tool) ?? tool);
++
++    // Run duplicate detection after filtering so a duplicate in a
++    // suppressed tool does not fail a narrow run (PI parity: PI never
++    // sees the duplicate either when the allowlist excludes it).
++    const duplicateNames = findDuplicateToolNames(exposedTools);
++    if (duplicateNames.length > 0) {
++      throw new Error(`[copilot-tool-bridge] duplicate tool names: ${duplicateNames.join(", ")}`);
++    }
++
++    let sequentialBarrier = Promise.resolve();
++    const pendingCalls = new Set<Promise<void>>();
++    const scheduleToolExecution: ScheduleToolExecution = (executionMode, execute) => {
++      // SDK handlers arrive independently. An exclusive call waits for earlier
++      // work across the attempt and blocks later calls, regardless of tool name.
++      const ready = executionMode === "sequential" ? Promise.all(pendingCalls) : sequentialBarrier;
++      const run = ready.then(execute);
++      const settled = run.then(
++        () => undefined,
++        () => undefined,
++      );
++      pendingCalls.add(settled);
++      void settled.then(() => pendingCalls.delete(settled));
++      if (executionMode === "sequential") {
++        sequentialBarrier = settled;
++      }
++      return run;
++    };
++    const sdkTools = exposedTools.map((sourceTool) =>
++      convertOpenClawToolToSdkTool(sourceTool, input, scheduleToolExecution),
++    );
++    return {
++      cleanup,
++      // Harness runs resolve `tools.codeMode: "auto"` inside the tool surface
++      // bridge, so this is the only place that knows whether the turn actually
++      // got code-mode controls. Without it the run reports `codeModeEngaged`
++      // as unset and telemetry cannot tell "off" from "harness did not report".
++      codeModeEngaged: toolSurfaceRuntime.codeModeControlsEnabled,
++      promptToolPolicy: {
++        requireExplicitMessageTarget: toolOptions.requireExplicitMessageTarget,
++        apply: (params: { toolsAllow?: string[]; forceToolNames?: readonly string[] } = {}) => {
++          const result = compactedTools.promptToolPolicy.apply({
++            ...params,
++            toolsAllow: buildEmbeddedAttemptToolRunContext({
++              ...attemptParams,
++              toolsAllow: params.toolsAllow,
++              forceMessageTool: shouldForceCopilotMessageTool(attemptParams),
++            }).runtimeToolAllowlist,
++          });
++          const directToolNames = new Set(result.tools.map((tool) => tool.name));
++          return {
++            tools: sdkTools.filter((tool) => directToolNames.has(tool.name)),
++            callableToolNames: result.callableToolNames,
++            toolSchemaDirectoryPrompt: result.toolSchemaDirectoryPrompt,
++          };
++        },
+       },
+-    },
+-    sourceTools: exposedTools,
+-  };
++      sourceTools: exposedTools,
++    };
++  } catch (error) {
++    await cleanup();
++    throw error;
++  }
+ }
+ 
+ /**
+--- a/src/agents/agent-bundle-mcp-harness.test.ts
++++ b/src/agents/agent-bundle-mcp-harness.test.ts
+@@ -96,6 +96,7 @@
+ });
+ 
+ import {
++  materializeConfiguredMcpToolsForHarnessRunCore,
+   materializeRequesterScopedMcpToolsForHarnessRunCore,
+   materializeStaticMcpToolsForHarnessRunCore,
+ } from "./agent-bundle-mcp-harness.js";
+@@ -1092,3 +1093,62 @@
+     await result!.dispose();
+   });
+ });
++
++describe("configured MCP for host-bound harnesses", () => {
++  it.each(["allowed", "role-denied", "runtime-denied", "sandbox-denied"])(
++    "keeps %s policy and releases its lease",
++    async (mode) => {
++      const runtime = makeRuntime({ sessionId: "host-" + mode, requesterSenderId: "unused" });
++      delete runtime.requesterScope;
++      runtime.joinCleanup = async () => {};
++      mocks.acquireSessionMcpRuntime.mockResolvedValue({
++        runtime,
++        releaseLease: runtime.acquireLease!(),
++      });
++      const config = {
++        agents: {
++          entries: { main: { tools: { deny: mode === "role-denied" ? ["user-mail__*"] : [] } } },
++        },
++      };
++      const result = await materializeConfiguredMcpToolsForHarnessRunCore({
++        sessionId: runtime.sessionId,
++        sessionKey: "agent:main:main",
++        agentId: "main",
++        workspaceDir: "/workspace",
++        cfg: config,
++        toolsAllow: mode === "runtime-denied" ? ["read"] : undefined,
++        policyContext: {
++          config,
++          agentId: "main",
++          sessionKey: "agent:main:main",
++          workspaceDir: "/workspace",
++          ...(mode === "sandbox-denied"
++            ? { sandboxToolPolicy: { allow: [], deny: ["user-mail__*"] } }
++            : {}),
++        },
++      });
++      expect(result.tools.map((tool) => tool.name)).toEqual(
++        mode === "allowed" ? ["user-mail__inbox"] : [],
++      );
++      if (mode === "allowed")
++        expect(await result.tools[0]!.execute("call", {})).toMatchObject({
++          content: [{ type: "text", text: "live:inbox:unused" }],
++        });
++      expect(runtime.activeLeases).toBe(1);
++      await result.dispose();
++      expect(runtime.activeLeases).toBe(0);
++      expect(mocks.acquireSessionMcpRuntime).toHaveBeenCalledWith(
++        expect.not.objectContaining({ requesterSenderId: expect.anything() }),
++      );
++    },
++  );
++  it("rejects MCP construction without a prepared policy", async () => {
++    await expect(
++      materializeConfiguredMcpToolsForHarnessRunCore({
++        sessionId: "missing",
++        workspaceDir: "/workspace",
++      }),
++    ).rejects.toThrow("prepared harness tool policy");
++    expect(mocks.acquireSessionMcpRuntime).not.toHaveBeenCalled();
++  });
++});
+--- a/src/agents/agent-bundle-mcp-harness.ts
++++ b/src/agents/agent-bundle-mcp-harness.ts
+@@ -249,6 +249,49 @@
+   });
+ }
+ 
++/** Static MCP tools for host-bound harnesses, with the embedded runner's policy.
++ * Harness-specific approval prompts remain in their existing adapter paths.
++ */
++export async function materializeConfiguredMcpToolsForHarnessRunCore(
++  params: Omit<
++    MaterializeRequesterScopedMcpToolsForHarnessRunParams,
++    | "requesterSenderId"
++    | "agentAccountId"
++    | "messageChannel"
++    | "autoApproveCodexAppServerApprovals"
++    | "requestInteractiveCodexApproval"
++  >,
++): Promise<StaticHarnessMcpTools> {
++  const conversationCapabilityProfile = resolveHarnessCapabilityProfile(params);
++  if (!conversationCapabilityProfile) {
++    throw new Error("Configured MCP requires a prepared harness tool policy");
++  }
++  const acquisition = await acquireSessionMcpRuntime({
++    sessionId: params.sessionId,
++    sessionKey: params.sessionKey,
++    workspaceDir: params.workspaceDir,
++    agentDir: params.agentDir,
++    cfg: params.cfg,
++    manifestRegistry: params.manifestRegistry,
++    toolOverrides: params.toolOverrides,
++    toolDenylist: conversationCapabilityProfile.policy.explicitToolDenylist,
++  });
++  const runtime = await materializeBundleMcpToolsForRun({
++    ...acquisition,
++    agentId: params.agentId,
++    reservedToolNames: params.reservedToolNames,
++  });
++  try {
++    const policy = { ...params, conversationCapabilityProfile };
++    const tools = applyHarnessToolPolicy(runtime.tools, policy);
++    runtime.restrictAppTools?.(applyHarnessToolPolicy(runtime.appTools ?? runtime.tools, policy));
++    return { tools, dispose: runtime.dispose };
++  } catch (error) {
++    await runtime.dispose();
++    throw error;
++  }
++}
++
+ /**
+  * Materialize static configured MCP for a Codex harness turn.
+  * No requester identity is accepted here, so requester resolvers stay unreachable.
+--- a/src/plugin-sdk/agent-harness-tool-runtime.ts
++++ b/src/plugin-sdk/agent-harness-tool-runtime.ts
+@@ -71,3 +71,14 @@
+     },
+   };
+ }
++
++/** Materialize configured MCP using the shared session runtime and final policy. */
++export async function materializeConfiguredMcpToolsForHarnessRun(
++  params: Parameters<
++    typeof import("../agents/agent-bundle-mcp-harness.js").materializeConfiguredMcpToolsForHarnessRunCore
++  >[0],
++) {
++  const { materializeConfiguredMcpToolsForHarnessRunCore } =
++    await import("../agents/agent-bundle-mcp-harness.js");
++  return materializeConfiguredMcpToolsForHarnessRunCore(params);
++}

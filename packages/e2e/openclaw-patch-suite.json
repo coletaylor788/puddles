@@ -224,7 +224,9 @@
     "src/tui/embedded-backend.test.ts": "tui",
     "src/agents/tools/embedded-gateway-stub.history.test.ts": "agents-tools",
     "src/commands/doctor-claude-cli.test.ts": "commands",
-    "src/gateway/mcp-http.code-mode.test.ts": "gateway-core"
+    "src/gateway/mcp-http.code-mode.test.ts": "gateway-core",
+    "src/agents/agent-bundle-mcp-harness.test.ts": "agents-core",
+    "extensions/copilot/src/tool-bridge.host-surface.test.ts": "extensions"
   },
   "patches": [
     {
@@ -667,6 +669,15 @@
         "src/agents/tools/embedded-gateway-stub.history.test.ts",
         "src/commands/doctor-claude-cli.test.ts",
         "src/agents/cli-runner/prepare.web-search.test.ts"
+      ]
+    },
+    {
+      "name": "copilot-configured-mcp",
+      "tests": [
+        "src/agents/agent-bundle-mcp-harness.test.ts",
+        "extensions/copilot/src/tool-bridge.host-surface.test.ts",
+        "extensions/copilot/src/tool-bridge.test.ts",
+        "extensions/copilot/src/attempt.test.ts"
       ]
     }
   ],

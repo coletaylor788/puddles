@@ -142,8 +142,9 @@ and interactive first-use authentication. Approval includes the described policy
 exception, implementation, publication, CI deployment, rollback, and cleanup.
 No real purchase is authorized by setup.
 
-Implementation is in progress in isolated paired worktrees. Read-only inspection
-confirms native MCP support. Link is not installed or connected in production.
+Implementation is in progress in isolated paired worktrees. Installed qualification found that Copilot did not yet connect configured MCP
+servers to its host tool bridge. The integration includes a focused native adapter
+repair using the existing MCP runtime, policy checks, and host execution hooks. Link is not installed or connected in production.
 The pinned CLI, scoped catalogs, shared interactive login, permission rules, and
 application packaging are implemented. Focused tests pass. Installed provider
 qualification and CI delivery remain pending.
@@ -211,6 +212,14 @@ schemas for each capability. There is no generic dispatcher, arbitrary output
 path, recurring request, or approval bypass. Both processes use the upstream
 shared auth store and fixed grants.
 
+Copilot's native adapter originally constructed core host tools without
+materializing configured MCP servers. Its bridge now uses the existing session
+MCP runtime before tool selection and contained scripting. The shared policy
+checks apply agent, sandbox, and per-run limits; host binding preserves execution
+hooks. Normal completion, cancellation, and construction failures await cleanup.
+The SDK's separate native MCP path stays disabled. This adds no payment service,
+new agent, broader shell permission, or different purchase approval path.
+
 The application artifact carries the CLI and scoped skills. CI installs skills
 only into their respective workspaces, preserves other skills, and refuses an
 unknown conflicting Link skill. The companion repository supplies host bindings,
@@ -234,7 +243,10 @@ Companion tests cover configuration parity across environments, runtime relocati
 backup registration, migration witnesses, drift rejection, and production-only
 artifact binding. Installed DEV and TEST gates exercise native tool policies and
 real configured provider adapters using isolated sessions and local Link fixtures.
-No live account data, purchase, or message delivery is part of automated validation.
+The real provider clients use local model-response fixtures, and the installed
+CLI uses local Link fixtures. Tests preserve the configured role tool permissions
+and restricted browser profile. No live account data, purchase, or message delivery
+is part of automated validation.
 
 Owner login and the owner-visible Link approval notification require the owner's
 interactive action after shipping. This release must not claim those live actions
