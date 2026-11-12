@@ -96,6 +96,18 @@ of that worker. Request identity includes the GitHub run and attempt, owner,
 candidate, mode, and configuration digest. Duplicate requests do not redeploy.
 The application adapter supplies build, DEV dispatch, and production dispatch entrypoints.
 
+## Compatibility before DEV admission
+
+The application adapter runs its small fixed source compatibility suite before
+DEV enters the shared queue. These tests use local synthetic fixtures and the
+prepared candidate source, without deploying or rebuilding. A failure returns to
+the feature owner and does not occupy a target slot. Per-build ownership keeps
+independent worktrees concurrent and joins test processes before cleanup.
+
+This early check complements installed DEV acceptance. The full application
+suite remains required before TEST and production deployment; its receipt cannot
+be replaced by a compatibility result.
+
 ## Recovery and storage
 
 An interrupted worker's child PID, start identity, and process scope are reconciled
