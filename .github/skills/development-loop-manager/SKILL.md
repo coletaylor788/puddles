@@ -60,6 +60,10 @@ and tooling that guide future work. Make each loop safer, faster, and simpler.
   separate design approval. Preserve product behavior, the security architecture,
   and release gates. Get approval for changes outside those bounds or material
   increases in cost or operational risk; continue independent work.
+- OpenClaw patches are never preauthorized by this maintenance scope. Follow the
+  [patch policy](../../copilot-instructions.md#openclaw-extension-and-patch-policy):
+  prefer built-in extensibility, check later stable releases, and obtain explicit
+  requester design approval for each patch before affected implementation.
 - Fix the guiding skill, script, check, or process. Prefer simplification over
   another mechanism; do not manufacture fixes or duplicate an active owner's work.
 - Follow [safe-feature-development](../safe-feature-development/SKILL.md) for

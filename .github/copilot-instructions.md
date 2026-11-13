@@ -16,6 +16,35 @@ OpenClaw plugins, host scripts, setup guidance, and shared security libraries.
 - Work only in the assigned branch, worktree, or isolated workspace. Do not edit
   a configured repository's primary checkout.
 
+## OpenClaw extension and patch policy
+
+Always prefer OpenClaw's built-in behavior and supported extensibility, such as
+configuration, plugins, hooks, tools, and documented APIs. Establish whether the
+problem comes from upstream behavior or our own configuration, overrides, and
+extensions before proposing a core change.
+
+For every OpenClaw design or repair, check whether a later stable release solves
+the problem or provides the needed extension point. Inspect official release
+notes, documentation, and relevant source; record the versions checked and the
+evidence in the plan. Prefer the supported solution when it meets the need.
+Checking a release does not authorize an upgrade or deployment.
+
+Patching OpenClaw is a last resort. Never add or change an OpenClaw patch unless
+the requester has explicitly approved that specific patch in the design. The
+design must identify each patch's purpose and scope, explain why built-in
+extensibility and later stable releases are insufficient, and record the
+approval reference before affected implementation begins. General feature,
+bug-fix, maintenance, or release approval does not authorize an unspecified
+patch. Approval of one patch does not authorize another.
+
+This applies to source edits in prepared checkouts, bundled OpenClaw extensions,
+test-only upstream patches, and rewrites of built or installed OpenClaw code.
+A runtime monkey-patch is also a patch, even when packaged as a plugin. An
+existing explicit approval remains valid within its recorded patch scope;
+new patches or changes outside that scope require explicit design approval.
+If implementation reveals a need for an unapproved patch, pause that part and
+update the design for approval. Continue independent approved work.
+
 ## Writing style
 
 These rules cover everything a person reads: plans, issues, issue comments, pull

@@ -145,7 +145,15 @@ Do not add evidence archives, arbitrary build caps, or extra backup generations.
 
 ## Project-specific concerns
 
-1. Prefer solving features via well established extension patterns such as plugins, MCP tools, etc.
-2. If a patch to OpenClaw is required, give extra scrutiny and hold the patch to the bar "this would be accepted and checked-in to OpenClaw itself". Be very careful to ensure it doesn't cause unintended consequences or behavior, doesn't re-invent things, etc. This code base is large and requires extensive research to validate.
-3. If a patch to OpenClaw, ensure patch is fully docmented for repeat application in the repo
+1. Apply the [OpenClaw patch policy](../../copilot-instructions.md#openclaw-extension-and-patch-policy).
+   Verify that the design prefers built-in extensibility and records whether a
+   later stable release solves the problem, with upstream evidence.
+2. Block clearance for any OpenClaw patch not explicitly approved by the
+   requester in the design, or any patch exceeding its approved scope. General
+   feature or maintenance approval, passing tests, and reviewer agreement do
+   not substitute for that approval. Require the demonstrated upstream gap and
+   why supported extensions or a later stable release are insufficient.
+3. Give approved patches extra scrutiny for unintended behavior, duplication,
+   and upstream suitability. Require documentation for repeat application and
+   conditions for retiring the patch when upstream provides the solution.
 4. Runtime behavior changes must have integration tests, using mocks or harnesses where needed. Preserve complete cumulative coverage. Documentation-only changes use focused document checks; CI trigger-only changes use focused workflow and path-selection tests.
