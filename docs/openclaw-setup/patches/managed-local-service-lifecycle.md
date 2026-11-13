@@ -36,3 +36,10 @@ service owner retains that adapter and joins preparation before stopping it.
 Upstream's protections for late lease release, concurrent reacquisition and
 failed exit observation stay in place. Its current lineage and closing
 acknowledgment protocol owns group cleanup.
+
+The standalone-anchor packaging regression lives in
+`test/scripts/service-child-ownership-bundle.test.ts`. It builds the real
+packaging configuration and verifies the artifact has no native runtime imports.
+Like upstream packaging tests, it runs in the native `tooling` project and
+`test-root-scripts` type graph. Keeping the build configuration out of the core
+test graph preserves the existing extension import boundary.

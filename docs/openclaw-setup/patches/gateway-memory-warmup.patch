@@ -1,5 +1,5 @@
 diff --git a/extensions/llama-cpp/index.test.ts b/extensions/llama-cpp/index.test.ts
-index 71e59c145c7..e2a9e7ae8dc 100644
+index 71e59c145c7b76b1a01ef74b0d49bd551ac82822..efa5c6d642f73cb8ac9690029a49706c487b704a 100644
 --- a/extensions/llama-cpp/index.test.ts
 +++ b/extensions/llama-cpp/index.test.ts
 @@ -343,6 +343,31 @@ describe("llama.cpp provider plugin", () => {
@@ -11,7 +11,7 @@ index 71e59c145c7..e2a9e7ae8dc 100644
 +    const options = configuredOptions();
 +    const result = await llamaCppEmbeddingProviderAdapter.create({
 +      ...options,
-+      local: { ...options.local, warmupOnGatewayStart: true },
++      local: { warmupOnGatewayStart: true },
 +      signal: controller.signal,
 +    });
 +    const provider = expectDefined(result.provider, "local embedding provider");
@@ -35,7 +35,7 @@ index 71e59c145c7..e2a9e7ae8dc 100644
      const result = await llamaCppEmbeddingProviderAdapter.create(configuredOptions());
      const provider = expectDefined(result.provider, "local embedding provider");
 diff --git a/extensions/llama-cpp/src/embedding-provider.runtime.ts b/extensions/llama-cpp/src/embedding-provider.runtime.ts
-index a9d1594695a..004cd0c5e41 100644
+index a9d1594695a5a25ef59eeddf6eaaf89b01dcbaeb..004cd0c5e41b89ccac853933b612133fd724961e 100644
 --- a/extensions/llama-cpp/src/embedding-provider.runtime.ts
 +++ b/extensions/llama-cpp/src/embedding-provider.runtime.ts
 @@ -51,15 +51,18 @@ async function prepareEmbeddingServer(
@@ -98,7 +98,7 @@ index a9d1594695a..004cd0c5e41 100644
    };
    Object.defineProperty(wrapped, LOCAL_EMBEDDING_RUNTIME_FACTS, {
 diff --git a/extensions/llama-cpp/src/llama-server-preset.ts b/extensions/llama-cpp/src/llama-server-preset.ts
-index 01205b160ea..43b2168e8c6 100644
+index 01205b160ea9e93ba6e1916ba650e55faf102b74..43b2168e8c668b82c8b7a71aab26c06a24b89cda 100644
 --- a/extensions/llama-cpp/src/llama-server-preset.ts
 +++ b/extensions/llama-cpp/src/llama-server-preset.ts
 @@ -23,6 +23,7 @@ export type LlamaServerPresetOptions = {
@@ -125,7 +125,7 @@ index 01205b160ea..43b2168e8c6 100644
    if (!embeddingSection && params.mediaModels === undefined) {
      throw new Error("llama.cpp embedding model path is required for a new managed preset");
 diff --git a/extensions/llama-cpp/src/managed-server-inspection.ts b/extensions/llama-cpp/src/managed-server-inspection.ts
-index 1cedd1bf384..d6fcece6e37 100644
+index 1cedd1bf3844d6bedd7b2929949c39fcf1b4eb1f..d6fcece6e376975154373a6bdfa1eccbc8fecd61 100644
 --- a/extensions/llama-cpp/src/managed-server-inspection.ts
 +++ b/extensions/llama-cpp/src/managed-server-inspection.ts
 @@ -26,6 +26,7 @@ export type LlamaServerRuntimeFacts = {
@@ -167,7 +167,7 @@ index 1cedd1bf384..d6fcece6e37 100644
    const propsRecord = asOptionalRecord(props.value);
    const modalities = asOptionalRecord(propsRecord?.modalities);
 diff --git a/extensions/llama-cpp/src/managed-server.test.ts b/extensions/llama-cpp/src/managed-server.test.ts
-index 3d7587a733f..f7b8449e11c 100644
+index 3d7587a733f78d3d203e037a2c74019b50aba075..f7b8449e11c67a9a49c35b524831ddc5c2704c15 100644
 --- a/extensions/llama-cpp/src/managed-server.test.ts
 +++ b/extensions/llama-cpp/src/managed-server.test.ts
 @@ -75,6 +75,30 @@ afterEach(async () => {
@@ -202,7 +202,7 @@ index 3d7587a733f..f7b8449e11c 100644
      [
        "darwin",
 diff --git a/extensions/llama-cpp/src/managed-server.ts b/extensions/llama-cpp/src/managed-server.ts
-index bb82da9172d..103e1f09aab 100644
+index bb82da9172dc7a60bbcd7b2d1174e6b69ab2c7bc..103e1f09aabaf2efde33f53e11d47b06ae58ded9 100644
 --- a/extensions/llama-cpp/src/managed-server.ts
 +++ b/extensions/llama-cpp/src/managed-server.ts
 @@ -448,6 +448,7 @@ export async function prepareManagedLlamaServer(params: {
@@ -232,7 +232,7 @@ index bb82da9172d..103e1f09aab 100644
        reconcileOrigin: params.isolated ? undefined : reconcileOrigin,
        mediaModels: params.mediaModels,
 diff --git a/src/agents/memory-search.ts b/src/agents/memory-search.ts
-index 04a0b7d747a..0a5d9f203e7 100644
+index 04a0b7d747a55c6756b625da490952cb7c1cfc89..0a5d9f203e74be1e90f70e23992d0bed93ba3360 100644
 --- a/src/agents/memory-search.ts
 +++ b/src/agents/memory-search.ts
 @@ -40,6 +40,7 @@ export type ResolvedMemorySearchConfig = Omit<
@@ -270,7 +270,7 @@ index 04a0b7d747a..0a5d9f203e7 100644
        driver: "sqlite" as const,
        databasePath: resolveOpenClawAgentSqlitePath({ agentId, env: process.env }),
 diff --git a/src/agents/provider-local-service-target.ts b/src/agents/provider-local-service-target.ts
-index 70315adedc3..a4c2091b994 100644
+index 70315adedc3aca83d673cdfda17895b47976dd1b..a4c2091b994ac4dd8abef67f0e12494cc5e066c9 100644
 --- a/src/agents/provider-local-service-target.ts
 +++ b/src/agents/provider-local-service-target.ts
 @@ -18,7 +18,7 @@ export type ProviderLocalServiceTarget = {
@@ -282,38 +282,8 @@ index 70315adedc3..a4c2091b994 100644
  
  /** Host-injected acquisition hook that cannot supply process configuration. */
  export type AcquireConfiguredProviderLocalService = (
-diff --git a/src/agents/provider-local-service.ts b/src/agents/provider-local-service.ts
-index f4c778f1f57..0919ade77b1 100644
---- a/src/agents/provider-local-service.ts
-+++ b/src/agents/provider-local-service.ts
-@@ -196,7 +196,7 @@ async function acquireProviderLocalService(
-         !managed.processStop &&
-         !hasLocalServiceProcessExited(currentProcess.child)
-       ) {
--        return { release };
-+        return { release, owned: hasManagedProcess(managed) };
-       }
-       if (!managed.starting) {
-         // Concurrent callers share one startup promise for the same service key.
-@@ -223,7 +223,15 @@ async function acquireProviderLocalService(
-       }
-       await waitForAbort(managed.starting, signal);
-       assertCurrentServiceAcquisition(key, managed, signal);
--      return { release };
-+      const ready =
-+        !managed.processStop &&
-+        (hasManagedProcess(managed) || (await probeHealth(healthUrl, healthHeaders, signal)));
-+      assertCurrentServiceAcquisition(key, managed, signal);
-+      if (ready && !managed.processStop) {
-+        return { release, owned: hasManagedProcess(managed) };
-+      }
-+      release();
-+      return undefined;
-     } finally {
-       target.onReadinessWait?.(false);
-     }
 diff --git a/src/config/zod-schema.memory-search.ts b/src/config/zod-schema.memory-search.ts
-index 2bed2264896..c01b0379c07 100644
+index 2bed22648962b3e95d66bb2df887ca453d02cdb3..c01b0379c074d1b9ab406c3b8dc42b98ac7bfb7d 100644
 --- a/src/config/zod-schema.memory-search.ts
 +++ b/src/config/zod-schema.memory-search.ts
 @@ -44,6 +44,7 @@ export const MemorySearchSchema = z
@@ -326,7 +296,7 @@ index 2bed2264896..c01b0379c07 100644
      store: z
 diff --git a/src/gateway/server-memory-warmup.test.ts b/src/gateway/server-memory-warmup.test.ts
 new file mode 100644
-index 00000000000..4a22dcb2c8b
+index 0000000000000000000000000000000000000000..df640f440a1d894df309656c61693c491ef589ce
 --- /dev/null
 +++ b/src/gateway/server-memory-warmup.test.ts
 @@ -0,0 +1,230 @@
@@ -461,7 +431,7 @@ index 00000000000..4a22dcb2c8b
 +  it("proves two actual vectors and retains the lease until gateway stop", async () => {
 +    const owner = createGatewayMemoryWarmup(config())!;
 +    await owner.ready;
-+    expect(mocks.vectors.mock.calls[0][0]).toHaveLength(2);
++    expect(mocks.vectors.mock.calls[0]![0]).toHaveLength(2);
 +    expect(mocks.acquire).toHaveBeenCalledOnce();
 +    expect(mocks.release).not.toHaveBeenCalled();
 +    expect(mocks.close).not.toHaveBeenCalled();
@@ -525,7 +495,7 @@ index 00000000000..4a22dcb2c8b
 +      vi.advanceTimersByTimeAsync(90_000),
 +    ]);
 +    expect(mocks.release).toHaveBeenCalledOnce();
-+    expect(mocks.create.mock.calls[0][0].signal).toBe(mocks.vectors.mock.calls[0][1].signal);
++    expect(mocks.create.mock.calls[0]![0].signal).toBe(mocks.vectors.mock.calls[0]![1].signal);
 +    await owner.stop();
 +  });
 +
@@ -562,7 +532,7 @@ index 00000000000..4a22dcb2c8b
 +});
 diff --git a/src/gateway/server-memory-warmup.ts b/src/gateway/server-memory-warmup.ts
 new file mode 100644
-index 00000000000..bd85f52a2af
+index 0000000000000000000000000000000000000000..bd85f52a2afe34cdf9c53b658fbdd930c7824428
 --- /dev/null
 +++ b/src/gateway/server-memory-warmup.ts
 @@ -0,0 +1,143 @@
@@ -710,7 +680,7 @@ index 00000000000..bd85f52a2af
 +  };
 +}
 diff --git a/src/gateway/server-startup-post-attach.test.ts b/src/gateway/server-startup-post-attach.test.ts
-index 3888ea50eae..2c082546d31 100644
+index 3888ea50eaef01a0f8d4223c1a8197b89203a71f..2c082546d318a1ccf4bd5daeffa378096513933d 100644
 --- a/src/gateway/server-startup-post-attach.test.ts
 +++ b/src/gateway/server-startup-post-attach.test.ts
 @@ -60,6 +60,11 @@ import { transcriptSidecarMocks } from "./server-startup-transcripts.test-suppor
@@ -762,7 +732,7 @@ index 3888ea50eae..2c082546d31 100644
      "joins main-session marking with plugin startup (%s) before admitting channels",
      async (pluginOutcome) => {
 diff --git a/src/gateway/server-startup-post-attach.ts b/src/gateway/server-startup-post-attach.ts
-index 917b9c9911f..0b1e60be274 100644
+index 917b9c9911f593e54cf864af153eee5876c08e70..0b1e60be274f126042052d0c8573d601fbd2f8c9 100644
 --- a/src/gateway/server-startup-post-attach.ts
 +++ b/src/gateway/server-startup-post-attach.ts
 @@ -126,6 +126,7 @@ export async function startGatewaySidecars(
@@ -802,7 +772,7 @@ index 917b9c9911f..0b1e60be274 100644
                    onPostReadySidecars: params.onPostReadySidecars,
                    shouldCreatePostReadySidecars: () => params.isClosing?.() !== true,
 diff --git a/src/plugins/embedding-provider-types.ts b/src/plugins/embedding-provider-types.ts
-index 8ba5dd87484..21be05e1e70 100644
+index 8ba5dd874844683cc31429df217b777c0652fc6f..21be05e1e702b4433803c5ee3323550cfaf16e1b 100644
 --- a/src/plugins/embedding-provider-types.ts
 +++ b/src/plugins/embedding-provider-types.ts
 @@ -70,6 +70,7 @@ export type EmbeddingProvider = {
@@ -822,7 +792,7 @@ index 8ba5dd87484..21be05e1e70 100644
    dimensions?: number;
    taskType?: string;
 diff --git a/src/plugins/openai-compatible-embedding-provider.test.ts b/src/plugins/openai-compatible-embedding-provider.test.ts
-index 63705b8db09..f647baaca4a 100644
+index 63705b8db09d6c12183aefed64b4caafd1e7feca..f647baaca4a32265b5fd92313b269c706b9582e3 100644
 --- a/src/plugins/openai-compatible-embedding-provider.test.ts
 +++ b/src/plugins/openai-compatible-embedding-provider.test.ts
 @@ -10,7 +10,12 @@ import {
@@ -944,7 +914,7 @@ index 63705b8db09..f647baaca4a 100644
      const server = await startEmbeddingServer();
      for (const remoteOverride of [false, true]) {
 diff --git a/src/plugins/openai-compatible-embedding-provider.ts b/src/plugins/openai-compatible-embedding-provider.ts
-index a93baf4e38c..a5616b41001 100644
+index a93baf4e38cb171feee37b2544ea3c14fe56e960..a5616b410011423e31b660aa038992ddd7787037 100644
 --- a/src/plugins/openai-compatible-embedding-provider.ts
 +++ b/src/plugins/openai-compatible-embedding-provider.ts
 @@ -24,6 +24,7 @@ import { redactProviderResponseErrorText } from "../agents/provider-request-head
