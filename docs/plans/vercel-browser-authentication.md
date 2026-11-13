@@ -1,6 +1,6 @@
 # Replace OpenClaw browser tools with Vercel agent-browser
 
-Status: Production approved; plugin registration implementation in progress
+Status: Production approved; DEV qualification teardown repair
 Issue: https://github.com/coletaylor788/puddles/issues/353
 Last updated: 2026-11-12
 
@@ -41,7 +41,8 @@ CDP connection. Vercel still owns browser actions, login and credential storage.
 
 This uses the installed plugin API. No OpenClaw upgrade or new source patch is
 required for registration. The machine-wide Claude policy proposal is withdrawn.
-Installed DEV acceptance must still prove the plugin route with native Bash/files.
+DEV has exercised the plugin route with native Bash/files. Its teardown repair
+must pass a fresh installed run before release.
 
 The trusted Vercel process and vault remain outside Claude's Bash sandbox and
 the browser container. Vercel is unsandboxed, as requested. Native screenshots
@@ -59,7 +60,7 @@ the Vercel vault and its key stay outside the container.
 
 Extend the existing application stop helper to include this browser container.
 Stop browser writers before backup and remove test-owned containers during
-environment teardown. The helper currently covers only OpenClaw-registered containers.
+environment teardown. The helper covers both OpenClaw-registered containers and this controller.
 Keep OpenClaw's browser tool disabled for this agent so only Vercel controls it.
 The existing image uses Docker as its isolation boundary and launches Chromium
 with its internal sandbox disabled, matching the current OpenClaw container setup.
@@ -114,46 +115,38 @@ tokens to JavaScript. Report this separately from enforced vault/file isolation.
 
 **Approval:** Production approved. **Approval reference:** The requester said,
 “Sounds good. Approved to push to puddles, implement, and ship” on 2026-11-12,
-following the native Vercel, separate `srt`, and eval-with-instructions design.
-This covers implementation, review, publication, and production delivery.
+and later approved the plugin: “Yeah a plugin is fine, honestly simplifies
+registration and aligns with our repo design.” The Docker fallback is approved
+because further SRT checks found no supported solution. Native screenshot
+image-file overwrites are an accepted limitation. **Implementation limit:**
+“Remove patch. Fix via native. If you want to patch openclaw code, get my approval
+first.” No new OpenClaw patch or machine-wide Claude policy is authorized.
 
-**Implementation limit:** The requester subsequently directed: “Remove patch. Fix
-via native. If you want to patch openclaw code, get my approval first.” The proposed
-workspace MCP routing patch is removed. Use native configuration; any new
-OpenClaw code change requires explicit approval before implementation.
-**Plugin revision approval:** The requester said, “Yeah a plugin is fine, honestly
-simplifies registration and aligns with our repo design.” This approves the email
-registration pattern through OpenClaw's existing plugin API, with stock Vercel
-behind it. It replaces the prior configuration-only proposal and its runtime
-upgrade prerequisite. The original implementation and shipping approval remains
-in effect. No machine-wide policy or new OpenClaw patch is authorized.
-
-**Fallback approval:** The requester said, “If SRT is blocked and we can’t find a
-solution, approved to replace with docker, just update the design, keep seeing if
-SRT can work first.” Further stock-setting and sandbox API checks confirmed the
-compatibility problem. Docker is approved under that condition. After the
-screenshot overwrite behavior was explained, the requester said it “Feels fine”
-and clarified that the concern was code execution, exfiltration, and machine
-control. Retain the requested unsandboxed Vercel process and native screenshots;
-record image-file clobbering as an accepted limitation. Implementation and release
-validation continue. Production is unchanged.
+The plugin works through the Gateway in DEV. Native Bash succeeds, protected
+file access is denied, and the authentication-inspection request invokes no
+tools. DEV failed because Vercel's detached daemon remained during qualification
+cleanup. The repair uses native shutdown before checking remaining processes.
+Focused regressions pass; fresh DEV and production validation remain pending.
+Production is unchanged.
 
 ## Agent section
 
 ### State
 
-Public branch: `codex/vercel-browser-proposal`, based on `661f8e2d`.
-The isolated companion branch is `codex/vercel-browser-integration`, based on
-`baadebd6`. Source was refreshed before implementation. The public plan is in PR #354. The implementation is not deployed. Local changes
-include stock MCP packaging, configuration, guidance and a synthetic browser
-qualifier. Native shutdown integration and preparation-failure rollback tests
-pass. Installed acceptance and release delivery remain unfinished.
-DEV reached Vercel through native MCP but requested a Claude permission approval.
-The proposed OpenClaw routing patch was removed at the requester's direction.
-The installed routing discrepancy is diagnosed below. The approved plugin route
-uses the existing Gateway tool bridge and retains native workspace tools. The removed
-patch was never deployed, and no machine-wide policy was installed. Production is
-unchanged.
+Public branch: `codex/vercel-browser-proposal`, refreshed from `9b007786`.
+The isolated companion branch is `codex/vercel-browser-integration`, refreshed
+from `d9ccd4c2`. PR #354 contains the public implementation. The approved plugin
+uses the existing Gateway tool bridge and retains native workspace tools. The
+withdrawn routing patch was never deployed, and no machine-wide policy was
+installed. Production is unchanged.
+
+DEV run `gh-43370241480-1`, candidate
+`f1f59e6eba6af0acad97b674eddcbf0361ae4623d579c6763ed9f600e05ef725`,
+ended `failed`, `phase=complete`, `child=null` in `dev-tests`. Source queue closure
+and transfer cleanup are verified. The retained diagnostic reported remaining
+qualification consumers. The native daemon lifetime was reproduced locally and
+the test lifecycle now invokes packaged native shutdown before consumer checks.
+Fresh installed acceptance and production delivery remain pending.
 
 ### Scope and acceptance criteria
 
@@ -177,7 +170,7 @@ Use `plugins.entries.agent-browser` as the sole controller definition. The
 plugin registers the selected stock tool names and schemas. Normal per-agent
 allow/deny rules select access. Do not retain a duplicate `mcp.servers` definition.
 
-### Routing diagnosis and plugin decision
+#### Routing diagnosis and plugin decision
 
 The installed `2026.9.6` workspace path passes configured `mcp.servers` directly
 to Claude. DEV requested approval for `mcp__agent_browser__agent_browser_open`.
@@ -268,9 +261,21 @@ relocated host MCP execution, caller scope, serialization, aborts, reconnection
 without retrying actions, and joined shutdown. Browser package tests and affected
 public/private environment and packaging tests also pass with Node 26.1.0.
 
-Remaining acceptance: installed Gateway plugin tool admission and
-lifecycle; workspace Bash/file isolation; denied vault/key reads and direct CDP; ordinary eval and real
-provider refusal to inspect authentication data. No test may mutate a live account.
+The failed DEV run reached all four native provider turns. Retained transcript
+metadata confirms Gateway-prefixed navigation and eval, successful native Bash,
+denied native Read, and no tool calls for the authentication-inspection request.
+This evidence does not substitute for a passing qualification receipt.
+
+A local synthetic probe confirms that stock Vercel leaves a detached daemon with
+the fixture working directory after its MCP client closes. Native `close --all`
+removes that consumer. The qualifier now calls the existing installed
+`stopService` before verifying stopped consumers, and preserves both the primary
+failure and a cleanup failure. Fifteen focused preparation and cleanup tests pass,
+including a real detached-process detection test. Browser preparation and cleanup
+regressions are registered in the application suite.
+
+Remaining acceptance: a fresh complete DEV pass, retained review of the cleanup
+repair, and the normal TEST/PROD gates. No test may mutate a live account.
 
 ### Rollout and rollback
 
