@@ -246,18 +246,18 @@ index 9dce6d8..9dd5780 100644
 +  });
 +});
 diff --git a/extensions/copilot/src/tool-bridge.ts b/extensions/copilot/src/tool-bridge.ts
-index 4f2925c..5eda169 100644
+index 91387c142f1094ff2b3182bdda0cdef9cc9d06da..5d0e68506e4fe1bd28554921a96a8e42c63be2cd 100644
 --- a/extensions/copilot/src/tool-bridge.ts
 +++ b/extensions/copilot/src/tool-bridge.ts
-@@ -24,6 +24,7 @@ import {
+@@ -24,6 +24,7 @@
  } from "openclaw/plugin-sdk/agent-harness-runtime";
  import {
    createAgentHarnessToolSurfaceRuntimeAsync,
 +  materializeConfiguredMcpToolsForHarnessRun,
+   resolveScheduledDirectToolSource,
    type AgentHarnessToolSurfaceRuntime,
  } from "openclaw/plugin-sdk/agent-harness-tool-runtime";
- import { toStringifiedError as toCopilotToolError } from "openclaw/plugin-sdk/error-runtime";
-@@ -91,7 +92,7 @@ interface CopilotToolBridgeInput {
+@@ -92,7 +93,7 @@
  }
  
  interface CopilotToolBridge {
@@ -266,7 +266,7 @@ index 4f2925c..5eda169 100644
    codeModeEngaged?: boolean;
    promptToolPolicy: {
      requireExplicitMessageTarget?: boolean;
-@@ -180,91 +181,147 @@ export async function createCopilotToolBridge(
+@@ -181,93 +182,147 @@
    if (!createToolSurfaceAsync) {
      throw new Error("Copilot tool construction requires a current host capability");
    }
@@ -284,7 +284,9 @@ index 4f2925c..5eda169 100644
 -  // The constructor output is bound before catalog compaction so hidden tools
 -  // cannot outlive the attempt. Bind only controls created by compaction here;
 -  // rebinding retained tools would stack the before-tool hook.
--  const newlyConstructedTools = compactedTools.tools.filter((tool) => !boundSourceTools.has(tool));
+-  const newlyConstructedTools = compactedTools.tools.filter(
+-    (tool) => !boundSourceTools.has(resolveScheduledDirectToolSource(tool) as AnyAgentTool),
+-  );
 -  const boundNewlyConstructedTools =
 -    newlyConstructedTools.length > 0
 -      ? hostCapabilities.bindToolSurface(newlyConstructedTools, bindingOptions)
@@ -305,6 +307,20 @@ index 4f2925c..5eda169 100644
 -  if (duplicateNames.length > 0) {
 -    throw new Error(`[copilot-tool-bridge] duplicate tool names: ${duplicateNames.join(", ")}`);
 -  }
+-
+-  // The pooled SDK client dispatches handlers in the context of the turn that
+-  // opened it, whose async work scope is closed by a later turn.
+-  const runInAttemptContext = AsyncLocalStorage.snapshot();
+-  let sequentialBarrier = Promise.resolve();
+-  const pendingCalls = new Set<Promise<void>>();
+-  const scheduleToolExecution: ScheduleToolExecution = (executionMode, execute) => {
+-    // SDK handlers arrive independently. An exclusive call waits for earlier
+-    // work across the attempt and blocks later calls, regardless of tool name.
+-    const ready = executionMode === "sequential" ? Promise.all(pendingCalls) : sequentialBarrier;
+-    const run = ready.then(() => runInAttemptContext(execute));
+-    const settled = run.then(
+-      () => undefined,
+-      () => undefined,
 +  let configuredMcp:
 +    | Awaited<ReturnType<typeof materializeConfiguredMcpToolsForHarnessRun>>
 +    | undefined;
@@ -350,20 +366,7 @@ index 4f2925c..5eda169 100644
 +      sourceTools.push(...hostCapabilities.bindToolSurface(configuredMcp.tools, bindingOptions));
 +    }
 +    const boundSourceTools = new Set(sourceTools);
- 
--  // The pooled SDK client dispatches handlers in the context of the turn that
--  // opened it, whose async work scope is closed by a later turn.
--  const runInAttemptContext = AsyncLocalStorage.snapshot();
--  let sequentialBarrier = Promise.resolve();
--  const pendingCalls = new Set<Promise<void>>();
--  const scheduleToolExecution: ScheduleToolExecution = (executionMode, execute) => {
--    // SDK handlers arrive independently. An exclusive call waits for earlier
--    // work across the attempt and blocks later calls, regardless of tool name.
--    const ready = executionMode === "sequential" ? Promise.all(pendingCalls) : sequentialBarrier;
--    const run = ready.then(() => runInAttemptContext(execute));
--    const settled = run.then(
--      () => undefined,
--      () => undefined,
++
 +    const allowedSourceTools = applyEmbeddedAttemptToolsAllow(
 +      sourceTools,
 +      toolSurfaceRuntime.runtimeToolAllowlist,
@@ -373,22 +376,7 @@ index 4f2925c..5eda169 100644
 -    void settled.then(() => pendingCalls.delete(settled));
 -    if (executionMode === "sequential") {
 -      sequentialBarrier = settled;
-+    const compactedTools = toolSurfaceRuntime.compactTools(allowedSourceTools, {
-+      localModelLeanApplied: true,
-+    });
-+    // The constructor output is bound before catalog compaction so hidden tools
-+    // cannot outlive the attempt. Bind only controls created by compaction here;
-+    // rebinding retained tools would stack the before-tool hook.
-+    const newlyConstructedTools = compactedTools.tools.filter(
-+      (tool) => !boundSourceTools.has(tool),
-+    );
-+    const boundNewlyConstructedTools =
-+      newlyConstructedTools.length > 0
-+        ? hostCapabilities.bindToolSurface(newlyConstructedTools, bindingOptions)
-+        : newlyConstructedTools;
-+    if (boundNewlyConstructedTools.length !== newlyConstructedTools.length) {
-+      throw new Error("Copilot host capability changed the tool surface length.");
-     }
+-    }
 -    return run;
 -  };
 -  const sdkTools = exposedTools.map((sourceTool) =>
@@ -415,6 +403,22 @@ index 4f2925c..5eda169 100644
 -          callableToolNames: result.callableToolNames,
 -          toolSchemaDirectoryPrompt: result.toolSchemaDirectoryPrompt,
 -        };
++    const compactedTools = toolSurfaceRuntime.compactTools(allowedSourceTools, {
++      localModelLeanApplied: true,
++    });
++    // The constructor output is bound before catalog compaction so hidden tools
++    // cannot outlive the attempt. Bind only controls created by compaction here;
++    // rebinding retained tools would stack the before-tool hook.
++    const newlyConstructedTools = compactedTools.tools.filter(
++      (tool) => !boundSourceTools.has(resolveScheduledDirectToolSource(tool) as AnyAgentTool),
++    );
++    const boundNewlyConstructedTools =
++      newlyConstructedTools.length > 0
++        ? hostCapabilities.bindToolSurface(newlyConstructedTools, bindingOptions)
++        : newlyConstructedTools;
++    if (boundNewlyConstructedTools.length !== newlyConstructedTools.length) {
++      throw new Error("Copilot host capability changed the tool surface length.");
++    }
 +    const newlyBoundTools = new Map<AnyAgentTool, AnyAgentTool>();
 +    for (let index = 0; index < newlyConstructedTools.length; index += 1) {
 +      newlyBoundTools.set(newlyConstructedTools[index]!, boundNewlyConstructedTools[index]!);

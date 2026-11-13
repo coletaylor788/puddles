@@ -162,9 +162,9 @@
     "src/auto-reply/reply/memory-flush-session.test.ts": "infra",
     "src/gateway/tool-resolution.test.ts": "gateway-database-workers",
     "src/agents/session-maintenance/compaction-memory-input.test.ts": "unit-fast",
-    "src/agents/session-maintenance/compaction-memory-jobs.test.ts": "infra",
-    "src/agents/session-maintenance/compaction-memory.test.ts": "infra",
-    "src/agents/session-maintenance/compaction-memory.capture.test.ts": "infra",
+    "src/agents/session-maintenance/compaction-memory-jobs.test.ts": "agents-support",
+    "src/agents/session-maintenance/compaction-memory.test.ts": "agents-support",
+    "src/agents/session-maintenance/compaction-memory.capture.test.ts": "agents-support",
     "src/agents/session-maintenance/idle.test.ts": "agents-support",
     "src/agents/subagents/registry/subagent-registry.persistence.resume.test.ts": "agents-support",
     "extensions/anthropic/cli-runtime.test.ts": "extension-providers",
@@ -176,7 +176,7 @@
     "src/agents/tools/yield-gather-state.test.ts": "unit-fast",
     "src/agents/tools/yield-descendant-gather.test.ts": "agents-tools",
     "src/agents/subagents/registry/subagent-registry-yield-gather.test.ts": "agents-support",
-    "src/agents/harness/tool-surface-bridge.test.ts": "unit-fast",
+    "src/agents/harness/tool-surface-bridge.test.ts": "unit-fast-isolated",
     "src/agents/code-mode.config.test.ts": "unit-fast",
     "src/agents/embedded-agent-runner/terminal-tool-failure.test.ts": "unit-fast",
     "src/agents/sessions/tools/tool-definition-wrapper.test.ts": "unit-fast",
@@ -186,10 +186,8 @@
     "src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts": "agents-support",
     "src/plugins/code-mode-executor.test.ts": "plugins",
     "extensions/copilot/src/tool-bridge.test.ts": "extension-database-workers",
-    "src/agents/code-mode.guest.test.ts": "agents-core",
     "src/agents/embedded-agent-runner/skill-runtime.library-read.test.ts": "infra",
     "src/agents/embedded-agent-runner/skill-runtime.workspace.test.ts": "agents-embedded-agent",
-    "src/agents/embedded-agent-runner/run/attempt-tool-catalog.test.ts": "agents-embedded-agent-run",
     "src/gateway/mcp-http.test.ts": "gateway-database-workers",
     "src/gateway/mcp-http.runtime.test.ts": "gateway",
     "src/gateway/mcp-http.handlers.network-error.test.ts": "gateway",
@@ -202,13 +200,13 @@
     "src/gateway/mcp-grant-store.test.ts": "gateway",
     "src/agents/session-maintenance/native-idle.test.ts": "unit-fast",
     "src/agents/session-maintenance/run.native-idle.test.ts": "agents-support",
-    "src/auto-reply/reply/agent-runner-maintenance.test.ts": "auto-reply-reply",
+    "src/auto-reply/reply/agent-runner-maintenance.test.ts": "auto-reply",
     "src/agents/command/maintenance.test.ts": "agents-support",
     "src/agents/cli-runner/execute.supervisor-capture.test.ts": "agents-support",
     "src/agents/command/claude-cli-project-dir.test.ts": "agents-support",
     "src/agents/command/attempt-execution.test.ts": "agents-support",
     "src/agents/cli-runner/cli-run-settlement.test.ts": "agents-support",
-    "src/auto-reply/reply/agent-runner-memory.native-idle.test.ts": "auto-reply-reply",
+    "src/auto-reply/reply/agent-runner-memory.native-idle.test.ts": "auto-reply",
     "extensions/anthropic/cli-profile.test.ts": "extension-providers",
     "src/agents/cli-runner/execute-plugin.policy.test.ts": "agents-support",
     "src/agents/exec-defaults.test.ts": "agents-core",
@@ -219,7 +217,7 @@
     "src/tui/embedded-backend.test.ts": "tui",
     "src/agents/tools/embedded-gateway-stub.history.test.ts": "agents-tools",
     "src/commands/doctor-claude-cli.test.ts": "commands",
-    "src/gateway/mcp-http.code-mode.test.ts": "gateway-core",
+    "src/gateway/mcp-http.code-mode.test.ts": "gateway",
     "src/agents/agent-bundle-mcp-harness.test.ts": "agents-core",
     "extensions/copilot/src/tool-bridge.host-surface.test.ts": "extensions",
     "src/agents/cli-runner/prepare.configured-mcp.test.ts": "agents-support",
@@ -229,14 +227,17 @@
     "src/commands/doctor-maintenance.agent-schema.test.ts": "commands",
     "src/agents/subagents/registry/subagent-list.untrusted.test.ts": "unit-fast",
     "src/agents/tools/sessions-send-tokens.test.ts": "unit-fast",
-    "src/gateway/talk/client-permission-parity.test.ts": "gateway",
-    "src/gateway/talk/relay/transcript-readiness.test.ts": "gateway",
+    "src/gateway/talk/client-permission-parity.test.ts": "gateway-database-workers",
+    "src/gateway/talk/relay/transcript-readiness.test.ts": "gateway-database-workers",
     "src/process/gateway-work-admission.test.ts": "process",
     "src/process/gateway-work-admission.continuation.test.ts": "process",
     "src/config/config.talk-validation.test.ts": "runtime-config",
+    "src/gateway/mcp-http.memory-flush.test.ts": "gateway",
+    "src/agents/cli-runner/loopback-bundle-mcp.test.ts": "agents-support",
     "src/gateway/talk/carrier-provider.test.ts": "gateway-core",
     "test/scripts/service-child-ownership-bundle.test.ts": "tooling",
-    "extensions/openai/realtime-quicksilver-gateway-consult-race.test.ts": "extension-provider-openai"
+    "extensions/openai/realtime-quicksilver-gateway-consult-race.test.ts": "extension-provider-openai",
+    "src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts": "agents-core"
   },
   "patches": [
     {
@@ -585,9 +586,8 @@
         "extensions/copilot/src/tool-bridge.test.ts",
         "src/agents/code-mode-executor.test.ts",
         "src/agents/code-mode.config.test.ts",
-        "src/agents/code-mode.guest.test.ts",
         "src/agents/code-mode.test.ts",
-        "src/agents/embedded-agent-runner/run/attempt-tool-catalog.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts",
         "src/agents/embedded-agent-runner/skill-runtime.library-read.test.ts",
         "src/agents/embedded-agent-runner/skill-runtime.workspace.test.ts",
         "src/agents/embedded-agent-runner/terminal-tool-failure.test.ts",
@@ -613,7 +613,8 @@
         "src/gateway/mcp-http.test.ts",
         "src/gateway/mcp-grant-store.test.ts",
         "src/gateway/mcp-http.code-mode.test.ts",
-        "src/agents/harness/tool-surface-bridge.test.ts"
+        "src/agents/harness/tool-surface-bridge.test.ts",
+        "src/agents/cli-runner/prepare.test.ts"
       ]
     },
     {
@@ -645,7 +646,9 @@
         "src/agents/command/claude-cli-project-dir.test.ts",
         "src/agents/command/attempt-execution.test.ts",
         "src/agents/cli-runner/cli-run-settlement.test.ts",
-        "src/auto-reply/reply/agent-runner-memory.native-idle.test.ts"
+        "src/auto-reply/reply/agent-runner-memory.native-idle.test.ts",
+        "src/gateway/mcp-http.memory-flush.test.ts",
+        "src/gateway/mcp-grant-store.test.ts"
       ]
     },
     {
@@ -684,6 +687,7 @@
       "tests": [
         "extensions/anthropic/cli-profile.test.ts",
         "src/agents/cli-runner/prepare.configured-mcp.test.ts",
+        "src/agents/cli-runner/loopback-bundle-mcp.test.ts",
         "src/agents/cli-runner/prepare.test.ts",
         "src/gateway/mcp-http.configured-tools.test.ts",
         "src/gateway/mcp-http.runtime.test.ts",

@@ -2,7 +2,7 @@
 
 This opt-in patch keeps native Claude file operations and shell sandboxing while
 preserving OpenClaw's policy vetoes and human approval delivery. It targets the
-pinned OpenClaw 2026.9.6 source and requires Claude Code 2.1.301 or newer.
+pinned OpenClaw 2026.11.3 source and requires Claude Code 2.1.301 or newer.
 
 ## Permission flow
 
@@ -53,3 +53,16 @@ provenance, so a node-only `exec` cannot become gateway execution when names are
 frozen. Native file tools stay outside the script catalog. Empty MCP limits add
 no controls. Registered preparation tests exercise workspace, diagnostic and
 restricted profiles with direct and scripted calls and disconnected nodes.
+
+## Stable compatibility
+
+Stable normalizes launch arguments later, at execution time. Selected profiles
+retain their explicit empty settings sources through that step. Unselected agents
+keep native normalization. Profile restrictions still pass through the native
+exact-tool transformation, effort handling and host-owned tool denials.
+
+History reads use stable's asynchronous file lookup and indexed import. Only the
+selected login directory is added to their existing inputs. Native async context
+binding restores approval and question callbacks; the older manual request-scope
+copy is unnecessary. Tests retain the source authority, cancellation and session
+lifetime checks around those callbacks.
