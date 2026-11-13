@@ -1,6 +1,6 @@
 # iMessage group event policy
 
-OpenClaw 2026.9.6's iMessage adapter marks every inbound message as a user
+OpenClaw 2026.11.3's iMessage adapter marks every inbound message as a user
 request. That ignores `messages.groupChat.unmentionedInbound: "room_event"`
 and the corresponding per-agent setting. An unmentioned group message then
 requires a visible answer even when the model deliberately returns `NO_REPLY`.
@@ -12,7 +12,9 @@ user requests. The default group policy stays unchanged. Explicit per-agent
 policy takes precedence over the global setting.
 
 The route regression checks both context and admission evidence for those
-cases. The shared classifier tests remain in the cumulative pool. Installed
+cases. Its stable port retains the native bound-session tests for permitted,
+revoked, reassigned and unavailable owners, and uses the current agent-entry
+configuration. Composed runtime qualification remains pending. The shared classifier tests remain in the cumulative pool. Installed
 scenarios exercise silent group completion and required direct replies through
 the recording bridge. The terminal-completion patch remains test-only because
 the defect occurs before terminal processing, at inbound classification.
