@@ -292,7 +292,7 @@ index 0000000..9ded680
 +  return 78;
 +}
 diff --git a/extensions/facetime/scripts/inject-helper.sh b/extensions/facetime/scripts/inject-helper.sh
-index 88d7d8f..c216e01 100755
+index 88d7d8f..c216e01 100644
 --- a/extensions/facetime/scripts/inject-helper.sh
 +++ b/extensions/facetime/scripts/inject-helper.sh
 @@ -85,6 +85,10 @@ EOF

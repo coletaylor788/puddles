@@ -1,6 +1,6 @@
 # Talk request recovery
 
-This patch follows the existing public patch set on OpenClaw 2026.9.6. It keeps
+This patch follows the existing public patch set on OpenClaw 2026.11.3. It keeps
 natural task-status questions on the host control path and avoids interpreting
 ordinary discussion beginning with "also" as an instruction to queue work.
 Precise status questions also match after earlier discussion in a continuous
@@ -22,6 +22,19 @@ After a terminal outcome, the live model can send another contextual request.
 This adds no automatic retry loop, steering capability, or queue. Reader behavior
 and the selected harness adapter remain unchanged. Cancellation and connection
 ownership still fence late results.
+
+The gateway-and-provider completion race lives in
+`extensions/openai/realtime-quicksilver-gateway-consult-race.test.ts`, using the
+native gateway fixture and real run registry and control adapter. Both success
+and failure still preserve the original outcome, refuse unaccepted overlap,
+and permit a later request. The core gateway fixture retains its independent
+pending-admission case. Keeping provider integration tests under the extension
+preserves the native core type boundary.
+
+The sideband steering regression expects the explicit refusal for a displaced
+middle request while retaining one accepted run and final delivery only to the
+latest admitted delegation. Test registration uses the native fixture's current
+lease contract, and teardown joins the held operations before fixture reset.
 
 The cumulative suite runs source regressions and the installed Talk concurrency
 scenario. Its backend and provider are recording doubles with network access
