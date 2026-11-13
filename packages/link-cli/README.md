@@ -23,6 +23,10 @@ protected `LINK_AUTH_FILE`; each has a fixed `PUDDLES_LINK_CAPABILITY`. Native
 agent tool allow/deny policies and sandbox tool policies enforce their respective
 namespaces. Other agents receive explicit namespace denials. Do not expose a
 general shell or generic dispatcher. Keep all connection paths in host settings.
+For native Claude workspace profiles, composition adds exact Link MCP grants to
+`allowedMcpTools`. This removes redundant tool confirmation while preserving
+OpenClaw policy, Link consent, and manual payment approval. Restricted profiles
+continue using their exact host MCP allowance.
 
 Install only `link-financial-insights` in main's workspace and `link-payments`
 in the personal browser's workspace. Copy their official reference documents

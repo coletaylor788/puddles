@@ -98,6 +98,10 @@ It requests approval through Link, which sends the owner a push notification.
 The owner approves or denies in Link. The browser polls that same request with
 a time limit, checks its authoritative status, and retrieves the credential only
 after approval. All payment operations stay between the browser, CLI, and Link.
+The scoped Link tools do not request an additional OpenClaw confirmation. Native
+workspace profiles preauthorize exact Link operations; the restricted browser
+uses its existing permitted tool bridge. Link still controls sign-in consent and
+each payment decision. Other tool approvals and explicit policy denials remain.
 Validate direct Link notification and approval during onboarding;
 if approval never arrives, report the timeout rather than creating another request.
 
@@ -142,6 +146,12 @@ and interactive first-use authentication. Approval includes the described policy
 exception, implementation, publication, CI deployment, rollback, and cleanup.
 No real purchase is authorized by setup.
 
+**Correction approval:** Production approved. **Approval reference:** On
+2026-11-12 the requester said “Yes. Fix it” after approving removal of additional
+OpenClaw confirmations for the scoped Link tools. Link sign-in consent and payment
+approval, per-agent restrictions, and unrelated tool approvals remain in place.
+The correction is in development; it has not yet been deployed.
+
 Link is installed in production. Main has financial insights and the personal
 browser has payments, with direct Link owner approval. Interactive login remains
 available on first use; no live account connection or purchase was performed.
@@ -155,6 +165,16 @@ can prove they are no longer needed.
 ## Agent section
 
 ### State
+
+- The approved confirmation correction uses exact native MCP grants for the
+  agent's existing Link operations. Workspace profiles pass those grants through
+  Claude's native settings. Restricted runs retain their exact host MCP allowance.
+  OpenClaw policy and hooks still veto disallowed calls. No global permission mode
+  or generic approval resolver changes.
+- Installed qualification must fail on any generic approval request. It no longer
+  accepts synthetic OpenClaw approvals to complete Link onboarding. Link's local
+  approval fixture still checks that pending payments do not expose credentials.
+- Correction branch: `codex/link-tool-approval-fix`, based on public `661f8e2d`.
 
 - Implementation branch `codex/link-main-setup` landed through PR #349.
 - Public starting revision: `a2a5338d`.
