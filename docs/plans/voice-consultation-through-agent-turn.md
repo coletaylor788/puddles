@@ -63,7 +63,7 @@ The complete repair still must prove one continuous scenario: delegate research,
 
 **Approval reference:** “One change. Make it have two phases, that follow dev process independently. I.e we upgrade first, safely roll to prod, then we make the patch and safely roll to prod. Upgrade is holistically ensuring existing tests and behavior doesn’t break. Then approved to ship, push, and implement” (2026-11-13).
 
-**Progress:** Phase 1 is in progress. Both source branches were refreshed onto main while preserving research. Stable component checks passed; maintained patch compatibility and complete application qualification remain open. Phase 2 implementation has not started. The held first repair remains excluded.
+**Progress:** Phase 1 is in progress. Both source branches were refreshed onto main while preserving research. Stable component checks and public plugin compilation/unit tests passed. Maintained patch ports and complete application qualification remain open. Phase 2 implementation has not started. The held first repair remains excluded.
 
 ## Agent section
 
@@ -73,7 +73,7 @@ Selected target: `v2026.11.3`, commit `847611dcaa3bf0e2783335f961dd1fd0580e4d9f`
 
 Main `466a4b6f5073b5fe83b6a0b479a6dfc8392c82e4` is comparison evidence only. The previous proposal's main-based unified-controller and ambient `withSessionTurn` assumptions do not describe stable and are superseded here.
 
-The isolated stable checkout has no tracked or untracked source changes after qualification. Its frozen lockfile was installed using Node 26.1.0 and pnpm 12.15.0. Dependency setup took 35.7 seconds with the shared package store. Tests used isolated fixture state, without live model requests, external messages or production changes.
+The initial stable qualification ran on an unmodified checkout with Node 26.1.0 and pnpm 12.15.0. The isolated checkout now holds ordered compatibility ports of the existing patch stack. Tests use isolated fixture state, without external messages or production changes.
 
 ### Scope and acceptance criteria
 
@@ -124,6 +124,8 @@ Upgrade compatibility includes the integrity-bound pnpm 12.15.0 toolchain and na
 5. Independently build, qualify DEV, run the full release gate, qualify TEST and PROD, merge and close cleanup. Phase 1 evidence is baseline evidence, not release clearance for changed inputs.
 
 ### Validation
+
+Phase 1 local compatibility: all eight public plugins compile against the pinned `openclaw@2026.11.3` SDK. Their existing suites pass 364 tests with no skips. The public lockfile was regenerated and installed using pnpm 12.15.0 and the shared store. The first dependency-order check required building `mcp-hooks`; compilation then passed. These checks do not replace the complete application or installed candidate gates.
 
 Completed on unmodified `847611dcaa3bf0e2783335f961dd1fd0580e4d9f`:
 
