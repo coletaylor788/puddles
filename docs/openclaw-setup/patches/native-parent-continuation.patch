@@ -2,7 +2,7 @@ diff --git a/src/agents/subagents/registry/subagent-registry.persistence.resume.
 index 253998e11fa..5657ad43f4e 100644
 --- a/src/agents/subagents/registry/subagent-registry.persistence.resume.test.ts
 +++ b/src/agents/subagents/registry/subagent-registry.persistence.resume.test.ts
-@@ -566,6 +566,28 @@ describe("subagent registry persistence resume", () => {
+@@ -566,6 +566,31 @@ describe("subagent registry persistence resume", () => {
      });
    });
  
@@ -15,6 +15,9 @@ index 253998e11fa..5657ad43f4e 100644
 +        toolCallId: "previous-yield",
 +        createdAt: Date.now(),
 +      };
++      if (!run.delivery) {
++        throw new Error("expected suspended delivery state");
++      }
 +      Object.assign(run.delivery, { yieldGatherHandoff: handoff });
 +      saveSubagentRegistryToSqlite(new Map([[run.runId, run]]));
 +      await mod.initSubagentRegistry();
