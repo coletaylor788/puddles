@@ -20,3 +20,18 @@ test('composition preserves other tools and exposes exact native namespaces to t
   for (const id of ['reader', 'household']) assert.deepEqual(after.agents.entries[id].tools.deny, ['link_financial__*', 'link_payments__*']);
   assert.equal(after.mcp.servers.link_financial.env.LINK_AUTH_FILE, after.mcp.servers.link_payments.env.LINK_AUTH_FILE);
 });
+
+test('native MCP permissions are exact, role scoped, and preserve unrelated approvals', () => {
+  const before = { agents: { entries: { main: {}, 'browser-agent': { tools: { allow: ['browser'] } }, reader: {} } },
+    plugins: { entries: { anthropic: { config: { cliProfiles: {
+      main: { mode: 'workspace', allowedMcpTools: ['mcp__existing__read'] },
+      'browser-agent': { mode: 'restricted' }, reader: { mode: 'workspace' },
+    } } } } } };
+  const after = configureLink(before, settings);
+  const profiles = after.plugins.entries.anthropic.config.cliProfiles;
+  assert.deepEqual(profiles.main.allowedMcpTools, ['mcp__existing__read', ...authTools, ...insightTools].map((name, i) => i ? 'mcp__link_financial__' + name : name));
+  assert.deepEqual(profiles['browser-agent'], before.plugins.entries.anthropic.config.cliProfiles['browser-agent']);
+  assert.deepEqual(profiles.reader, before.plugins.entries.anthropic.config.cliProfiles.reader);
+  assert.deepEqual(after, configureLink(after, settings));
+  assert.deepEqual(before.plugins.entries.anthropic.config.cliProfiles.main.allowedMcpTools, ['mcp__existing__read']);
+});

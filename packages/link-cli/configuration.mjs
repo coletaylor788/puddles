@@ -28,6 +28,12 @@ export function configureLink(before, { node, cli, authFile, clientName, apiBase
       agent.tools[field] = add(agent.tools[field], allowed);
       agent.tools.sandbox ??= {}; agent.tools.sandbox.tools ??= {};
       agent.tools.sandbox.tools.alsoAllow = add(agent.tools.sandbox.tools.alsoAllow, allowed);
+      // Native workspace clients otherwise ask again before calling the scoped
+      // MCP server. Link owns account consent and payment approval.
+      const profile = config.plugins?.entries?.anthropic?.config?.cliProfiles?.[id];
+      if (profile && ['workspace', 'diagnostic'].includes(profile.mode)) {
+        profile.allowedMcpTools = add(profile.allowedMcpTools, allowed.map(name => 'mcp__' + name));
+      }
     }
   }
   return config;

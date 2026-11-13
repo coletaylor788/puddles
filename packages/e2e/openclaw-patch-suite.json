@@ -685,6 +685,7 @@
     {
       "name": "claude-configured-mcp",
       "tests": [
+        "extensions/anthropic/cli-profile.test.ts",
         "src/agents/cli-runner/prepare.configured-mcp.test.ts",
         "src/agents/cli-runner/prepare.test.ts",
         "src/gateway/mcp-http.configured-tools.test.ts",
