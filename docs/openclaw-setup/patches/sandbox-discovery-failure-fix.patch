@@ -1,8 +1,8 @@
 diff --git a/src/commands/sandbox.test.ts b/src/commands/sandbox.test.ts
-index a663355e4..7a81232df 100644
+index bd7bdf0..280608d 100644
 --- a/src/commands/sandbox.test.ts
 +++ b/src/commands/sandbox.test.ts
-@@ -330,6 +330,28 @@ describe("sandboxRecreateCommand", () => {
+@@ -299,6 +299,28 @@ describe("sandboxRecreateCommand", () => {
    });
  
    describe("execution", () => {
@@ -31,18 +31,3 @@ index a663355e4..7a81232df 100644
      it.each(scopes)(
        "preserves browser=$browser in no-match advice",
        async ({ browser, command }) => {
-diff --git a/src/commands/sandbox.ts b/src/commands/sandbox.ts
-index dc2f8994c..324abd4a1 100644
---- a/src/commands/sandbox.ts
-+++ b/src/commands/sandbox.ts
-@@ -126,8 +126,8 @@ function validateRecreateOptions(opts: SandboxRecreateOptions, runtime: RuntimeE
- }
- 
- async function fetchAndFilterContainers(opts: SandboxRecreateOptions): Promise<FilteredContainers> {
--  const allContainers = await listSandboxContainers();
--  const allBrowsers = await listSandboxBrowsers();
-+  const allContainers = opts.browser ? [] : await listSandboxContainers();
-+  const allBrowsers = opts.browser ? await listSandboxBrowsers() : [];
- 
-   let containers = opts.browser ? [] : allContainers;
-   let browsers = opts.browser ? allBrowsers : [];
