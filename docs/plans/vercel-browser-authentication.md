@@ -16,8 +16,9 @@ sandboxed Bash, and native file tools in the browser agent's workspace profile.
 graph TD
     A["OpenClaw"] --> B["Browser agent using Claude Code CLI"]
     B --> C["Sandboxed Bash and native file tools"]
-    B --> G["OpenClaw host MCP bridge"]
-    G --> D["Stock Vercel MCP on the trusted host"]
+    A --> G["Native MCP configuration and tool policy"]
+    G --> B
+    B -->|"MCP"| D["Stock Vercel MCP on the trusted host"]
     V["Vercel encrypted vault on the host"] --> D
     D -->|"CDP"| E["Chromium in Docker"]
     E --> F["Website"]
@@ -26,8 +27,10 @@ graph TD
 #### Use Vercel directly
 
 Register Vercel's native `agent-browser mcp` server through OpenClaw's existing
-configured-MCP support. The host bridge applies the browser agent's tool policy;
-Vercel supplies the upstream tools and behavior, including auth and page evaluation.
+configured-MCP support. OpenClaw applies the browser agent's tool policy before
+Claude receives the MCP configuration. Claude's native MCP connection reaches
+Vercel outside its Bash sandbox. Vercel supplies the upstream tools and behavior,
+including auth and page evaluation.
 The trusted Vercel process runs outside Claude's Bash sandbox and attaches through
 CDP. Agent Bash/file tools and the browser process must not read the vault or key.
 
@@ -156,10 +159,19 @@ Vercel's [MCP implementation](https://github.com/vercel-labs/agent-browser/blob/
 delegates to its CLI, including native auth. Use host-owned configuration and a
 protected service environment. There is no custom Vercel API wrapper.
 
-Current main includes [configured MCP for Claude](../openclaw-setup/patches/claude-configured-mcp.md).
-It holds configured MCP tools on the host and grants them through the existing
-OpenClaw bridge. Prefer that supported path over changing Claude's raw MCP config.
-Verify it with the browser's workspace profile and effective per-agent policy.
+Current main supports native configured MCP with effective per-agent tool filtering.
+The workspace profile exposes the selected native server to Claude; restricted
+profiles can instead use the existing host bridge. Both run the MCP process outside
+the Bash sandbox. Use the existing native workspace path and qualify exact tool
+names, native Bash/file access, and vault/profile/CDP denial. Do not add OpenClaw
+code changes without the requester's explicit approval.
+
+The native workspace profile ignores user/project Claude settings and preapproves
+only the OpenClaw bridge namespace. The Vercel calls therefore need native Claude
+permission rules. A proposed managed policy contains only the 50 selected browser
+tool names. It would apply to Claude sessions across the Mini, so this broader
+policy scope is not yet approved or installed. No shell/file permission changes
+are proposed.
 
 CDP attach cannot use Vercel's domain allowlist. Check direct CDP denial from
 agent Bash and use the browser's process boundary for filesystem restrictions.
