@@ -1082,3 +1082,108 @@
    let nativeCreatorTools = (params.nativeCronCreatorToolAllowlist ?? []).map((name) => ({ name }));
    const declaredToolAllowlist = buildDeclaredToolAllowlistContext({
      config: params.cfg,
+--- a/extensions/anthropic/cli-profile.test.ts
++++ b/extensions/anthropic/cli-profile.test.ts
+@@ -60,6 +60,53 @@
+     });
+     expect(changed.args).not.toEqual(selected.args);
+   });
++  it("preauthorizes only exact configured MCP operations on fresh and resumed workspace runs", () => {
++    const ctx = context("workspace");
++    const profile = ctx.config!.plugins!.entries!.anthropic!.config!.cliProfiles as Record<
++      string,
++      { allowedMcpTools?: string[] }
++    >;
++    profile.selected!.allowedMcpTools = [
++      "mcp__link_financial__auth_status",
++      "mcp__link_financial__balances_list",
++    ];
++    const selected = applyClaudeAgentProfile(base, ctx);
++    for (const args of [selected.args!, selected.resumeArgs!]) {
++      expect(settings(args).permissions.allow).toEqual([
++        "Edit(//tmp/workspace/**)",
++        ...profile.selected!.allowedMcpTools,
++      ]);
++      expect(settings(args).permissions.deny).toContain("Read(//tmp/workspace/private/**)");
++      const restricted = resolveClaudeCliExecutionArgs({
++        workspaceDir: "/tmp/workspace",
++        provider: "claude-cli",
++        modelId: "haiku",
++        useResume: false,
++        baseArgs: args,
++        toolAvailability: { native: [], openClaw: ["memory_search"] },
++      });
++      expect(settings(restricted).permissions).toBeUndefined();
++      expect(restricted[restricted.indexOf("--allowedTools") + 1]).toBe(
++        "mcp__openclaw__memory_search",
++      );
++    }
++    expect(applyClaudeAgentProfile(base, { ...ctx, agentId: "other" })).toBe(base);
++  });
++  it.each([
++    "Bash",
++    "mcp__link_financial__*",
++    "mcp__link_financial",
++    "mcp__link_financial__auth_status,Bash",
++    "mcp__link_financial__auth_status(*)",
++  ])("rejects non-exact MCP preauthorization %s", (name) => {
++    const ctx = context("workspace");
++    const profiles = ctx.config!.plugins!.entries!.anthropic!.config!.cliProfiles as Record<
++      string,
++      { allowedMcpTools?: string[] }
++    >;
++    profiles.selected!.allowedMcpTools = [name];
++    expect(() => applyClaudeAgentProfile(base, ctx)).toThrow("exact MCP tools");
++  });
+   it("clears inherited service secrets even when their names look harmless", () => {
+     vi.stubEnv("NEUTRAL_CONFIG_VALUE", "synthetic-not-a-secret");
+     try {
+--- a/extensions/anthropic/cli-profile.ts
++++ b/extensions/anthropic/cli-profile.ts
+@@ -10,6 +10,7 @@
+ type ClaudeAgentProfile = {
+   mode: "workspace" | "diagnostic" | "restricted";
+   protectedPaths?: string[];
++  allowedMcpTools?: string[];
+ };
+ type ClaudeProfileConfig = {
+   cliConfigDir?: string;
+@@ -109,6 +110,12 @@
+   }
+   // Discovery can normalize before a workspace is admitted. Only execution owns the root.
+   if (!context?.workspaceDir) return { ...config, env, clearEnv, strictClearEnv: true };
++  const allowedMcpTools = [...new Set(profile.allowedMcpTools ?? [])];
++  if (allowedMcpTools.some((name) => !/^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+$/u.test(name))) {
++    throw new Error(
++      "Claude profile allowedMcpTools must name exact MCP tools without permission rules or wildcards.",
++    );
++  }
+   const workspace = absolutePath(context.workspaceDir);
+   const protectedPaths = [
+     ...new Set(
+@@ -132,7 +139,7 @@
+     permissions: {
+       defaultMode: "default",
+       blockReadsOutsideWorkingDirectories: profile.mode === "workspace",
+-      allow: [`Edit(/${workspace}/**)`],
++      allow: [`Edit(/${workspace}/**)`, ...allowedMcpTools],
+       deny: deniedPaths.flatMap((entry) => [
+         `Read(/${entry})`,
+         `Read(/${entry}/**)`,
+--- a/extensions/anthropic/openclaw.plugin.json
++++ b/extensions/anthropic/openclaw.plugin.json
+@@ -491,6 +491,14 @@
+                 "restricted"
+               ]
+             },
++            "allowedMcpTools": {
++              "type": "array",
++              "description": "Exact MCP tools preauthorized in workspace or diagnostic profiles. Host tool policy still applies. Restricted runs retain their own tool allowance.",
++              "items": {
++                "type": "string",
++                "pattern": "^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+$"
++              }
++            },
+             "protectedPaths": {
+               "type": "array",
+               "items": {

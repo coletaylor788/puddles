@@ -393,5 +393,10 @@ OpenClaw policy vetoes run before native actions. Passing that check continues C
 permission evaluation; it is not an execution grant. Claude can allow workspace edits
 without prompting. When Claude requests an exception, OpenClaw asks for allow once or
 deny without standing grants or automatic approval. Explicit denials remain effective.
+The approved Link exception preauthorizes only the agent's exact Link MCP operations
+in its native workspace profile. Link retains sign-in consent and manual payment
+approval. These calls still pass OpenClaw tool policy and hooks. Restricted agents
+keep their existing exact MCP allowance, and other native tools keep their approval
+behavior. Wildcards and shell permission rules are not accepted as MCP grants.
 See the [Claude migration plan](../plans/claude-code-subscription-harness.md) for
 implementation and installed acceptance status. This exception is not yet deployed.
