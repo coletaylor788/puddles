@@ -128,7 +128,8 @@ Public branch: `codex/vercel-browser-proposal`, based on `661f8e2d`.
 The isolated companion branch is `codex/vercel-browser-integration`, based on
 `baadebd6`. Source was refreshed before implementation. The public plan is in PR #354. The implementation is not deployed. Local changes
 include stock MCP packaging, configuration, guidance and a synthetic browser
-qualifier. Shutdown integration and installed acceptance remain unfinished.
+qualifier. Native shutdown integration and preparation-failure rollback tests
+pass. Installed acceptance and release delivery remain unfinished.
 
 ### Scope and acceptance criteria
 
@@ -203,8 +204,12 @@ host file. A stock SRT probe around Vercel, with Chromium in Docker, passes logi
 eval, snapshots and normal screenshots while denying the same write. The vault
 is read-only. This is compatibility evidence, not installed acceptance.
 
-Remaining acceptance: synthetic renewal and challenge behavior; complete native
-MCP admission and lifecycle; workspace
+The expanded packaged qualifier also passes saved-login renewal after session
+expiry, visible MFA challenges, and complete shutdown of default plus two named
+native sessions. The private preparation and shutdown regressions pass, including
+backup restoration after preparation fails before runtime installation.
+
+Remaining acceptance: installed native MCP admission and lifecycle; workspace
 Bash/file isolation; denied vault/key reads and direct CDP; ordinary eval and real
 provider refusal to inspect authentication data. No test may mutate a live account.
 
@@ -224,7 +229,9 @@ is withdrawn. No additional
 direct host-read bypass was found in the selected tools; native read rejects
 non-HTTP URLs, eval uses stdin, and tool arguments reject host configuration
 and executable overrides. The optional SRT boundary passed a synthetic probe but is not part of this design.
-The reviewer must recheck the complete paired implementation after lifecycle work. There is no release clearance yet.
+The retained reviewer cleared the complete paired source diff after fixing
+all-session shutdown and first-install rollback. Installed acceptance and release
+clearance remain pending.
 
 ### Checklist
 

@@ -299,6 +299,27 @@ flowchart TB
 - Treat logged-in browser profiles as credentials. Login does not make page
   content trusted.
 
+##### Personal browser authentication
+
+The approved [Vercel browser integration](../plans/vercel-browser-authentication.md)
+uses stock agent-browser MCP on the trusted host. Claude Code runs the personal
+browser agent with workspace Bash and file restrictions. Chromium runs in a Docker
+container with only its profile and downloads mounted. The Vercel vault, encryption
+key, and CDP control files stay in protected host state. The browser profile holds
+website sessions inside that dedicated browser boundary, not the agent's shell.
+
+The trusted MCP server is not itself filesystem-confined. Native screenshots
+accept an output path and can overwrite a writable host file with image bytes.
+This accepted file-corruption risk does not grant shell/file tools vault access;
+it also means the browser container does not confine every host MCP write.
+
+Vercel performs named login internally. Normal results do not return the password.
+Page evaluation remains available under an explicit behavioral rule: the agent must
+not inspect authentication material through eval, storage, network inspection, or
+other tools. This is not an enforced secrecy boundary for page-readable credentials.
+Sites can expose long-lived tokens to JavaScript. Treat login as permission to use
+the site for the requested task, not permission to inspect or export its secrets.
+
 ##### Link integration
 
 The approved [Link integration](../plans/link-main-setup.md) makes one narrow

@@ -18,6 +18,16 @@ const bindings = [
 const overrides = { "/gateway/port": 18001, "/secrets/providers/local/path": "/test/credentials.json" };
 
 describe("environment configuration", () => {
+  it("isolates native browser command and state paths without changing tool policy", () => {
+    const config = {mcp:{servers:{agent_browser:{command:"/host/node",args:["/host/launch.mjs","/host/config.json"],toolFilter:{include:["agent_browser_eval"]}}}}};
+    const paths=["command","args/0","args/1"];
+    const rules=paths.map(field=>({path:`/mcp/servers/agent_browser/${field}`,category:"path",reason:"Separate browser environment"}));
+    const rendered=renderEnvironmentConfiguration(config,rules,Object.fromEntries(rules.map(rule=>[rule.path,"/fixture/isolated"])));
+    expect(rendered.mcp.servers.agent_browser.args).toEqual(["/fixture/isolated","/fixture/isolated"]);
+    expect(rendered.mcp.servers.agent_browser.toolFilter).toEqual(config.mcp.servers.agent_browser.toolFilter);
+    const path="/mcp/servers/agent_browser/toolFilter/include/0";
+    expect(()=>renderEnvironmentConfiguration(config,[{path,category:"path",reason:"Invalid"}],{[path]:"other_tool"})).toThrow(/Unsupported/);
+  });
   it("isolates the packaged Gmail entrypoint while preserving interpreter flags", () => {
     const config = { plugins: { entries: { "secure-gmail": { config: { gmailMcpArgs: ["-I", "/host/run.py"] } } } } };
     const path = "/plugins/entries/secure-gmail/config/gmailMcpArgs/1";
