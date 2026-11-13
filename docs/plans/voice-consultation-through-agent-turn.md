@@ -41,6 +41,14 @@ The upgrade provides
 
 Stable does not include main's unified session controller or the injected child-result context fix. Those must not be counted as upgrade benefits.
 
+One upgrade behavior needs a separate decision. Stable removes Workshop's staged
+skill proposals and uses immediate, versioned skill changes with native undo.
+The previous tool already allowed an authorized caller to apply its proposal,
+but creation itself stayed pending. The proposed adjustment is to adopt native
+Workshop behavior, preserve the existing tool and agent access limits, and use
+native Doctor to export pending drafts. It does not recreate a proposal queue.
+This adjustment remains proposed; the affected compatibility port is paused.
+
 #### Phase 2: repair native CLI voice coordination
 
 Begin implementation only after Phase 1 has passed production and completed source merge and terminal cleanup. Start from that landed upgraded baseline, with a separate candidate and the full development and release process. The patch will:
@@ -63,7 +71,7 @@ The complete repair still must prove one continuous scenario: delegate research,
 
 **Approval reference:** “One change. Make it have two phases, that follow dev process independently. I.e we upgrade first, safely roll to prod, then we make the patch and safely roll to prod. Upgrade is holistically ensuring existing tests and behavior doesn’t break. Then approved to ship, push, and implement” (2026-11-13).
 
-**Progress:** Phase 1 is in progress. Both source branches were refreshed onto main while preserving research. Stable component checks and public plugin compilation/unit tests passed. Maintained patch ports and complete application qualification remain open. Phase 2 implementation has not started. The held first repair remains excluded.
+**Progress:** Phase 1 is in progress. Both source branches were refreshed onto main while preserving research. Stable component checks and public plugin compilation/unit tests passed. Maintained patch ports and complete application qualification remain open. Workshop proposal retirement needs review before its port can proceed. Other compatibility work continues. Phase 2 implementation has not started. The held first repair remains excluded.
 
 ## Agent section
 
@@ -107,6 +115,15 @@ Relevant upstream evidence:
 ### Implementation
 
 #### Phase 1
+
+Workshop compatibility is blocked on a design decision. Old `create`/`update`
+stage a draft, with a separate native `apply` action. Stable
+`src/agents/tools/skill-workshop-tool.ts` calls native library mutations directly;
+`legacy-config-migrations.runtime.skills.ts` removes `approvalPolicy` and
+`maxPending`. Existing pending-draft export and migration need fixture proof.
+Do not mechanically remove the new sandbox gate or restore a custom proposal
+subsystem. Proposed native adoption must be approved before this affected port
+or configuration migration changes the deployed contract.
 
 Upgrade compatibility includes the integrity-bound pnpm 12.15.0 toolchain and native schema migration from shared state 18 / agent 23 to shared state 22 / agent 27. The existing-state regression seeds the exact predecessor schemas with synthetic sessions, committed WAL history, memory, disabled cron and execution denial settings. It runs the candidate's native migration and verifies reopened data; fresh state does not substitute for this proof.
 
