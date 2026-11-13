@@ -1,13 +1,13 @@
 # Explicit cron targets and cross-agent tool policy
 
-OpenClaw 2026.9.6 already supports `subagents.requireAgentId` in configuration
+OpenClaw 2026.11.3 already supports `subagents.requireAgentId` in configuration
 and native request admission. This patch uses that support. It does not restore
 the older schema or duplicate upstream's native explicit-target check.
 
 Two maintained differences remain. Scheduled native requests require an explicit
 non-requester agent by default, and a child assigned to another agent uses that
 agent's configured tool policy without inheriting the requester's allow and deny
-lists. Unpatched 9.6 still stores both inherited lists unconditionally in
+lists. Unpatched 2026.11.3 still passes both inherited lists unconditionally to child creation in
 `src/agents/subagents/spawn/subagent-spawn.ts`. Same-agent children continue to
 inherit the requester's restrictions.
 
@@ -36,6 +36,11 @@ enforce OpenClaw's per-tool restrictions. Target resolution happens first so
 invalid targets receive useful errors, but every target must still satisfy that
 command capability check before ACP can start.
 
+Stable sender restrictions remain intact: a sender-restricted requester may only
+start a hidden helper of the same agent. The native delegated-policy grants,
+revocation assertions, source authority, and lifecycle checks also remain intact.
+Execution identity records carry the same inherited lists as child creation.
+
 The patch does not rewrite existing sessions. Sessions created before the
 upgrade can retain their previously stored restrictions until replaced by a
 new child. No session-store migration is required for new spawns.
@@ -45,9 +50,10 @@ new child. No session-store migration is required for new spawns.
 The source regressions exercise native and ACP same-agent inheritance,
 cross-agent policy, omitted and explicit requester targets, usable repair IDs,
 the explicit false opt-in, configured explicit-target policy, and ACP command
-restrictions. The cumulative manifest follows the 9.6 test owners. Updated tool
+restrictions. The cumulative manifest follows the stable test owners. Updated tool
 descriptions also require `pnpm prompt:snapshots:gen` and the corresponding
-snapshot check; the patch includes the generated prompt changes.
+snapshot check. The patch adapts the stable prompt snapshots and recomputes
+their content hashes; the full generator must verify them on the composed source.
 
 Run `node packages/e2e/bin/openclaw-test-env.mjs ci` against the final candidate.
 The [managed patch lifecycle](./README.md) builds, validates, deploys, and rolls
