@@ -12,7 +12,7 @@ index 7ac94c6750a..d96926e9c98 100644
  <ParamField path="agents.defaults.subagents.announceTimeoutMs" type="number" default="120000">
    Timeout for gateway `agent` announcement handoff attempts. Once a handoff is accepted, waiting for the parent session's turn does not consume this budget. After execution starts, the requester's normal [runtime timeout and cancellation controls](/concepts/agent-loop#timeouts) apply; the announcement timer does not restart. Values are positive integer milliseconds and are clamped to the platform-safe timer maximum. Queue waits, requester execution, and transient retries can make total delivery time longer than one configured timeout.
 diff --git a/src/agents/subagents/spawn/acp-spawn.test.ts b/src/agents/subagents/spawn/acp-spawn.test.ts
-index eebb2c9b0e4..0effbda96cf 100644
+index eebb2c9b0e4..31e3c6f0bbf 100644
 --- a/src/agents/subagents/spawn/acp-spawn.test.ts
 +++ b/src/agents/subagents/spawn/acp-spawn.test.ts
 @@ -309,6 +309,10 @@ function expectGatewayMethodNotCalled(method: string): void {
@@ -26,7 +26,7 @@ index eebb2c9b0e4..0effbda96cf 100644
  function expectInitializeSessionFields(expected: Record<string, unknown>): Record<string, unknown> {
    return expectRecordFields(
      firstMockCall(hoisted.initializeSessionMock, "session initialization")[0],
-@@ -1406,5 +1410,374 @@ describe("spawnAcpDirect", () => {
+@@ -1406,5 +1410,368 @@ describe("spawnAcpDirect", () => {
        }),
      );
    });
@@ -67,15 +67,10 @@ index eebb2c9b0e4..0effbda96cf 100644
 +            maxSpawnDepth: 2,
 +          },
 +        },
-+        list: [
-+          {
-+            id: "main",
-+          },
-+          {
-+            id: "reader",
-+          },
-+          {
-+            id: "main-harness",
++        entries: {
++          main: {},
++          reader: {},
++          "main-harness": {
 +            runtime: {
 +              type: "acp",
 +              acp: {
@@ -83,8 +78,7 @@ index eebb2c9b0e4..0effbda96cf 100644
 +              },
 +            },
 +          },
-+          {
-+            id: "coder",
++          coder: {
 +            runtime: {
 +              type: "acp",
 +              acp: {
@@ -92,7 +86,7 @@ index eebb2c9b0e4..0effbda96cf 100644
 +              },
 +            },
 +          },
-+        ],
++        },
 +      },
 +    });
 +
@@ -622,33 +616,29 @@ index 40c61c6d762..05da491973c 100644
    const requesterRunId = normalizeOptionalString(ctx.requesterRunId);
    const swarmGroupId = params.collect
 diff --git a/src/agents/subagents/spawn/subagent-spawn.test.ts b/src/agents/subagents/spawn/subagent-spawn.test.ts
-index 05d66fb7aeb..d59473dbc1b 100644
+index 05d66fb7aeb..2a1e28f933c 100644
 --- a/src/agents/subagents/spawn/subagent-spawn.test.ts
 +++ b/src/agents/subagents/spawn/subagent-spawn.test.ts
-@@ -1080,4 +1080,278 @@ describe("spawnSubagentDirect seam flow", () => {
+@@ -1080,4 +1080,261 @@ describe("spawnSubagentDirect seam flow", () => {
      expect(hoisted.callGatewayMock).not.toHaveBeenCalled();
      expect(hoisted.emitSessionLifecycleEventMock).not.toHaveBeenCalled();
    });
 +
 +  it("replays cron target repair without falling back to the requester", async () => {
-+    hoisted.configOverride = createConfigOverride({
++    configOverride = createConfigOverride({
 +      agents: {
 +        defaults: {
 +          workspace: os.tmpdir(),
 +        },
-+        list: [
-+          {
-+            id: "main",
++        entries: {
++          main: {
 +            workspace: "/tmp/workspace-main",
 +            subagents: {
 +              allowAgents: ["main", "reader"],
 +            },
 +          },
-+          {
-+            id: "reader",
-+            workspace: "/tmp/workspace-reader",
-+          },
-+        ],
++          reader: { workspace: "/tmp/workspace-reader" },
++        },
 +      },
 +    });
 +
@@ -703,20 +693,19 @@ index 05d66fb7aeb..d59473dbc1b 100644
 +  });
 +
 +  it("allows cron runs to opt into implicit same-agent spawns", async () => {
-+    hoisted.configOverride = createConfigOverride({
++    configOverride = createConfigOverride({
 +      agents: {
 +        defaults: {
 +          workspace: os.tmpdir(),
 +        },
-+        list: [
-+          {
-+            id: "main",
++        entries: {
++          main: {
 +            workspace: "/tmp/workspace-main",
 +            subagents: {
 +              requireAgentId: false,
 +            },
 +          },
-+        ],
++        },
 +      },
 +    });
 +
@@ -746,25 +735,21 @@ index 05d66fb7aeb..d59473dbc1b 100644
 +  });
 +
 +  it("denies an explicitly targeted cron coordinator self-spawn by default", async () => {
-+    hoisted.configOverride = createConfigOverride({
++    configOverride = createConfigOverride({
 +      agents: {
 +        defaults: {
 +          workspace: os.tmpdir(),
 +        },
-+        list: [
-+          {
-+            id: "main",
++        entries: {
++          main: {
 +            workspace: "/tmp/workspace-main",
 +            subagents: {
 +              allowAgents: ["main", "reader"],
 +              requireAgentId: true,
 +            },
 +          },
-+          {
-+            id: "reader",
-+            workspace: "/tmp/workspace-reader",
-+          },
-+        ],
++          reader: { workspace: "/tmp/workspace-reader" },
++        },
 +      },
 +    });
 +
@@ -811,24 +796,20 @@ index 05d66fb7aeb..d59473dbc1b 100644
 +  });
 +
 +  it("does not inherit requester tool policy for cross-agent spawns", async () => {
-+    hoisted.configOverride = createConfigOverride({
++    configOverride = createConfigOverride({
 +      agents: {
 +        defaults: {
 +          workspace: os.tmpdir(),
 +        },
-+        list: [
-+          {
-+            id: "main",
++        entries: {
++          main: {
 +            workspace: "/tmp/workspace-main",
 +            subagents: {
 +              allowAgents: ["worker"],
 +            },
 +          },
-+          {
-+            id: "worker",
-+            workspace: "/tmp/workspace-worker",
-+          },
-+        ],
++          worker: { workspace: "/tmp/workspace-worker" },
++        },
 +      },
 +    });
 +    let persistedStore: Record<string, Record<string, unknown>> | undefined;
@@ -857,24 +838,20 @@ index 05d66fb7aeb..d59473dbc1b 100644
 +  });
 +
 +  it("keeps an explicitly targeted cron reader on the reader tool policy", async () => {
-+    hoisted.configOverride = createConfigOverride({
++    configOverride = createConfigOverride({
 +      agents: {
 +        defaults: {
 +          workspace: os.tmpdir(),
 +        },
-+        list: [
-+          {
-+            id: "main",
++        entries: {
++          main: {
 +            workspace: "/tmp/workspace-main",
 +            subagents: {
 +              allowAgents: ["reader"],
 +            },
 +          },
-+          {
-+            id: "reader",
-+            workspace: "/tmp/workspace-reader",
-+          },
-+        ],
++          reader: { workspace: "/tmp/workspace-reader" },
++        },
 +      },
 +    });
 +    let persistedStore: Record<string, Record<string, unknown>> | undefined;
