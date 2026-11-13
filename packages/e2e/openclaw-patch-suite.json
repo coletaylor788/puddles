@@ -56,7 +56,7 @@
     "src/config/sessions/session-declaration-portability.test.ts": "runtime-config",
     "extensions/imessage/src/monitor/inbound-processing.route.test.ts": "extension-database-workers",
     "src/channels/inbound-event/classification.test.ts": "unit-fast",
-    "src/gateway/talk/client-gateway-control.agent-consult.test.ts": "gateway",
+    "src/gateway/talk/client-gateway-control.agent-consult.test.ts": "gateway-database-workers",
     "src/gateway/talk/client-gateway-control.close.test.ts": "gateway",
     "src/agents/agent-tools.before-tool-call.integration.e2e.test.ts": "e2e",
     "src/config/talk.normalize.test.ts": "runtime-config",
@@ -235,7 +235,8 @@
     "src/process/gateway-work-admission.continuation.test.ts": "process",
     "src/config/config.talk-validation.test.ts": "runtime-config",
     "src/gateway/talk/carrier-provider.test.ts": "gateway-core",
-    "test/scripts/service-child-ownership-bundle.test.ts": "tooling"
+    "test/scripts/service-child-ownership-bundle.test.ts": "tooling",
+    "extensions/openai/realtime-quicksilver-gateway-consult-race.test.ts": "extension-provider-openai"
   },
   "patches": [
     {
@@ -492,7 +493,7 @@
         "extensions/openai/realtime-quicksilver-concurrency.test.ts",
         "extensions/openai/realtime-quicksilver-public-delegation.test.ts",
         "src/gateway/talk/client-gateway-control.agent-consult.test.ts",
-        "src/gateway/talk/client-gateway-control.native.test.ts",
+        "src/gateway/talk/client-gateway-control.test.ts",
         "src/gateway/talk/client-gateway-control.close.test.ts"
       ],
       "candidateTests": [
@@ -508,10 +509,9 @@
         "extensions/openai/realtime-quicksilver-public-delegation.test.ts",
         "extensions/openai/realtime-quicksilver-concurrency.test.ts",
         "src/talk/agent-consult-runtime.test.ts",
-        "src/gateway/talk/client-gateway-control.native.test.ts",
+        "src/gateway/talk/client-gateway-control.test.ts",
         "src/gateway/talk/client-gateway-control.agent-consult.test.ts",
         "src/gateway/talk/client-gateway-control.close.test.ts",
-        "src/gateway/talk/client-gateway-control.test.ts",
         "src/agents/embedded-agent-subscribe.handlers.messages.update-stream-items.test.ts",
         "extensions/copilot/src/event-bridge.test.ts",
         "extensions/openai/realtime-quicksilver-copilot-progress.test.ts",
@@ -572,7 +572,8 @@
         "extensions/openai/realtime-quicksilver-session-lifecycle.test.ts",
         "src/gateway/talk/client-gateway-control.agent-consult.test.ts",
         "src/gateway/talk/client-gateway-control.test.ts",
-        "src/talk/agent-run-control.test.ts"
+        "src/talk/agent-run-control.test.ts",
+        "extensions/openai/realtime-quicksilver-gateway-consult-race.test.ts"
       ],
       "candidateTests": [
         "tests/candidate.talk-concurrency.test.ts"
