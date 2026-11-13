@@ -3114,10 +3114,10 @@ index 89aa17a..3fc0bc3 100644
        expect(createPeer).not.toHaveBeenCalled();
        expect(fetchImpl).not.toHaveBeenCalled();
 diff --git a/src/gateway/server-plugins.test.ts b/src/gateway/server-plugins.test.ts
-index b25472c..20b36fd 100644
+index b25472c..4c13b0d 100644
 --- a/src/gateway/server-plugins.test.ts
 +++ b/src/gateway/server-plugins.test.ts
-@@ -550,6 +550,42 @@ describe("loadGatewayPlugins", () => {
+@@ -550,6 +550,41 @@ describe("loadGatewayPlugins", () => {
      expect(registry.diagnostics).toEqual([diagnostic, distinctDiagnostic]);
    });
  
@@ -3127,7 +3127,6 @@ index b25472c..20b36fd 100644
 +      loadIntent: "startup",
 +      cfg: {},
 +      autoEnabledReasons: {},
-+      log: createTestLog(),
 +      baseMethods: [],
 +      resolveGatewayContext: () => resolveTestGatewayContext(),
 +    });

@@ -1,5 +1,5 @@
 diff --git a/src/agents/provider-local-service.shutdown.test.ts b/src/agents/provider-local-service.shutdown.test.ts
-index 07e87689114..3e03d28c9f5 100644
+index 07e87689114b09163888cc4d8ecb6867807f0a5a..3e03d28c9f5956053b7e2e8ed9a079e46b7a967c 100644
 --- a/src/agents/provider-local-service.shutdown.test.ts
 +++ b/src/agents/provider-local-service.shutdown.test.ts
 @@ -1,17 +1,19 @@
@@ -594,7 +594,7 @@ index 07e87689114..3e03d28c9f5 100644
    });
  });
 diff --git a/src/agents/provider-local-service.test.ts b/src/agents/provider-local-service.test.ts
-index b15f248e711..10a0e99629e 100644
+index b15f248e7118266168977ba35c166e390372d27b..10a0e99629ea3571ee46d96eacde7a2b7c33daf0 100644
 --- a/src/agents/provider-local-service.test.ts
 +++ b/src/agents/provider-local-service.test.ts
 @@ -15,6 +15,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -655,7 +655,7 @@ index b15f248e711..10a0e99629e 100644
      const port = await fixture.claimPort();
      const tempDir = tempDirs.make("openclaw-local-service-failed-unref-");
 diff --git a/src/agents/provider-local-service.ts b/src/agents/provider-local-service.ts
-index 3b47040aeb3..0919ade77b1 100644
+index 3b47040aeb35f2438b7e49da6654bd914a0042dd..0919ade77b19ab0ce669144b12d102bad9711819 100644
 --- a/src/agents/provider-local-service.ts
 +++ b/src/agents/provider-local-service.ts
 @@ -7,14 +7,20 @@ import {
@@ -919,7 +919,7 @@ index 3b47040aeb3..0919ade77b1 100644
    if (exitHandlerInstalled) {
      return;
 diff --git a/src/plugin-sdk/process-runtime.ts b/src/plugin-sdk/process-runtime.ts
-index a28d2727c1c..55afbbc38e2 100644
+index a28d2727c1c62b39ee6bd1805cfc9b980a34fdae..55afbbc38e2056e4f0850a8f4e34059431cfa415 100644
 --- a/src/plugin-sdk/process-runtime.ts
 +++ b/src/plugin-sdk/process-runtime.ts
 @@ -39,6 +39,10 @@ export {
@@ -934,7 +934,7 @@ index a28d2727c1c..55afbbc38e2 100644
  export {
    createOwnedStdioProcess,
 diff --git a/src/process/supervisor/service-child-group-anchor.ts b/src/process/supervisor/service-child-group-anchor.ts
-index 70a0359b3ed..26f11b1c127 100644
+index 70a0359b3eda72cc1cd8a7f914ba6d83a899779b..26f11b1c127df85c1df648b6a1079a4077a8e223 100644
 --- a/src/process/supervisor/service-child-group-anchor.ts
 +++ b/src/process/supervisor/service-child-group-anchor.ts
 @@ -15,6 +15,7 @@ import {
@@ -955,53 +955,9 @@ index 70a0359b3ed..26f11b1c127 100644
        command = spawnWithInheritedOomScore(start.command, start.args, {
          cwd: start.cwd,
          env: start.env,
-diff --git a/src/process/supervisor/service-child-ownership.bundle.test.ts b/src/process/supervisor/service-child-ownership.bundle.test.ts
-new file mode 100644
-index 00000000000..3862298f18b
---- /dev/null
-+++ b/src/process/supervisor/service-child-ownership.bundle.test.ts
-@@ -0,0 +1,38 @@
-+import { mkdtempSync, rmSync } from "node:fs";
-+import { tmpdir } from "node:os";
-+import { join } from "node:path";
-+import { build } from "tsdown";
-+import { expect, it } from "vitest";
-+import { collectWorkerDeployArtifactErrors } from "../../../scripts/check-cli-bootstrap-imports.mts";
-+import configs from "../../../tsdown.config.ts";
-+
-+it("keeps the ownership-aware standalone anchor free of native runtime imports", async () => {
-+  const config = configs.find(
-+    (candidate) =>
-+      typeof candidate.entry === "object" &&
-+      !Array.isArray(candidate.entry) &&
-+      candidate.entry?.["worker/service-child-group-anchor"],
-+  );
-+  expect(config).toBeDefined();
-+  const root = mkdtempSync(join(tmpdir(), "openclaw-owned-anchor-bundle-"));
-+  try {
-+    // Compile only this fixture graph with its real packaging options. Nothing
-+    // from this temporary output is a release or installation artifact.
-+    const { bundles } = await build({
-+      ...config,
-+      config: false,
-+      outDir: join(root, "dist"),
-+      dts: false,
-+      logLevel: "silent",
-+    });
-+    for (const bundle of bundles) await bundle[Symbol.asyncDispose]();
-+    expect(
-+      collectWorkerDeployArtifactErrors({
-+        rootDir: root,
-+        workerDeployEntrypoints: ["dist/worker/service-child-group-anchor.mjs"],
-+      }),
-+    ).toEqual([]);
-+  } finally {
-+    rmSync(root, { recursive: true, force: true });
-+  }
-+}, 30_000);
 diff --git a/src/process/supervisor/service-child-ownership.test.ts b/src/process/supervisor/service-child-ownership.test.ts
 new file mode 100644
-index 00000000000..87b0e035f7a
+index 0000000000000000000000000000000000000000..87b0e035f7a5a93ed26f46a95dc505651d5e780c
 --- /dev/null
 +++ b/src/process/supervisor/service-child-ownership.test.ts
 @@ -0,0 +1,192 @@
@@ -1199,7 +1155,7 @@ index 00000000000..87b0e035f7a
 +});
 diff --git a/src/process/supervisor/service-child-ownership.ts b/src/process/supervisor/service-child-ownership.ts
 new file mode 100644
-index 00000000000..96f5d434802
+index 0000000000000000000000000000000000000000..96f5d4348025ab50152e6c845efc26c682c0ac05
 --- /dev/null
 +++ b/src/process/supervisor/service-child-ownership.ts
 @@ -0,0 +1,237 @@
@@ -1441,7 +1397,7 @@ index 00000000000..96f5d434802
 +  await joinStoppedLocalServiceGroups(stateDir, Math.max(1, deadline - Date.now()));
 +}
 diff --git a/src/process/supervisor/service-child-protocol.ts b/src/process/supervisor/service-child-protocol.ts
-index c300d32153d..b7e82df2fcd 100644
+index c300d32153d991b75611cc8a22c8a4424b6c2921..b7e82df2fcd5f759a9d831fbf300323154b2bad8 100644
 --- a/src/process/supervisor/service-child-protocol.ts
 +++ b/src/process/supervisor/service-child-protocol.ts
 @@ -1,6 +1,7 @@
@@ -1461,7 +1417,7 @@ index c300d32153d..b7e82df2fcd 100644
    | { ownedWorker: true; cleanupBinding: NodeWorkerCleanupBinding }
    | { ownedWorker?: never; cleanupBinding?: never }
 diff --git a/src/process/supervisor/service-child-relay-host.ts b/src/process/supervisor/service-child-relay-host.ts
-index 33b330788d3..a3d5ea164b3 100644
+index 33b330788d3f09febd2fe8251e4fc7f735c8d28e..a3d5ea164b332c030585f7be12221854fc363024 100644
 --- a/src/process/supervisor/service-child-relay-host.ts
 +++ b/src/process/supervisor/service-child-relay-host.ts
 @@ -16,6 +16,7 @@ import { createProcessAdapterEvents } from "./adapters/process-events.js";
@@ -1502,7 +1458,7 @@ index 33b330788d3..a3d5ea164b3 100644
        state === "closed" ||
        Boolean(
 diff --git a/src/process/supervisor/service-child-relay-preparation.ts b/src/process/supervisor/service-child-relay-preparation.ts
-index 4dcd9394f9c..86ff7947fc2 100644
+index 4dcd9394f9c29857e68d1201f27747c510b4a407..86ff7947fc207385a6f992fe579be12107e70f44 100644
 --- a/src/process/supervisor/service-child-relay-preparation.ts
 +++ b/src/process/supervisor/service-child-relay-preparation.ts
 @@ -7,6 +7,7 @@ import {
@@ -1530,7 +1486,7 @@ index 4dcd9394f9c..86ff7947fc2 100644
    closeStartGate?: () => void;
  } & Required<Pick<SpawnProcessAdapter<NodeJS.Signals | null>, "onExit" | "onError">>;
 diff --git a/src/process/supervisor/service-child-relay-startup.ts b/src/process/supervisor/service-child-relay-startup.ts
-index 0ec2fd69ec1..433794393a6 100644
+index 0ec2fd69ec10a98d7bf37f714a7d3cbb1479e67b..433794393a68468e0427f350a1fd04406736079f 100644
 --- a/src/process/supervisor/service-child-relay-startup.ts
 +++ b/src/process/supervisor/service-child-relay-startup.ts
 @@ -5,6 +5,7 @@ import type {
@@ -1555,7 +1511,7 @@ index 0ec2fd69ec1..433794393a6 100644
      params.assertCurrent?.();
      const [startupResult, secretDeliveryResult] = await Promise.allSettled([
 diff --git a/src/test-utils/ports.test.ts b/src/test-utils/ports.test.ts
-index 46b6871e325..3fa948a9713 100644
+index 46b6871e32532f9f91d699501c9eada6834a2ca4..3fa948a9713b112782880b5775dfaa60c4a493e0 100644
 --- a/src/test-utils/ports.test.ts
 +++ b/src/test-utils/ports.test.ts
 @@ -7,6 +7,7 @@ const host = vi.hoisted(() => ({
@@ -1661,7 +1617,7 @@ index 46b6871e325..3fa948a9713 100644
    });
  
 diff --git a/src/test-utils/ports.ts b/src/test-utils/ports.ts
-index 408ef98cc98..000530d9437 100644
+index 408ef98cc98f03e5a74226f725f3e823b5197f89..000530d943704ad4b6264059f6306cd416392c07 100644
 --- a/src/test-utils/ports.ts
 +++ b/src/test-utils/ports.ts
 @@ -1,5 +1,6 @@
@@ -1718,3 +1674,47 @@ index 408ef98cc98..000530d9437 100644
    // would put the fallback straight back into the excluded ephemeral range.
    for (let attempt = 0; attempt < 25; attempt += 1) {
      const alternative = shards[(shardIndex + attempt + 1) % shards.length];
+diff --git a/test/scripts/service-child-ownership-bundle.test.ts b/test/scripts/service-child-ownership-bundle.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..6164dd5fc3c86af0f660d66f3a611d3ed0dc5263
+--- /dev/null
++++ b/test/scripts/service-child-ownership-bundle.test.ts
+@@ -0,0 +1,38 @@
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { build } from "tsdown";
++import { expect, it } from "vitest";
++import { collectWorkerDeployArtifactErrors } from "../../scripts/check-cli-bootstrap-imports.mts";
++import configs from "../../tsdown.config.ts";
++
++it("keeps the ownership-aware standalone anchor free of native runtime imports", async () => {
++  const config = configs.find(
++    (candidate) =>
++      typeof candidate.entry === "object" &&
++      !Array.isArray(candidate.entry) &&
++      candidate.entry?.["worker/service-child-group-anchor"],
++  );
++  expect(config).toBeDefined();
++  const root = mkdtempSync(join(tmpdir(), "openclaw-owned-anchor-bundle-"));
++  try {
++    // Compile only this fixture graph with its real packaging options. Nothing
++    // from this temporary output is a release or installation artifact.
++    const { bundles } = await build({
++      ...config,
++      config: false,
++      outDir: join(root, "dist"),
++      dts: false,
++      logLevel: "silent",
++    });
++    for (const bundle of bundles) await bundle[Symbol.asyncDispose]();
++    expect(
++      collectWorkerDeployArtifactErrors({
++        rootDir: root,
++        workerDeployEntrypoints: ["dist/worker/service-child-group-anchor.mjs"],
++      }),
++    ).toEqual([]);
++  } finally {
++    rmSync(root, { recursive: true, force: true });
++  }
++}, 30_000);

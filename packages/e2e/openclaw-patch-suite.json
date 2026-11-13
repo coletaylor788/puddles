@@ -52,7 +52,6 @@
     "src/agents/tool-allowlist-guard.test.ts": "unit-fast",
     "src/state/openclaw-agent-db.storage-migration.test.ts": "infra",
     "src/commands/doctor-agent-memory-schema.test.ts": "commands",
-    "src/process/supervisor/service-child-ownership.bundle.test.ts": "process",
     "src/infra/windows-process-start.test.ts": "infra",
     "src/config/sessions/session-declaration-portability.test.ts": "runtime-config",
     "extensions/imessage/src/monitor/inbound-processing.route.test.ts": "extension-database-workers",
@@ -235,7 +234,8 @@
     "src/process/gateway-work-admission.test.ts": "process",
     "src/process/gateway-work-admission.continuation.test.ts": "process",
     "src/config/config.talk-validation.test.ts": "runtime-config",
-    "src/gateway/talk/carrier-provider.test.ts": "gateway-core"
+    "src/gateway/talk/carrier-provider.test.ts": "gateway-core",
+    "test/scripts/service-child-ownership-bundle.test.ts": "tooling"
   },
   "patches": [
     {
@@ -246,7 +246,7 @@
         "src/process/supervisor/service-child-ownership.test.ts",
         "src/process/supervisor/service-child-relay-host.test.ts",
         "src/process/supervisor/adapters/child.service-lifecycle.test.ts",
-        "src/process/supervisor/service-child-ownership.bundle.test.ts",
+        "test/scripts/service-child-ownership-bundle.test.ts",
         "src/infra/windows-process-start.test.ts",
         "src/test-utils/ports.test.ts"
       ]
