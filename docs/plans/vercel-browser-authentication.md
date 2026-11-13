@@ -1,6 +1,6 @@
 # Replace OpenClaw browser tools with Vercel agent-browser
 
-Status: Docker fallback approved; host output confinement proposed
+Status: Production approved; implementation in progress
 Issue: https://github.com/coletaylor788/puddles/issues/353
 Last updated: 2026-11-12
 
@@ -17,8 +17,8 @@ graph TD
     A["OpenClaw"] --> B["Browser agent using Claude Code CLI"]
     B --> C["Sandboxed Bash and native file tools"]
     B --> G["OpenClaw host MCP bridge"]
-    G --> D["Stock Vercel MCP inside SRT (proposed)"]
-    V["Host vault, read-only to Vercel"] --> D
+    G --> D["Stock Vercel MCP on the trusted host"]
+    V["Vercel encrypted vault on the host"] --> D
     D -->|"CDP"| E["Chromium in Docker"]
     E --> F["Website"]
 ```
@@ -31,21 +31,12 @@ Vercel supplies the upstream tools and behavior, including auth and page evaluat
 The trusted Vercel process runs outside Claude's Bash sandbox and attaches through
 CDP. Agent Bash/file tools and the browser process must not read the vault or key.
 
-**Proposed revision:** also run the stock Vercel process inside stock SRT with
-write access limited to its socket/runtime files and browser output directory.
-The vault and key remain readable only to Vercel, but read-only in this process.
-The owner manages saved logins with the native CLI outside that restriction.
-Keep owner CLI and MCP daemon sockets separate so the MCP process cannot reuse
-an unsandboxed owner daemon. Use native browser navigation and page tools; omit
-the host-side URL-fetch helper. This leaves browser and credential tools native.
-
-This additional boundary addresses a reproduced host-write escape: Vercel's
-screenshot tool accepts an absolute output path, and its screenshot directory
-setting is only a default. In a synthetic test it overwrote a protected dummy
-control file. Claude's sandbox and the browser container cannot block a write
-performed by the trusted MCP server. Stock SRT blocked that write while native
-login, eval, snapshots, and screenshots continued working. This is separate from
-the Chrome/SRT compatibility problem because Chrome stays in Docker.
+Vercel remains unsandboxed, as requested. Its native screenshot tool can save
+image bytes at a caller-selected host path and overwrite an existing writable
+file. That is a file-corruption risk; the reproduced behavior did not demonstrate
+arbitrary code execution, secret reading, or exfiltration. The requester accepted
+this limitation after clarification. Use the configured output directory during
+normal work, and do not claim that every MCP operation is filesystem-confined.
 
 Add configuration and necessary launcher wiring only. No custom browser plugin,
 credential broker, login algorithm, session handoff, or replacement tool schemas.
@@ -122,10 +113,12 @@ This covers implementation, review, publication, and production delivery.
 **Fallback approval:** The requester said, “If SRT is blocked and we can’t find a
 solution, approved to replace with docker, just update the design, keep seeing if
 SRT can work first.” Further stock-setting and sandbox API checks confirmed the
-compatibility problem. Docker is approved under that condition. The additional
-SRT boundary around Vercel is proposed after review reproduced arbitrary host
-screenshot writes. A focused compatibility test passes, but this design revision
-needs approval before implementation. Production is unchanged.
+compatibility problem. Docker is approved under that condition. After the
+screenshot overwrite behavior was explained, the requester said it “Feels fine”
+and clarified that the concern was code execution, exfiltration, and machine
+control. Retain the requested unsandboxed Vercel process and native screenshots;
+record image-file clobbering as an accepted limitation. Implementation and release
+validation continue. Production is unchanged.
 
 ## Agent section
 
@@ -135,7 +128,7 @@ Public branch: `codex/vercel-browser-proposal`, based on `661f8e2d`.
 The isolated companion branch is `codex/vercel-browser-integration`, based on
 `baadebd6`. Source was refreshed before implementation. The public plan is in PR #354. The implementation is not deployed. Local changes
 include stock MCP packaging, configuration, guidance and a synthetic browser
-qualifier. Host output confinement and shutdown integration remain unfinished.
+qualifier. Shutdown integration and installed acceptance remain unfinished.
 
 ### Scope and acceptance criteria
 
@@ -170,8 +163,8 @@ this limitation when the runtime integration is implemented.
 Pin and package stock agent-browser. Add managed MCP configuration and select the
 browser's workspace profile. Add the authentication rule while preserving the
 existing Link payment exception. Reuse the existing Docker image and extend the maintained stop helper.
-Keep private bindings in the companion repository. Implement the proposed host
-SRT boundary only after the design decision.
+Keep private bindings in the companion repository. Do not add a Vercel sandbox
+or custom screenshot argument filtering.
 
 The package pins unmodified agent-browser 0.43.0. Configuration selects its native
 tools, including eval and named auth login, and preserves Link permissions.
@@ -225,12 +218,13 @@ Production deployment remains pending the required acceptance gates.
 ### Review log
 
 Retained independent reviewer: `browser_review`. Early review found one P1:
-native screenshots can write caller-selected host paths. Accepted. No additional
+native screenshots can write image bytes to caller-selected host paths. The
+requester accepted file-clobbering risk after clarification; the extra SRT proposal
+is withdrawn. No additional
 direct host-read bypass was found in the selected tools; native read rejects
 non-HTTP URLs, eval uses stdin, and tool arguments reject host configuration
-and executable overrides. The proposed SRT boundary passed a synthetic probe.
-The reviewer must recheck the complete paired implementation after the design
-decision and lifecycle work. There is no release clearance yet.
+and executable overrides. The optional SRT boundary passed a synthetic probe but is not part of this design.
+The reviewer must recheck the complete paired implementation after lifecycle work. There is no release clearance yet.
 
 ### Checklist
 
@@ -238,6 +232,6 @@ decision and lifecycle work. There is no release clearance yet.
 - [x] Record production approval.
 - [x] Run a synthetic browser sandbox compatibility probe.
 - [x] Resolve browser isolation with the conditionally approved Docker fallback.
-- [ ] Approve and implement native host output confinement.
+- [x] Record the accepted native screenshot overwrite limitation.
 - [ ] Verify configured MCP admission and agent instruction adherence.
 - [ ] Complete implementation, independent review, and release validation.
