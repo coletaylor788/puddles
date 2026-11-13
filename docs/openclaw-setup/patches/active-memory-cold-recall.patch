@@ -1,8 +1,8 @@
 diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/index.test.ts
-index 9dd571d63..456ea6553 100644
+index 6fac973a465..224152d507a 100644
 --- a/extensions/active-memory/index.test.ts
 +++ b/extensions/active-memory/index.test.ts
-@@ -4910,6 +4910,63 @@ describe("active-memory plugin", () => {
+@@ -3073,6 +3073,63 @@ describe("active-memory plugin", () => {
      expect(runEmbeddedAgent).not.toHaveBeenCalled();
    });
  
@@ -64,5 +64,5 @@ index 9dd571d63..456ea6553 100644
 +  );
 +
    it("preserves recall settlement time after near-limit preflight latency", async () => {
-     vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
-     testing.setMinimumTimeoutMsForTests(1);
+     expect(api.on).toHaveBeenCalledWith(
+       "before_prompt_build",

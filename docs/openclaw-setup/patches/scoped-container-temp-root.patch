@@ -1,8 +1,8 @@
 diff --git a/src/agents/sandbox.resolveSandboxContext.test.ts b/src/agents/sandbox.resolveSandboxContext.test.ts
-index 421aaac99..17c695bc5 100644
+index 921350accdb..ee7a97601c8 100644
 --- a/src/agents/sandbox.resolveSandboxContext.test.ts
 +++ b/src/agents/sandbox.resolveSandboxContext.test.ts
-@@ -329,6 +329,7 @@ describe("resolveSandboxContext", () => {
+@@ -277,6 +277,7 @@ describe("resolveSandboxContext", () => {
          sessionKey: "agent:worker:task",
          skillsSnapshot,
          workspaceDir: "/tmp/openclaw-test",
@@ -10,7 +10,7 @@ index 421aaac99..17c695bc5 100644
        });
  
        expect(result?.backendId).toBe("test-backend");
-@@ -338,6 +339,7 @@ describe("resolveSandboxContext", () => {
+@@ -286,6 +287,7 @@ describe("resolveSandboxContext", () => {
        expect(backendFactory).toHaveBeenCalledWith(
          expect.objectContaining({
            registeredRuntimeIds: ["registered-runtime"],
@@ -19,10 +19,10 @@ index 421aaac99..17c695bc5 100644
        );
        expect(resolveNodeExecEligibilityMock).toHaveBeenCalledWith(
 diff --git a/src/agents/sandbox/backend.types.ts b/src/agents/sandbox/backend.types.ts
-index b388e0fe6..7816a0270 100644
+index 1f6dde5d390..f81903cad76 100644
 --- a/src/agents/sandbox/backend.types.ts
 +++ b/src/agents/sandbox/backend.types.ts
-@@ -44,6 +44,8 @@ export type CreateSandboxBackendParams = {
+@@ -36,6 +36,8 @@ export type CreateSandboxBackendParams = {
    workspaceSource?: "managed-worktree";
    agentWorkspaceDir: string;
    skillsWorkspaceDir?: string;
@@ -32,7 +32,7 @@ index b388e0fe6..7816a0270 100644
    cfg: SandboxConfig;
    requireCurrentConfig?: boolean;
 diff --git a/src/agents/sandbox/browser.create.test.ts b/src/agents/sandbox/browser.create.test.ts
-index 8156506e8..aadca1edd 100644
+index 37c55e03751..7dea094f232 100644
 --- a/src/agents/sandbox/browser.create.test.ts
 +++ b/src/agents/sandbox/browser.create.test.ts
 @@ -1,4 +1,4 @@
@@ -41,7 +41,7 @@ index 8156506e8..aadca1edd 100644
  import { createServer } from "node:http";
  import type { AddressInfo, Socket } from "node:net";
  import path from "node:path";
-@@ -29,6 +29,24 @@ describe("ensureSandboxBrowser create args", () => {
+@@ -30,6 +30,24 @@ describe("ensureSandboxBrowser create args", () => {
      latestBridgeResolved,
    } = harness;
  
@@ -67,22 +67,22 @@ index 8156506e8..aadca1edd 100644
      dockerMocks.execDocker.mockImplementation(async (args: string[]) => {
        if (args[0] === "image" && args[1] === "inspect") {
 diff --git a/src/agents/sandbox/browser.ts b/src/agents/sandbox/browser.ts
-index 9c9582bc2..f5bf25a22 100644
+index a9d0d947f0d..612806d067a 100644
 --- a/src/agents/sandbox/browser.ts
 +++ b/src/agents/sandbox/browser.ts
-@@ -229,6 +229,8 @@ type EnsureSandboxBrowserParams = {
+@@ -223,6 +223,8 @@ type EnsureSandboxBrowserParams = {
    workspaceDir: string;
    agentWorkspaceDir: string;
    skillsWorkspaceDir?: string;
 +  /** Explicit private root for short-lived container environment files. */
 +  tempRoot?: string;
    cfg: SandboxConfig;
-   evaluateEnabled?: boolean;
+   evaluateEnabled: boolean;
    bridgeAuth?: { token?: string; password?: string };
-@@ -461,11 +463,15 @@ async function ensureSandboxBrowserContainer(
-     if (noVncEnabled && noVncPassword) {
+@@ -459,11 +461,15 @@ async function ensureSandboxBrowserContainer(
        env[NOVNC_PASSWORD_ENV_KEY] = noVncPassword;
      }
+     params.assertCurrent?.();
 -    await withContainerEnvFile(env, async (envFile) => {
 -      args.push("--env-file", envFile, browserImage);
 -      params.assertCurrent?.();
@@ -97,72 +97,52 @@ index 9c9582bc2..f5bf25a22 100644
 +      },
 +      { rootDir: params.tempRoot },
 +    );
+   }
+   if (!hasContainer || !running) {
      params.assertCurrent?.();
-     await execDocker(["start", containerName]);
-   } else if (!running) {
 diff --git a/src/agents/sandbox/context.ts b/src/agents/sandbox/context.ts
-index 21c2fa586..0842c1610 100644
+index 7e96d2f797f..76595fb71a5 100644
 --- a/src/agents/sandbox/context.ts
 +++ b/src/agents/sandbox/context.ts
-@@ -249,6 +249,8 @@ type ResolveSandboxContextParams = {
+@@ -237,6 +237,8 @@ type ResolveSandboxContextParams = {
    sessionKey?: string;
    skillsSnapshot?: SkillSnapshot;
    workspaceDir?: string;
 +  /** Staging only. Does not change state paths or lifecycle coordinator authority. */
 +  tempRoot?: string;
+   /** Classification already prepared for this session's workspace setup. */
+   preparedRuntimeStatus?: ReturnType<typeof resolveSandboxRuntimeStatus>;
  };
- 
- type ResolvedSandboxSession = NonNullable<ReturnType<typeof resolveSandboxSession>>;
-@@ -390,6 +392,7 @@ async function resolveProvisionedSandboxContext(
-         : {}),
-       agentWorkspaceDir,
-       skillsWorkspaceDir,
-+      ...(params.tempRoot !== undefined ? { tempRoot: params.tempRoot } : {}),
-       readOnlyResourceMounts,
-       cfg: resolvedCfg,
-       ...(params.requireCurrentConfig !== undefined
-@@ -433,6 +436,7 @@ async function resolveProvisionedSandboxContext(
-       workspaceDir,
-       agentWorkspaceDir,
-       skillsWorkspaceDir,
-+      ...(params.tempRoot !== undefined ? { tempRoot: params.tempRoot } : {}),
-       cfg: resolvedCfg,
-       evaluateEnabled,
-       bridgeAuth,
-@@ -485,16 +489,9 @@ async function resolveProvisionedSandboxContext(
-   return sandboxContext;
- }
- 
--export async function resolveSandboxContext(params: {
--  config?: OpenClawConfig;
--  agentId?: string;
--  execOverrides?: ExecPolicyOverrides;
--  requireCurrentConfig?: boolean;
--  assertCurrent?: () => void;
--  sessionKey?: string;
--  skillsSnapshot?: SkillSnapshot;
--  workspaceDir?: string;
--}): Promise<SandboxContext | null> {
-+export async function resolveSandboxContext(
-+  params: ResolveSandboxContextParams,
-+): Promise<SandboxContext | null> {
-   const resolved = resolveSandboxSession(params);
-   if (!resolved) {
-     return null;
+@@ -427,6 +429,7 @@ async function resolveProvisionedSandboxContext(
+           assertRuntimeCurrent: localWorkspace?.assertCurrent ?? params.assertCurrent,
+           agentWorkspaceDir,
+           skillsWorkspaceDir,
++          ...(params.tempRoot !== undefined ? { tempRoot: params.tempRoot } : {}),
+           readOnlyResourceMounts,
+           cfg: executionCfg,
+           ...(params.requireCurrentConfig !== undefined
+@@ -480,6 +483,7 @@ async function resolveProvisionedSandboxContext(
+             workspaceDir,
+             agentWorkspaceDir,
+             skillsWorkspaceDir,
++            ...(params.tempRoot !== undefined ? { tempRoot: params.tempRoot } : {}),
+             cfg: resolvedCfg,
+             evaluateEnabled,
+             bridgeAuth,
 diff --git a/src/agents/sandbox/docker-backend.test.ts b/src/agents/sandbox/docker-backend.test.ts
-index 82e475274..b10d9d0d8 100644
+index 19af6cbaeaf..3b1c1358382 100644
 --- a/src/agents/sandbox/docker-backend.test.ts
 +++ b/src/agents/sandbox/docker-backend.test.ts
-@@ -215,7 +215,7 @@ describe("docker sandbox backend manager", () => {
-     expect(dockerMocks.execContainerRaw.mock.calls.at(-1)?.[1]?.[2]).toBe("a".repeat(64));
-   });
+@@ -238,7 +238,7 @@ describe("docker sandbox backend manager", () => {
+     },
+   );
  
 -  it("forwards the canonical scope key to container provisioning", async () => {
 +  it("forwards the canonical scope key and explicit temp root to container provisioning", async () => {
-     dockerMocks.ensureSandboxContainer.mockResolvedValueOnce("sandbox-container");
-     const scopeKey = `agent:poly:workspace:${"a".repeat(32)}`;
-     const readOnlyResourceMounts = [
-@@ -228,11 +228,16 @@ describe("docker sandbox backend manager", () => {
+     dockerMocks.ensureSandboxContainer.mockResolvedValueOnce({
+       containerName: "sandbox-container",
+       containerId: "a".repeat(64),
+@@ -254,11 +254,16 @@ describe("docker sandbox backend manager", () => {
        workspaceDir: "/tmp/customer/workspace",
        agentWorkspaceDir: "/tmp/customer/workspace",
        readOnlyResourceMounts,
@@ -181,11 +161,11 @@ index 82e475274..b10d9d0d8 100644
    });
  
 diff --git a/src/agents/sandbox/docker-backend.ts b/src/agents/sandbox/docker-backend.ts
-index 6216d60b5..0ddd94545 100644
+index 40993d13b49..186687d6890 100644
 --- a/src/agents/sandbox/docker-backend.ts
 +++ b/src/agents/sandbox/docker-backend.ts
-@@ -99,6 +99,7 @@ async function createContainerSandboxBackend(
-     assertCurrent: params.assertRuntimeCurrent,
+@@ -95,6 +95,7 @@ async function createContainerSandboxBackend(
+     operatorAuthority,
      agentWorkspaceDir: params.agentWorkspaceDir,
      skillsWorkspaceDir: params.skillsWorkspaceDir,
 +    ...(params.tempRoot !== undefined ? { tempRoot: params.tempRoot } : {}),
@@ -193,7 +173,7 @@ index 6216d60b5..0ddd94545 100644
      cfg: params.cfg,
      ...(params.requireCurrentConfig !== undefined
 diff --git a/src/agents/sandbox/docker.config-hash-recreate.test.ts b/src/agents/sandbox/docker.config-hash-recreate.test.ts
-index 59b2e7b97..25c5aaa01 100644
+index 9c6c676190d..1d95163dd62 100644
 --- a/src/agents/sandbox/docker.config-hash-recreate.test.ts
 +++ b/src/agents/sandbox/docker.config-hash-recreate.test.ts
 @@ -21,6 +21,18 @@ describe("ensureSandboxContainer config-hash recreation", () => {
@@ -216,10 +196,10 @@ index 59b2e7b97..25c5aaa01 100644
      const workspaceDir = tempDirs.make("openclaw-docker-mounts-");
      const cfg = createSandboxConfig([], [`${workspaceDir}:/workspace:rw`]);
 diff --git a/src/agents/sandbox/docker.create.test-helpers.ts b/src/agents/sandbox/docker.create.test-helpers.ts
-index 66016e3f1..2803c01ed 100644
+index 6437af6534c..1a72caaec7b 100644
 --- a/src/agents/sandbox/docker.create.test-helpers.ts
 +++ b/src/agents/sandbox/docker.create.test-helpers.ts
-@@ -288,6 +288,7 @@ export function createSandboxContainerTestHarness() {
+@@ -293,6 +293,7 @@ export function createSandboxContainerTestHarness() {
      workspaceDir?: string;
      scopeKey?: string;
      engine?: import("./docker.js").SandboxContainerEngine;
@@ -227,49 +207,49 @@ index 66016e3f1..2803c01ed 100644
    }): Promise<SpawnCall> {
      const workspaceDir = params.workspaceDir ?? "/tmp/workspace";
      await ensureSandboxContainer({
-@@ -295,6 +296,7 @@ export function createSandboxContainerTestHarness() {
+@@ -300,6 +301,7 @@ export function createSandboxContainerTestHarness() {
        workspaceDir,
        agentWorkspaceDir: workspaceDir,
        cfg: params.cfg,
 +      ...(params.tempRoot !== undefined ? { tempRoot: params.tempRoot } : {}),
-       ...(params.engine ? { engine: params.engine } : {}),
+       engine: params.engine ?? DOCKER_SANDBOX_ENGINE,
      });
  
 diff --git a/src/agents/sandbox/docker.ts b/src/agents/sandbox/docker.ts
-index 10c95755e..f50997d00 100644
+index d11af6841cb..a04ee37f3e1 100644
 --- a/src/agents/sandbox/docker.ts
 +++ b/src/agents/sandbox/docker.ts
-@@ -453,6 +453,8 @@ async function createSandboxContainer(params: {
+@@ -296,6 +296,8 @@ async function createSandboxContainer(params: {
+   workspaceDir: string;
    workspaceAccess: SandboxWorkspaceAccess;
    agentWorkspaceDir: string;
-   skillsWorkspaceDir?: string;
 +  /** Explicit private root for short-lived container environment files. */
 +  tempRoot?: string;
    scopeKey: string;
    configHash?: string;
    mountPlan: SandboxMountPlan;
-@@ -494,11 +496,15 @@ async function createSandboxContainer(params: {
-     );
+@@ -339,11 +341,15 @@ async function createSandboxContainer(params: {
+   for (const bind of params.mountPlan.binds) {
+     args.push("-v", bind);
    }
-   appendCustomBinds(args, { ...cfg, binds: params.mountPlan.binds });
--  await withContainerEnvFile(env, async (envFile) => {
+-  const created = await withContainerEnvFile(env, async (envFile) => {
 -    args.push("--env-file", envFile, cfg.image, "sleep", "infinity");
 -    params.assertCurrent?.();
--    await execContainer(engine, args);
+-    return await execContainer(engine, args);
 -  });
-+  await withContainerEnvFile(
++  const created = await withContainerEnvFile(
 +    env,
 +    async (envFile) => {
 +      args.push("--env-file", envFile, cfg.image, "sleep", "infinity");
 +      params.assertCurrent?.();
-+      await execContainer(engine, args);
++      return await execContainer(engine, args);
 +    },
 +    { rootDir: params.tempRoot },
 +  );
-   params.onAllocated?.();
-   params.assertCurrent?.();
-   await execContainer(engine, ["start", name]);
-@@ -525,6 +531,8 @@ type EnsureSandboxContainerParams = {
+   const containerId = created.stdout.trim();
+   if (!/^[a-f0-9]{64}$/u.test(containerId)) {
+     throw new Error("Container creation did not return an immutable container ID.");
+@@ -372,6 +378,8 @@ type EnsureSandboxContainerParams = {
    workspaceDir: string;
    agentWorkspaceDir: string;
    skillsWorkspaceDir?: string;
@@ -278,16 +258,16 @@ index 10c95755e..f50997d00 100644
    readOnlyResourceMounts?: Array<{ hostPath: string; containerPath: string }>;
    cfg: SandboxConfig;
    requireCurrentConfig?: boolean;
-@@ -687,6 +695,7 @@ async function ensureSandboxContainerLifecycle(
+@@ -583,6 +591,7 @@ async function ensureSandboxContainerLifecycle(
+         workspaceDir: params.workspaceDir,
          workspaceAccess: params.cfg.workspaceAccess,
          agentWorkspaceDir: params.agentWorkspaceDir,
-         skillsWorkspaceDir: params.skillsWorkspaceDir,
 +        tempRoot: params.tempRoot,
          scopeKey: params.scopeKey,
          configHash: expectedHash,
          mountPlan,
 diff --git a/src/infra/container-env-file.test.ts b/src/infra/container-env-file.test.ts
-index 0e042f487..bad6768ae 100644
+index 484b2256346..7b2335b30ae 100644
 --- a/src/infra/container-env-file.test.ts
 +++ b/src/infra/container-env-file.test.ts
 @@ -1,10 +1,59 @@
@@ -351,7 +331,7 @@ index 0e042f487..bad6768ae 100644
      const environment = {
        PLAIN: "synthetic-container-value",
 diff --git a/src/infra/container-env-file.ts b/src/infra/container-env-file.ts
-index f82fa9ba7..be043b2dd 100644
+index f08768e3b3f..4d2d85957c7 100644
 --- a/src/infra/container-env-file.ts
 +++ b/src/infra/container-env-file.ts
 @@ -47,10 +47,11 @@ function serializeContainerEnv(env: Readonly<Record<string, string>>): string {

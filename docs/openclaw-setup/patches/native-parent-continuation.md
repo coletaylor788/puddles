@@ -1,7 +1,7 @@
 # Native parent continuation
 
 Use upstream `sessions_yield` and its durable requester-owned continuation.
-OpenClaw 2026.9.6 contains the parent-final automatic-delivery and stale-child
+OpenClaw 2026.11.3 contains the parent-final automatic-delivery and stale-child
 announcement fixes. Custom blocking gather and its durable handoff are retired
 together. Source framing remains in `untrusted-agent-results.patch`, including
 native reply, announcement and bounded cron fallback paths.

@@ -1,6 +1,6 @@
 # Scoped container environment staging
 
-OpenClaw v2026.9.6 stages Docker and Podman environment values in a private
+OpenClaw v2026.11.3 stages Docker and Podman environment values in a private
 short-lived file. Its default prefers a shared OpenClaw temporary root even
 when a caller isolates its ordinary temporary directory.
 
@@ -25,7 +25,7 @@ and available until provisioning settles.
 The cumulative pool covers real staging and cleanup after success and failure,
 invalid-root rejection, context and backend propagation, and both container
 and browser creation. The three low-level staging regressions fail against
-unpatched 9.6: staging escapes the selected directory and an invalid selected
+unpatched 2026.11.3: staging escapes the selected directory and an invalid selected
 root is ignored. They pass with this patch. Engine operations use recording
 doubles. Rollback
 restores the previous runtime archive without changing stored state.

@@ -1,11 +1,11 @@
 # Cold recall regressions
 
-This is a test-only patch for OpenClaw v2026.9.6. Its upstream implementation
+This is a test-only patch for OpenClaw v2026.11.3. Its upstream implementation
 already fixes the old cold-recall failure. Active Memory reserves enough time
 for optional trigger lookup to settle before the preflight watchdog fires, then
 continues required recall. The previous runtime override is removed.
 
-A negative-control run with the unmodified 2026.9.6 plugin recalled a provider
+A negative-control run with the unmodified 2026.11.3 plugin recalled a provider
 that became ready after 1850 milliseconds. It also passed the upstream trigger
 timeout, exhausted-preflight, and recall-settlement regressions. The old patch's
 remaining difference was stricter accounting across preflight and recall. That

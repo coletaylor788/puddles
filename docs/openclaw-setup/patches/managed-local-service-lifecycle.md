@@ -1,10 +1,11 @@
 # Join gateway-owned local services
 
-OpenClaw v2026.9.6 starts local provider processes directly. A model child can
-outlive its router, and launchd label removal does not prove either process
-has exited. This patch uses the existing service relay for POSIX providers.
-Its independent group anchor owns graceful termination and the bounded hard
-kill of descendants. Windows keeps the existing process-tree path.
+OpenClaw v2026.11.3 starts provider services through its service-child relay.
+A model child can outlive its router, and launchd label removal does not prove
+either process has exited. This patch adds durable local-service ownership to
+the current relay and group-anchor flow. Its independent group anchor owns
+graceful termination and the bounded hard kill of descendants. Windows keeps
+the existing process-tree path.
 
 The host retains the relay until the group is gone, even after router exit.
 Shutdown joins construction before cleanup, so a late startup cannot escape
@@ -30,7 +31,7 @@ records, and activation failure before the state snapshot. The cumulative
 manifest also retains the existing generic relay lifetime cases. This patch
 does not change embedding request timeouts or claim model readiness.
 
-The 2026.9.6 relay returns its adapter before readiness settles. The local
+The 2026.11.3 relay returns its adapter before readiness settles. The local
 service owner retains that adapter and joins preparation before stopping it.
 Upstream's protections for late lease release, concurrent reacquisition and
 failed exit observation stay in place. Its current lineage and closing

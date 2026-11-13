@@ -10,7 +10,7 @@ config writers to proceed.
 
 ## Patch
 
-OpenClaw 2026.9.6 uses `@openclaw/fs-safe` 0.18.1. Upstream now serializes stale
+OpenClaw 2026.11.3 uses `@openclaw/fs-safe` 0.26.5. Upstream serializes stale
 reclaimers with a sibling directory. That prevents overlapping writers, but a
 killed reclaimer leaves the directory behind. It also treats the persistent
 guard files from the earlier Puddles patch as permanent contention.
@@ -24,15 +24,18 @@ platforms keep upstream behavior. The new root-scoped lock path retains its
 upstream ownership tokens and containment checks; the kernel guard applies to
 the existing raw-path locks used by configuration writes.
 
-The source patch registers the dependency patch and its lockfile hash. The
-original multi-process regression still pauses one stale reclaimer and proves
+The source patch registers the dependency patch and its generated lockfile
+references. The original multi-process regression still pauses one stale
+reclaimer and proves
 the second cannot enter its critical section. A new regression starts with an
 existing persistent guard, kills its reclaimer, and proves recovery and
 synchronous/asynchronous interoperability.
 
 ## Validation
 
-The regression is registered in the cumulative OpenClaw patch suite. Run:
+The regression is registered in the cumulative OpenClaw patch suite. The
+frozen install must also resolve every `@openclaw/fs-safe` importer to the
+patched snapshot. Run:
 
 ```bash
 node packages/e2e/bin/openclaw-test-env.mjs ci
