@@ -1,0 +1,157 @@
+diff --git a/extensions/anthropic/cli-profile.test.ts b/extensions/anthropic/cli-profile.test.ts
+--- a/extensions/anthropic/cli-profile.test.ts
++++ b/extensions/anthropic/cli-profile.test.ts
+@@ -59,6 +59,25 @@
+       workspaceDir: "/tmp/other",
+     });
+     expect(changed.args).not.toEqual(selected.args);
++  });
++  it("opts only the selected profile into host MCP while retaining native workspace settings", () => {
++    const ordinary = context("workspace");
++    const selected = structuredClone(ordinary);
++    (
++      selected.config!.plugins!.entries!.anthropic!.config!.cliProfiles as Record<
++        string,
++        { hostMcp?: boolean }
++      >
++    ).selected.hostMcp = true;
++    const direct = applyClaudeAgentProfile(base, ordinary);
++    const bridged = applyClaudeAgentProfile(base, selected);
++    expect(direct.hostMcp).toBeUndefined();
++    expect(bridged.hostMcp).toBe(true);
++    expect(bridged.toolsAllow).toBeUndefined();
++    expect(bridged.args).toEqual(direct.args);
++    expect(bridged.resumeArgs).toEqual(direct.resumeArgs);
++    expect(settings(bridged.args!).sandbox.enabled).toBe(true);
++    expect(applyClaudeAgentProfile(base, { ...selected, agentId: "other" })).toBe(base);
+   });
+   it("clears inherited service secrets even when their names look harmless", () => {
+     vi.stubEnv("NEUTRAL_CONFIG_VALUE", "synthetic-not-a-secret");
+diff --git a/extensions/anthropic/cli-profile.ts b/extensions/anthropic/cli-profile.ts
+--- a/extensions/anthropic/cli-profile.ts
++++ b/extensions/anthropic/cli-profile.ts
+@@ -10,6 +10,7 @@
+ type ClaudeAgentProfile = {
+   mode: "workspace" | "diagnostic" | "restricted";
+   protectedPaths?: string[];
++  hostMcp?: boolean;
+ };
+ type ClaudeProfileConfig = {
+   cliConfigDir?: string;
+@@ -79,6 +80,7 @@
+ ): CliBackendConfig {
+   const { profile, configDir } = resolveClaudeAgentProfile(context);
+   if (!profile) return config;
++  config = { ...config, ...(profile.hostMcp === true ? { hostMcp: true } : {}) };
+   if (!configDir)
+     throw new Error("Claude agent profiles require a dedicated cliConfigDir subscription login.");
+   const env = {
+diff --git a/extensions/anthropic/openclaw.plugin.json b/extensions/anthropic/openclaw.plugin.json
+--- a/extensions/anthropic/openclaw.plugin.json
++++ b/extensions/anthropic/openclaw.plugin.json
+@@ -491,6 +491,10 @@
+                 "restricted"
+               ]
+             },
++            "hostMcp": {
++              "type": "boolean",
++              "description": "Route configured MCP through OpenClaw while retaining native workspace tools."
++            },
+             "protectedPaths": {
+               "type": "array",
+               "items": {
+diff --git a/src/agents/cli-runner/prepare.configured-mcp.test.ts b/src/agents/cli-runner/prepare.configured-mcp.test.ts
+--- a/src/agents/cli-runner/prepare.configured-mcp.test.ts
++++ b/src/agents/cli-runner/prepare.configured-mcp.test.ts
+@@ -142,6 +142,40 @@
+     release();
+     await cleanup;
+   });
++  it("hosts configured MCP without selecting away native workspace tools", async () => {
++    delete backend.config.toolsAllow;
++    backend.config.hostMcp = true;
++    backend.config.nativePermissionMode = "defer";
++    backend.config.args = ["--tools", "Read,Write,Edit,Bash,Glob,Grep,AskUserQuestion"];
++    const run = await prepare();
++    expect(run.params.cliToolAvailability).toBeUndefined();
++    expect(prepareExecution.mock.calls[0]?.[0].toolAvailability).toBeUndefined();
++    expect(run.preparedBackend.backend.args).toContain(
++      "Read,Write,Edit,Bash,Glob,Grep,AskUserQuestion",
++    );
++    expect(mint.mock.calls[0]?.[0].configuredMcpTools?.[0]).toBe(tool);
++    expect(mint.mock.calls[0]?.[0].context.toolsAllow).toEqual([name]);
++    const args = run.preparedBackend.backend.args!;
++    const bundle = JSON.parse(await fs.readFile(args[args.indexOf("--mcp-config") + 1], "utf8"));
++    expect(Object.keys(bundle.mcpServers)).toEqual(["openclaw"]);
++    await run.preparedBackend.cleanup?.();
++    expect(dispose).toHaveBeenCalledOnce();
++  });
++  it("keeps an empty caller cap stronger than workspace host MCP", async () => {
++    delete backend.config.toolsAllow;
++    backend.config.hostMcp = true;
++    const run = await prepare([]);
++    expect(run.params.cliToolAvailability).toEqual({ native: [], openClaw: [] });
++    expect(mint.mock.calls[0]?.[0].context.toolsAllow).toEqual([]);
++  });
++  it("fails closed when the opted-in host bridge is disabled", async () => {
++    delete backend.config.toolsAllow;
++    backend.config.hostMcp = true;
++    backend.bundleMcp = false;
++    await expect(prepare()).rejects.toThrow("requires the OpenClaw host MCP bridge");
++    expect(prepareExecution).not.toHaveBeenCalled();
++    expect(materialize).not.toHaveBeenCalled();
++  });
+   it("keeps an empty caller cap empty", async () => {
+     const run = await prepare([]);
+     expect(run.params.cliToolAvailability).toEqual({ native: [], openClaw: [] });
+diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
+--- a/src/agents/cli-runner/prepare.ts
++++ b/src/agents/cli-runner/prepare.ts
+@@ -1276,6 +1276,14 @@
+     !systemAgentMcpConfig &&
+     backendResolved.bundleMcp &&
+     params.disableTools !== true;
++  const hostMcp =
++    backendResolved.config.hostMcp === true &&
++    params.disableTools !== true &&
++    !skipsTurnPreparation &&
++    !systemAgentMcpConfig;
++  if (hostMcp && !bundleMcpEnabled) {
++    throw new Error("This CLI profile requires the OpenClaw host MCP bridge.");
++  }
+   let mcpLoopbackRuntime = bundleMcpEnabled ? prepareDeps.getActiveMcpLoopbackRuntime() : undefined;
+   if (bundleMcpEnabled && !mcpLoopbackRuntime) {
+     try {
+@@ -1410,7 +1418,10 @@
+       !skipsTurnPreparation &&
+       params.disableTools !== true &&
+       mcpProjectionContext &&
+-      (shouldMaterializeRuntimePolicy || params.cliToolAvailability || promptBuildRestrictsTools)
++      (hostMcp ||
++        shouldMaterializeRuntimePolicy ||
++        params.cliToolAvailability ||
++        promptBuildRestrictsTools)
+         ? await prepareDeps.materializeConfiguredMcpToolsForHarnessRunCore({
+             sessionId: params.sessionId,
+             sessionKey: params.sessionKey,
+@@ -1566,7 +1577,7 @@
+     // tool universe for the run.
+     const restrictedLoopbackToolsAllow =
+       params.cliToolAvailability?.openClaw ??
+-      (promptBuildRestrictsTools ? projectedTools.map((tool) => tool.name) : undefined);
++      (hostMcp || promptBuildRestrictsTools ? projectedTools.map((tool) => tool.name) : undefined);
+     // Native tools on nodes stay local.
+     const projectNativeToolAuthority =
+       !skipsTurnPreparation && params.disableTools !== true && !nodeClaudePlacement
+diff --git a/src/plugins/cli-backend.types.ts b/src/plugins/cli-backend.types.ts
+--- a/src/plugins/cli-backend.types.ts
++++ b/src/plugins/cli-backend.types.ts
+@@ -10,6 +10,8 @@
+   nativePermissionMode?: "defer";
+   /** Agent-scoped MCP cap; selects the existing exact-tool path. */
+   toolsAllow?: string[];
++  /** Keep configured MCP on the host without disabling native workspace tools. */
++  hostMcp?: boolean;
+   /** Base args applied to every invocation. */
+   args?: string[];
+   /** Output parsing mode (default: json). */

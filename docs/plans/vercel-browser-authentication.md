@@ -26,7 +26,8 @@ graph TD
 #### Use Vercel directly
 
 Register Vercel's native `agent-browser mcp` server through OpenClaw's existing
-configured-MCP support. The host bridge applies the browser agent's tool policy;
+configured-MCP support. The browser's workspace profile explicitly selects host MCP while keeping native
+Bash and file tools. The host bridge applies the browser agent's tool policy;
 Vercel supplies the upstream tools and behavior, including auth and page evaluation.
 The trusted Vercel process runs outside Claude's Bash sandbox and attaches through
 CDP. Agent Bash/file tools and the browser process must not read the vault or key.
@@ -151,7 +152,10 @@ protected service environment. There is no custom Vercel API wrapper.
 Current main includes [configured MCP for Claude](../openclaw-setup/patches/claude-configured-mcp.md).
 It holds configured MCP tools on the host and grants them through the existing
 OpenClaw bridge. Prefer that supported path over changing Claude's raw MCP config.
-Verify it with the browser's workspace profile and effective per-agent policy.
+The workspace profile additionally selects `hostMcp: true` through
+[workspace host MCP](../openclaw-setup/patches/claude-workspace-mcp.md). DEV exposed
+a direct-MCP approval prompt without this selection. The qualifier now requires
+the exact host-bridge navigation and eval names, alongside native Bash/file checks.
 
 CDP attach cannot use Vercel's domain allowlist. Check direct CDP denial from
 agent Bash and use the browser's process boundary for filesystem restrictions.

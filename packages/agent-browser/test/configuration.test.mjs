@@ -33,6 +33,8 @@ test('personal browser switches controllers while other agents and payment permi
   }
   assert.equal(after.plugins.entries.anthropic.config.cliProfiles['browser-agent'].mode, 'workspace');
   assert.deepEqual(after.plugins.entries.anthropic.config.cliProfiles['browser-agent'].protectedPaths, options.protectedPaths);
+  assert.equal(after.plugins.entries.anthropic.config.cliProfiles['browser-agent'].hostMcp, true);
+  assert.deepEqual(after.plugins.entries.anthropic.config.cliProfiles.main, before.plugins.entries.anthropic.config.cliProfiles.main);
   const allowed = after.mcp.servers[namespace].toolFilter.include;
   assert.ok(allowed.includes('agent_browser_eval') && allowed.includes('agent_browser_auth_login'));
   for (const name of ['auth_save', 'auth_delete', 'cookies_get', 'storage_get', 'state_save']) {
