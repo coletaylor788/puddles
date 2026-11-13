@@ -71,7 +71,7 @@ The complete repair still must prove one continuous scenario: delegate research,
 
 **Approval reference:** “One change. Make it have two phases, that follow dev process independently. I.e we upgrade first, safely roll to prod, then we make the patch and safely roll to prod. Upgrade is holistically ensuring existing tests and behavior doesn’t break. Then approved to ship, push, and implement” (2026-11-13).
 
-**Progress:** Phase 1 is in progress. Both source branches were refreshed onto main while preserving research. Stable component checks and public plugin compilation/unit tests passed. Maintained patch ports and complete application qualification remain open. Workshop proposal retirement needs review before its port can proceed. Other compatibility work continues. Phase 2 implementation has not started. The held first repair remains excluded.
+**Progress:** Phase 1 is in progress. Both source branches were refreshed onto main while preserving research. Stable component checks and public plugin compilation/unit tests passed. Maintained patch ports and complete application qualification remain open. Testing found a mismatch between the migration preview and native configuration writer; exact preview/persisted equality remains a release gate. Workshop proposal retirement needs review before its port can proceed. Other compatibility work continues. Phase 2 implementation has not started. The held first repair remains excluded.
 
 ## Agent section
 
@@ -143,6 +143,10 @@ Upgrade compatibility includes the integrity-bound pnpm 12.15.0 toolchain and na
 ### Validation
 
 Phase 1 local compatibility: all eight public plugins compile against the pinned `openclaw@2026.11.3` SDK. Their existing suites pass 364 tests with no skips. The public lockfile was regenerated and installed using pnpm 12.15.0 and the shared store. The first dependency-order check required building `mcp-hooks`; compilation then passed. These checks do not replace the complete application or installed candidate gates.
+
+Focused compatibility ports now have additional evidence. The iMessage coalescer passes 41 cases, independently rerun by the retained reviewer. The browser entrypoint fixture passes against the ported source. The corrected native delegation suite passes 43 cases in 35.05 seconds. Heartbeat prompt and terminal resolution pass 65 cases in 16.05 seconds; the two Copilot inbound-context cases pass in 27.28 seconds. These focused source checks do not prove the final composed runtime, prompt generation, installed startup, or production readiness.
+
+The retained reviewer cleared the wiki metadata port and verified correction of delegation fixtures that still used the retired roster shape and test configuration owner. State-migration SDK qualification remains in progress: native worker compilation exposed a removed roster helper, now replaced by the stable Doctor migration owner. The port retains and expands the roster regression. A frozen source run passed 42 tests across SQL, cron, worker and Doctor checks, but the markerless roster case failed. The preview lost the original legacy owner while the native writer retained it and materialized ownership. This is a real release-gate mismatch, not a reason to weaken the assertion. The correction carries native owner provenance through the preview; exact equality, explicit owners, workspace, fixed-store and include cases remain under qualification.
 
 Completed on unmodified `847611dcaa3bf0e2783335f961dd1fd0580e4d9f`:
 
