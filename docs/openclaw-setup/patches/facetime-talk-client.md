@@ -1,6 +1,7 @@
 # FaceTime as a shared Talk client
 
-This patch targets OpenClaw 2026.9.6 after `talk-agent-parity.patch`.
+This patch targets OpenClaw 2026.11.3. Native Talk now supplies the permission
+handling previously maintained in `talk-agent-parity.patch`.
 FaceTime supplies call admission and audio while the Gateway owns the same
 conversation and agent behavior used by native Talk.
 
@@ -15,7 +16,8 @@ in shared mode. Shared Talk accepts inbound calls only: outbound tool discovery 
 The scoped `runtime.realtimeVoice.createSession` API binds an authenticated call
 to the existing Talk runners, session history, transcript writer, and task
 controls. Registry retirement, Gateway retirement, and call closure prevent new
-admission. The bridge retains steering and completion-ownership methods instead
+admission. Native asynchronous provider selection and launch validation also
+serve carrier readiness and call creation. The bridge retains steering and completion-ownership methods instead
 of reducing the native runner to a plain callback.
 
 ## Call lifetime
@@ -25,6 +27,13 @@ canonical conversation. Task cancellation remains a separate native control.
 Explicit phrases such as “hang up” or “end this call” request the carrier's
 physical hangup; quoted, conditional, and negated phrases do not. Transport
 closure fences stale audio and new work while preserving final transcript flush.
+
+The carrier captures the native voice database source for the call. Conversation
+writes use native per-operation source admission, and close retains its admitted
+writer through the final transcript flush. A replaced source or refused settlement
+surfaces failure while still tearing down the provider. Uncertain writes are not
+replayed. This follows the native browser lifecycle without adding a separate
+conversation store lock for the entire call.
 
 Provider teardown begins as soon as the carrier is revoked. Native audio suspension
 runs concurrently with shared session cleanup so persistence cannot keep playback
@@ -61,7 +70,11 @@ packaging, helper, lifecycle, and driver regressions, plus native session,
 runtime authority, runner properties, and initial-history propagation. Tests use
 synthetic providers and native helper fixtures. Physical account routing,
 helper/driver readiness, bidirectional audio, latency, and interruption still
-require target-host acceptance before enabling the carrier.
+require target-host acceptance before enabling the carrier. Stable compatibility source review and focused native checks pass, including
+provider selection, readiness, persistence failure, physical source replacement,
+and final transcript cleanup. Core and extension runtime typechecks pass.
+Complete test typechecking, artifact composition and installed qualification
+remain release requirements. Local checks do not establish device readiness.
 
 The separate [native companion patches](facetime-native/README.md) cover shared
 answer acknowledgement and carrier closure. Puddles owns their pinned source and
@@ -69,8 +82,10 @@ compiled regressions; native packaging and device acceptance remain separate.
 
 ## Rollout and rollback
 
-Stage the plugin disabled and owner-only. Inherit later fixes through the native
-Talk owners. Use the maintained artifact pipeline for installation and rollback;
+For first-time adoption, stage the plugin disabled and owner-only until target
+acceptance. An upgrade preserves the installation's approved enablement and owner
+settings. Inherit later fixes through the native Talk owners. Use the maintained
+artifact pipeline for installation and rollback;
 restore the matching runtime and configuration together. Native helper changes
 have their own tracked rollback and must preserve pre-existing host settings.
 
