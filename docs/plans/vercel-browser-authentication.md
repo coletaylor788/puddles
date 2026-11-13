@@ -1,8 +1,8 @@
 # Replace OpenClaw browser tools with Vercel agent-browser
 
-Status: Production approved; DEV qualification teardown repair
+Status: Production approved; refreshed candidate validation pending
 Issue: https://github.com/coletaylor788/puddles/issues/353
-Last updated: 2026-11-12
+Last updated: 2026-11-13
 
 ## Human section
 
@@ -41,8 +41,8 @@ CDP connection. Vercel still owns browser actions, login and credential storage.
 
 This uses the installed plugin API. No OpenClaw upgrade or new source patch is
 required for registration. The machine-wide Claude policy proposal is withdrawn.
-DEV has exercised the plugin route with native Bash/files. Its teardown repair
-must pass a fresh installed run before release.
+DEV has passed the plugin route, native Bash/files, and complete teardown.
+The refreshed candidate must pass again before release.
 
 The trusted Vercel process and vault remain outside Claude's Bash sandbox and
 the browser container. Vercel is unsandboxed, as requested. Native screenshots
@@ -102,7 +102,9 @@ credential-handling system. [Authentication vault](https://agent-browser.dev/sec
 > conflict with this rule. If a secret appears unexpectedly, stop the inspection,
 > do not repeat or save the value, and report the exposure without the secret.
 
-Retain the existing, narrowly scoped Link checkout permission. An owner-approved
+Retain the existing, narrowly scoped Link checkout permission. When switching to
+workspace mode, carry its ten exact native MCP permissions into that profile.
+Vercel tools continue through the Gateway plugin, with no direct MCP grant. An owner-approved
 Link payment may supply an issued payment credential and shipping/contact details
 for that purchase. It does not authorize inspecting website authentication data.
 Other agents and household browser permissions remain unchanged.
@@ -122,31 +124,31 @@ image-file overwrites are an accepted limitation. **Implementation limit:**
 “Remove patch. Fix via native. If you want to patch openclaw code, get my approval
 first.” No new OpenClaw patch or machine-wide Claude policy is authorized.
 
-The plugin works through the Gateway in DEV. Native Bash succeeds, protected
-file access is denied, and the authentication-inspection request invokes no
-tools. DEV failed because Vercel's detached daemon remained during qualification
-cleanup. The repair uses native shutdown before checking remaining processes.
-Focused regressions pass; fresh DEV and production validation remain pending.
-Production is unchanged.
+The plugin, native tools, protected access, authentication guidance, and shutdown
+repair pass installed DEV validation. The branches now include the shipped Link
+correction. The browser workspace profile retains its ten exact Link tool
+permissions, preserving Link's own payment approval. Prepared source recovery and
+a fresh build/DEV pass are required before production. Production has not switched
+to this browser integration.
 
 ## Agent section
 
 ### State
 
-Public branch: `codex/vercel-browser-proposal`, refreshed from `9b007786`.
+Public branch: `codex/vercel-browser-proposal`, refreshed from `2c998366`.
 The isolated companion branch is `codex/vercel-browser-integration`, refreshed
-from `d9ccd4c2`. PR #354 contains the public implementation. The approved plugin
-uses the existing Gateway tool bridge and retains native workspace tools. The
-withdrawn routing patch was never deployed, and no machine-wide policy was
-installed. Production is unchanged.
+from `b0b36fdd`. Public PR #354 and the companion PR carry one candidate.
+No browser OpenClaw patch or machine-wide Claude policy is included. The source
+refresh incorporates the already-shipped Link profile capability unchanged.
 
-DEV run `gh-43370241480-1`, candidate
-`f1f59e6eba6af0acad97b674eddcbf0361ae4623d579c6763ed9f600e05ef725`,
-ended `failed`, `phase=complete`, `child=null` in `dev-tests`. Source queue closure
-and transfer cleanup are verified. The retained diagnostic reported remaining
-qualification consumers. The native daemon lifetime was reproduced locally and
-the test lifecycle now invokes packaged native shutdown before consumer checks.
-Fresh installed acceptance and production delivery remain pending.
+DEV `gh-43380177321-1`, candidate
+`dee2fa5ee1e2d05bc784e2bab76cc2f793994526cee0e1bc45fe9714974a85a1`,
+passed with `phase=complete`, `child=null`, source queue closed, and transfer
+cleaned. The detached-daemon cleanup repair is accepted. Fresh validation is
+required after the Link base refresh and exact native permission preservation.
+Prepared-source recovery is in progress after app worktree cleanup removed it.
+The previous candidate output remains retained; no production browser cutover
+has occurred.
 
 ### Scope and acceptance criteria
 
@@ -274,8 +276,13 @@ failure and a cleanup failure. Fifteen focused preparation and cleanup tests pas
 including a real detached-process detection test. Browser preparation and cleanup
 regressions are registered in the application suite.
 
-Remaining acceptance: a fresh complete DEV pass, retained review of the cleanup
-repair, and the normal TEST/PROD gates. No test may mutate a live account.
+The repaired candidate passes complete installed DEV, including the native
+provider checks and teardown. Retained review cleared the full behavior diff.
+After the Link merge, focused tests cover migration from its restricted browser
+profile, exact equality with the ten existing payment tool permissions, and
+unchanged main/household profiles. The refreshed candidate requires retained
+review, fresh DEV, and the normal full-suite TEST/PROD gates. No test may mutate
+a live account.
 
 ### Rollout and rollback
 
@@ -307,6 +314,6 @@ clearance remain pending.
 - [x] Record the accepted native screenshot overwrite limitation.
 - [x] Diagnose the installed runtime versus current upstream MCP routing.
 - [x] Record approval to use the existing plugin registration pattern.
-- [ ] Implement and qualify plugin forwarding with native workspace tools.
-- [ ] Verify Gateway-owned MCP admission and agent instruction adherence.
+- [x] Implement and qualify plugin forwarding with native workspace tools.
+- [x] Verify Gateway-owned MCP admission and agent instruction adherence.
 - [ ] Complete implementation, independent review, and release validation.
