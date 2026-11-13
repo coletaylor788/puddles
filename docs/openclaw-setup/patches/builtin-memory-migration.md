@@ -1,7 +1,8 @@
 # Builtin memory migration
 
-OpenClaw 2026.9.6 uses the builtin memory backend and no longer supports QMD. There is no QMD transport caller left
-to receive the maintained per-agent mcporter override. This test-only patch
+OpenClaw 2026.11.3 uses the builtin memory backend and no longer supports QMD.
+There is no QMD transport caller left to receive the maintained per-agent
+mcporter override. This test-only patch
 replaces that override with migration and source-isolation regressions. It keeps
 the backend configuration test target and adds doctor migration coverage to the
 shared pool. The patch does not change Doctor itself.

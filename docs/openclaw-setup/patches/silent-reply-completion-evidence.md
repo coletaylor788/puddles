@@ -1,6 +1,6 @@
 # Current-attempt silent reply evidence
 
-OpenClaw 2026.9.6 now classifies silent replies from the current attempt's
+OpenClaw 2026.11.3 classifies silent replies from the current attempt's
 assistant record, including its completed response. That upstream owner covers
 the maintained behavior, so this patch retains regression tests only. It adds
 no runtime override.
