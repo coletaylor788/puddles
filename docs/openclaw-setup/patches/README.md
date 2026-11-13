@@ -46,7 +46,6 @@ patch inventory and application commands do not authorize a new or changed patch
 | `harness-tool-work-owner.patch` | Bind tool callbacks to their current harness attempt across reused connections |
 | `talk-conversation-progress.patch` | Keep Live conversational while work runs and forward silent public progress |
 | `talk-overlap-recovery.patch` | Keep Talk connected when the active harness cannot accept a follow-up |
-| `talk-agent-parity.patch` | Optional text-equivalent Talk authorization and consultation work ownership |
 | `core-declaration-portability.patch` | Name portable core declaration exports for tools, sessions, databases, and plugin records |
 | `shared-conversation-context.patch` | Supply native shared history to a persistent harness before each ordinary turn |
 | `untrusted-agent-results.patch` | Enclose configured source agent findings at model-facing boundaries |
@@ -471,3 +470,11 @@ runtime; it bypasses the cumulative gate, installed rehearsal, and recovery.
 ## Compaction snapshots and idle maintenance
 
 [Compaction memory and idle maintenance](compaction-memory-idle.md) retains memory-save input independently of the live turn and admits configured idle compaction through native maintenance. [Native parent continuation](native-parent-continuation.md) replaces the retired custom gather patches.
+
+The former Talk permission-parity patch is retired on `v2026.11.3`. Stable now
+uses ordinary agent permissions and independent consultation work admission.
+The cumulative suite retains native authority, denial, offer-lifetime and
+cancellation coverage. The remaining overlap patch retains the exact closed-offer
+context-engine regression. Remove the obsolete `talk.realtime.confirmationPolicy`
+leaf through a reviewed configuration transition; the old `standard` value maps
+to native behavior. A former `high-impact` selection needs its own behavior review.
