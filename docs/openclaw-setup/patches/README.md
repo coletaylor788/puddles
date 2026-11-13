@@ -5,8 +5,8 @@ runner applies them in a detached worktree, builds the real runtime, runs the
 cumulative regressions, and rehearses the installed package. It never modifies
 the configured source checkout or patches installed distribution chunks.
 
-The selected stable release is OpenClaw 2026.9.6 at
-`eb377ac59e6c9fd6c7705028034812becf00271b`. It requires Node 24.16.0 or later
+The selected stable release is OpenClaw 2026.11.3 at
+`847611dcaa3bf0e2783335f961dd1fd0580e4d9f`. It requires Node 24.16.0 or later
 on 24.x, or Node 26.1.0 or later. Earlier runtimes can truncate SQLite text.
 Use the same exact Node binary for packaging, installed rehearsal, and the
 activated gateway. Keep the previous interpreter available for rollback.
@@ -31,7 +31,7 @@ patch inventory and application commands do not authorize a new or changed patch
 | `skill-workshop-sandbox-fix.patch` | Skill workshop in sandboxed agents |
 | `imessage-message-part-coalescing.patch` | Selective text, link, and image coalescing |
 | `imessage-group-inbound-policy.patch` | Honor configured unmentioned group events in iMessage |
-| `sandbox-discovery-failure-fix.patch` | Select the configured registry; upstream supplies discovery error propagation |
+| `sandbox-discovery-failure-fix.patch` | Regression tests for native selected-registry discovery and error propagation |
 | `browser-userdata-dir-fix.patch` | Browser data directory and singleton cleanup |
 | `builtin-memory-migration.patch` | Regression tests for upstream memory migration and per-agent source isolation |
 | `silent-reply-completion-evidence.patch` | Regression tests for upstream silent-reply completion evidence |
