@@ -1,8 +1,11 @@
 # Native browser integration
 
 This package pins and packages stock Vercel agent-browser. OpenClaw grants its
-native MCP tools through the configured host MCP bridge. The launcher starts a
-separate Chromium container and passes its authenticated CDP endpoint to Vercel.
+native MCP tools through `mcp.servers` and the configured host MCP bridge. The
+installed `2026.9.6` workspace path does not yet satisfy that routing contract;
+see the [runtime prerequisite and diagnosis](../../docs/plans/vercel-browser-authentication.md#routing-diagnosis-and-upstream-dependency).
+No custom adapter or machine-wide Claude policy is part of this design. The
+launcher starts a separate Chromium container and passes its authenticated CDP endpoint to Vercel.
 It does not replace MCP schemas, login, credential storage, or browser actions.
 
 The trusted launch specification contains an immutable existing browser image,

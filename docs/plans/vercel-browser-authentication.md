@@ -1,6 +1,6 @@
 # Replace OpenClaw browser tools with Vercel agent-browser
 
-Status: Production approved; implementation in progress
+Status: Production approved; native Gateway routing needs a compatible runtime
 Issue: https://github.com/coletaylor788/puddles/issues/353
 Last updated: 2026-11-12
 
@@ -14,36 +14,51 @@ sandboxed Bash, and native file tools in the browser agent's workspace profile.
 
 ```mermaid
 graph TD
-    A["OpenClaw"] --> B["Browser agent using Claude Code CLI"]
-    B --> C["Sandboxed Bash and native file tools"]
-    A --> G["Native MCP configuration and tool policy"]
-    G --> B
-    B -->|"MCP"| D["Stock Vercel MCP on the trusted host"]
-    V["Vercel encrypted vault on the host"] --> D
-    D -->|"CDP"| E["Chromium in Docker"]
-    E --> F["Website"]
+    C["mcp.servers and agent tool policy"] --> G["OpenClaw Gateway"]
+    A["Browser agent using Claude Code CLI"] -->|"Tool calls"| G
+    A --> B["Sandboxed Bash and native file tools"]
+    G -->|"Native MCP"| V["Stock Vercel on the trusted host"]
+    K["Vercel encrypted vault on the host"] --> V
+    V -->|"CDP"| D["Chromium in Docker"]
+    D --> W["Website"]
 ```
 
-#### Use Vercel directly
+#### Register Vercel through OpenClaw
 
-Register Vercel's native `agent-browser mcp` server through OpenClaw's existing
-configured-MCP support. OpenClaw applies the browser agent's tool policy before
-Claude receives the MCP configuration. Claude's native MCP connection reaches
-Vercel outside its Bash sandbox. Vercel supplies the upstream tools and behavior,
-including auth and page evaluation.
-The trusted Vercel process runs outside Claude's Bash sandbox and attaches through
-CDP. Agent Bash/file tools and the browser process must not read the vault or key.
+Add `agent_browser` under `mcp.servers`. OpenClaw connects to stock
+`agent-browser mcp`, discovers its native tools, and serves the permitted tools
+through its Gateway bridge. Select the browser operations with `toolFilter` and
+the personal browser agent's normal tool allowlist. Other agents remain denied.
+Claude connects only to OpenClaw for these tools; the Gateway owns the Vercel
+connection. Bash and file tools retain their separate workspace restrictions.
 
-Vercel remains unsandboxed, as requested. Its native screenshot tool can save
-image bytes at a caller-selected host path and overwrite an existing writable
-file. That is a file-corruption risk; the reproduced behavior did not demonstrate
-arbitrary code execution, secret reading, or exfiltration. The requester accepted
-this limitation after clarification. Use the configured output directory during
-normal work, and do not claim that every MCP operation is filesystem-confined.
+This is native MCP configuration. No custom browser adapter, replacement tool
+schemas, credential broker, or new OpenClaw patch is part of the design. The
+machine-wide Claude permission proposal is withdrawn. Launcher wiring still
+starts the existing browser container and passes its CDP connection to Vercel.
+[OpenClaw MCP configuration](https://docs.openclaw.ai/tools/mcp),
+[Vercel native MCP](https://agent-browser.dev/commands#mcp-server).
 
-Add configuration and necessary launcher wiring only. No custom browser plugin,
-credential broker, login algorithm, session handoff, or replacement tool schemas.
-[Native MCP documentation](https://agent-browser.dev/commands#mcp-server)
+#### Runtime prerequisite
+
+The installed `2026.9.6` runtime recognizes `mcp.servers`, but its workspace
+profile passes those servers directly to Claude. Its existing Gateway path is
+limited to restricted runs, which remove native Bash and file tools. That caused
+the DEV permission prompt; MCP registration itself worked.
+
+Current upstream supports the required Gateway routing. Its October 20 changes
+also distinguish mediated coding tools from native Bash/files. Qualify a
+compatible upstream release and supported configuration that preserves native
+workspace tools before resuming browser deployment. An upgrade alone is not yet
+proof that both requirements work together. Keep the current runtime unchanged
+for this proposal update; do not backport a patch or replace the route with an
+adapter or machine-wide permission rule.
+
+The trusted Vercel process and vault remain outside Claude's Bash sandbox and
+the browser container. Vercel is unsandboxed, as requested. Native screenshots
+can overwrite a writable host file with image bytes. This accepted file-corruption
+risk is separate from vault isolation and does not demonstrate arbitrary code
+execution or secret reading. Use the configured screenshot directory normally.
 
 #### Browser isolation decision
 
@@ -116,7 +131,10 @@ This covers implementation, review, publication, and production delivery.
 **Implementation limit:** The requester subsequently directed: “Remove patch. Fix
 via native. If you want to patch openclaw code, get my approval first.” The proposed
 workspace MCP routing patch is removed. Use native configuration; any new
-OpenClaw code change requires explicit approval before implementation.
+OpenClaw code change requires explicit approval before implementation. The latest
+direction is to diagnose and update this proposal around native `mcp.servers`, with
+calls going through OpenClaw. No custom adapter or machine-wide policy is approved
+or needed in the target design.
 
 **Fallback approval:** The requester said, “If SRT is blocked and we can’t find a
 solution, approved to replace with docker, just update the design, keep seeing if
@@ -140,11 +158,15 @@ qualifier. Native shutdown integration and preparation-failure rollback tests
 pass. Installed acceptance and release delivery remain unfinished.
 DEV reached Vercel through native MCP but requested a Claude permission approval.
 The proposed OpenClaw routing patch was removed at the requester's direction.
-Native permission configuration is under investigation; production is unchanged.
+The installed routing discrepancy is diagnosed below. Browser deployment awaits a
+compatible native Gateway route that retains native workspace tools. The removed
+patch was never deployed, and no machine-wide policy was installed. Production is
+unchanged.
 
 ### Scope and acceptance criteria
 
 - Replace the personal browser agent's OpenClaw browser tools with stock Vercel.
+- Register through `mcp.servers` and prove calls execute through the OpenClaw Gateway.
 - Keep native Bash/file tools working in its own workspace.
 - Use Vercel's native vault, login, sessions, and browser behavior.
 - Deny vault/key access from agent shell/file tools and the browser process.
@@ -159,19 +181,36 @@ Vercel's [MCP implementation](https://github.com/vercel-labs/agent-browser/blob/
 delegates to its CLI, including native auth. Use host-owned configuration and a
 protected service environment. There is no custom Vercel API wrapper.
 
-Current main supports native configured MCP with effective per-agent tool filtering.
-The workspace profile exposes the selected native server to Claude; restricted
-profiles can instead use the existing host bridge. Both run the MCP process outside
-the Bash sandbox. Use the existing native workspace path and qualify exact tool
-names, native Bash/file access, and vault/profile/CDP denial. Do not add OpenClaw
-code changes without the requester's explicit approval.
+Use `mcp.servers.agent_browser` as the sole server definition. The existing
+configuration helper already creates that entry, its exact native `toolFilter`,
+and per-agent allow/deny rules. Registration needs no Puddles plugin. Gmail's
+custom plugin is not a prerequisite for native MCP servers.
 
-The native workspace profile ignores user/project Claude settings and preapproves
-only the OpenClaw bridge namespace. The Vercel calls therefore need native Claude
-permission rules. A proposed managed policy contains only the 50 selected browser
-tool names. It would apply to Claude sessions across the Mini, so this broader
-policy scope is not yet approved or installed. No shell/file permission changes
-are proposed.
+### Routing diagnosis and upstream dependency
+
+| Evidence | What it establishes |
+| --- | --- |
+| Installed runtime reports `2026.9.6`; the build pins `eb377ac59e6c9fd6c7705028034812becf00271b` | Current online documentation describes newer behavior than this candidate's base. |
+| Installed `prepareCliRunContext` materializes configured MCP for restricted runtime policy, exact tool selection, or a restricting prompt hook | The workspace profile without those conditions takes the direct native-server path. Agent tool allowlists still filter discovery; they do not select Gateway ownership here. |
+| [Existing restricted-MCP patch](../openclaw-setup/patches/claude-configured-mcp.md) and [workspace profile](../openclaw-setup/patches/claude-native-agent-profiles.md) | Restricted mode bridges MCP but clears native tools. Workspace mode retains sandboxed native tools and preapproves the OpenClaw namespace. Switching modes does not meet both requirements. |
+| DEV requested approval for `mcp__agent_browser__agent_browser_open` | The tool was discovered and exposed directly to Claude. This is not a failed Vercel registration or evidence that credentials escaped. |
+| Upstream [77d9f42 / PR #172026](https://github.com/openclaw/openclaw/commit/77d9f42c86bf42ee05f997ec5f838ad95d268a0a), October 20 | Ordinary local Claude turns gain Gateway-owned configured MCP through a mediated coding-tool surface. |
+| Upstream [1985677 / PR #178723](https://github.com/openclaw/openclaw/commit/1985677a3d253ab4cbc8e4f9622601d39658764d), October 20 | Configured MCP stays on the Gateway while native tools remain available when effective `tools.exec.host` is `node`. The committed regression checks the exclusive OpenClaw MCP config, retained native availability, and a real bridged MCP call. |
+
+The last upstream configuration is a candidate for qualification, not an installed
+fix. It separates OpenClaw exec routing from Claude's native Bash. Do not silently
+change execution placement or broaden node access to enable browser tools.
+Select an exact compatible upstream release and assess its integration with the
+existing native workspace profile before proposing a runtime upgrade. No upgrade,
+backport, or source modification was performed during this diagnosis.
+
+Installed acceptance must observe
+`mcp__openclaw__agent_browser__agent_browser_open` and the corresponding eval tool,
+verify that the Gateway owns the server connection, and reject a separate direct
+Claude connection. In the same profile, prove native Bash and file tools still
+work in the workspace while vault/profile reads and direct CDP remain denied.
+The current direct-route qualifier assertion needs correction with the eventual
+runtime implementation; it is not acceptance for this design.
 
 CDP attach cannot use Vercel's domain allowlist. Check direct CDP denial from
 agent Bash and use the browser's process boundary for filesystem restrictions.
@@ -181,8 +220,8 @@ this limitation when the runtime integration is implemented.
 
 ### Implementation
 
-Pin and package stock agent-browser. Add managed MCP configuration and select the
-browser's workspace profile. Add the authentication rule while preserving the
+Pin and package stock agent-browser. Add native `mcp.servers` configuration and
+select the browser's workspace profile. Add the authentication rule while preserving the
 existing Link payment exception. Reuse the existing Docker image and extend the maintained stop helper.
 Keep private bindings in the companion repository. Do not add a Vercel sandbox
 or custom screenshot argument filtering.
@@ -229,13 +268,14 @@ expiry, visible MFA challenges, and complete shutdown of default plus two named
 native sessions. The private preparation and shutdown regressions pass, including
 backup restoration after preparation fails before runtime installation.
 
-Remaining acceptance: installed native MCP admission and lifecycle; workspace
-Bash/file isolation; denied vault/key reads and direct CDP; ordinary eval and real
+Remaining acceptance: installed Gateway-owned configured MCP admission and
+lifecycle; workspace Bash/file isolation; denied vault/key reads and direct CDP; ordinary eval and real
 provider refusal to inspect authentication data. No test may mutate a live account.
 
 ### Rollout and rollback
 
-Follow the approved feature lifecycle with the Docker fallback. Switch
+First resolve and qualify the upstream runtime prerequisite without a custom patch.
+Then follow the approved feature lifecycle with the Docker fallback. Switch
 controllers only after acceptance. Retain the previous profile for rollback without
 concurrent control. Use managed CI for DEV, TEST, production, and exact paired merge.
 Production deployment remains pending the required acceptance gates.
@@ -260,5 +300,7 @@ clearance remain pending.
 - [x] Run a synthetic browser sandbox compatibility probe.
 - [x] Resolve browser isolation with the conditionally approved Docker fallback.
 - [x] Record the accepted native screenshot overwrite limitation.
-- [ ] Verify configured MCP admission and agent instruction adherence.
+- [x] Diagnose the installed runtime versus current upstream MCP routing.
+- [ ] Select and qualify a compatible upstream runtime and native-tools configuration.
+- [ ] Verify Gateway-owned MCP admission and agent instruction adherence.
 - [ ] Complete implementation, independent review, and release validation.
