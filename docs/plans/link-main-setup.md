@@ -175,6 +175,27 @@ can prove they are no longer needed.
   accepts synthetic OpenClaw approvals to complete Link onboarding. Link's local
   approval fixture still checks that pending payments do not expose credentials.
 - Correction branch: `codex/link-tool-approval-fix`, based on public `661f8e2d`.
+- The correction extends the existing `claude-configured-mcp.patch` only to
+  support exact per-profile MCP grants through Claude's native permission
+  settings. The extra confirmation comes from our workspace profile override,
+  which replaces caller settings. Role filters cannot preauthorize Claude, and
+  the restricted bridge already works without this change. A generic approval
+  bypass would affect unrelated tools and is outside the approved scope.
+- Stable-release check on 2026-11-12: the pinned runtime is 2026.9.6; the latest
+  [official stable release is 2026.11.3](https://github.com/openclaw/openclaw/releases/tag/v2026.11.3).
+  Its [native transport](https://github.com/openclaw/openclaw/blob/v2026.11.3/extensions/anthropic/cli-runtime-args.ts)
+  still retains only `mcp__openclaw__` argument grants, and its
+  [plugin schema](https://github.com/openclaw/openclaw/blob/v2026.11.3/extensions/anthropic/openclaw.plugin.json)
+  has no equivalent per-agent profile setting. An upgrade would not remove our
+  existing profile override. Retire this addition when a supported per-agent
+  permission setting replaces it or the native profile patch is retired. This
+  investigation does not authorize an upgrade or another runtime patch.
+- DEV passed the four zero-approval onboarding turns. Production attempts
+  stopped before deployment on a stale companion patch hash and an obsolete
+  installed permission expectation; both are corrected. A separate reader
+  restart database-cleanup failure did not recur in three isolated repetitions
+  against the unchanged artifact. Keep its failure evidence and rerun the full
+  required release gate; do not weaken that test or patch the reader runtime.
 
 - Implementation branch `codex/link-main-setup` landed through PR #349.
 - Public starting revision: `a2a5338d`.
