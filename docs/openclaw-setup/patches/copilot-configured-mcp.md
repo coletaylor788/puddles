@@ -19,5 +19,11 @@ after the host closes, cleanup after construction failure, and awaiting cleanup.
 Installed qualification uses real provider clients and the official Link CLI
 against local response fixtures.
 
-Remove this patch when the pinned upstream adapter provides the same policy and
-lifecycle behavior. Roll back through the normal application release path.
+The v2026.11.3 port keeps upstream's asynchronous host constructor, SDK dispatch
+context, and event-chain joins. It awaits the native capability profile before
+applying policy. The neutral facade reuses the shared session runtime without
+changing Codex's separate approval contract. The port does not replace stable's
+configured-MCP support for Claude or its native grant lifecycle.
+
+Remove this patch when the pinned upstream Copilot adapter provides the same
+policy and lifecycle behavior. Roll back through the normal application release path.
