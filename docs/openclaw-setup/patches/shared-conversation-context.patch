@@ -40,7 +40,7 @@ index 54f21d605936c6e9feeb936f64f052654b3c99a9..2a963f1c98a3624244cf360855d0b916
    // OpenClaw equivalent survived the canonical tool catalog.
    const includeAskUser =
 diff --git a/extensions/copilot/src/attempt-session.integration.test.ts b/extensions/copilot/src/attempt-session.integration.test.ts
-index eb7ce03e6e371d8abda87ca362d7bc1a3da07c0f..f366b3c3be3b76851215d13c273e5217730bfce3 100644
+index eb7ce03e6e371d8abda87ca362d7bc1a3da07c0f..ab12123e9bfbf249ea4b11cac79f87d78bf0a77c 100644
 --- a/extensions/copilot/src/attempt-session.integration.test.ts
 +++ b/extensions/copilot/src/attempt-session.integration.test.ts
 @@ -4,7 +4,10 @@ import {
@@ -112,7 +112,7 @@ index eb7ce03e6e371d8abda87ca362d7bc1a3da07c0f..f366b3c3be3b76851215d13c273e5217
        },
      };
      const resumed = (await runCopilotAttempt(resumeParams, deps)) as AttemptResultWithSdkSessionId;
-+    expect(configs.at(-1)?.systemMessage.content).toContain("Speech-only detail: Wednesday.");
++    expect(configs.at(-1)?.systemMessage?.content).toContain("Speech-only detail: Wednesday.");
 +    expect(resumed.replayMetadata.replaySafe).toBe(true);
 +    expect(resumed.journalValidated).toBe(true);
      expect(resumed.terminal).toEqual({ kind: "ok" });

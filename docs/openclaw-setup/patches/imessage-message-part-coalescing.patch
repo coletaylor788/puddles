@@ -60,7 +60,7 @@ index 4f770db..398c3f0 100644
      ...buildChannelReactionShape({ notificationModes: ["off", "own", "all"] }),
      catchup: z
 diff --git a/extensions/imessage/src/monitor.last-route.test.ts b/extensions/imessage/src/monitor.last-route.test.ts
-index 9716516..29c3300 100644
+index 971651667fd98cd256505c13dac31d5bb4daee28..e0da532af554e7453879f5f5db771c32036005d5 100644
 --- a/extensions/imessage/src/monitor.last-route.test.ts
 +++ b/extensions/imessage/src/monitor.last-route.test.ts
 @@ -1,4 +1,5 @@
@@ -69,7 +69,7 @@ index 9716516..29c3300 100644
  import path from "node:path";
  import type { ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
  import * as channelInbound from "openclaw/plugin-sdk/channel-inbound";
-@@ -114,6 +115,18 @@ const waitForTransportReadyMock = vi.hoisted(() =>
+@@ -114,6 +115,18 @@
  );
  const createIMessageRpcClientMock = vi.hoisted(() => vi.fn<typeof createIMessageRpcClient>());
  const probeIMessagePrivateApiMock = vi.hoisted(() => vi.fn<typeof probeIMessagePrivateApi>());
@@ -88,7 +88,7 @@ index 9716516..29c3300 100644
  const readChannelAllowFromStoreMock = vi.hoisted(() => vi.fn(async () => [] as string[]));
  const ensureConfiguredBindingRouteReadyMock = vi.hoisted(() =>
    vi.fn<typeof ensureConfiguredBindingRouteReady>(async () => ({ ok: true })),
-@@ -126,15 +139,28 @@ const dispatchReplyWithBufferedBlockDispatcherMock = vi.hoisted(() =>
+@@ -126,33 +139,88 @@
  );
  const debouncerControl = vi.hoisted(() => ({
    holdEntries: false,
@@ -117,38 +117,81 @@ index 9716516..29c3300 100644
        onFlush: (
          entries: unknown[],
          createFlush: typeof createTestInboundDebounceFlush,
-@@ -142,13 +168,29 @@ const createChannelInboundDebouncerMock = vi.hoisted(() =>
-     }) => ({
-       debouncer: {
-         enqueue: async (entry: unknown) => {
-+          debouncerControl.resolvedDebounceMs.push(opts.resolveDebounceMs?.(entry));
-           if (!debouncerControl.holdEntries) {
-             await opts.onFlush([entry], createTestInboundDebounceFlush).completion;
-             return;
-           }
-+          if (debouncerControl.respectDebouncePolicy && opts.shouldDebounce?.(entry) === false) {
+       ) => { completion: Promise<void> };
+-    }) => ({
+-      debouncer: {
+-        enqueue: async (entry: unknown) => {
+-          if (!debouncerControl.holdEntries) {
+-            await opts.onFlush([entry], createTestInboundDebounceFlush).completion;
+-            return;
+-          }
+-          debouncerControl.entries.push(entry);
+-        },
+-        flushKey: async () => {},
+-        cancelKey: () => false,
+-        drain: async () => {},
+-      },
+-    }),
++    }) => {
++      const flushEntries = async (entries: unknown[]) => {
++        if (entries.length > 0) {
++          await opts.onFlush(entries, createTestInboundDebounceFlush).completion;
++        }
++      };
++      debouncerControl.flush = async () => {
++        const entries = debouncerControl.entries.splice(0);
++        await flushEntries(entries);
++      };
++      debouncerControl.flushEach = async () => {
++        const entries = debouncerControl.entries.splice(0);
++        for (const entry of entries) await flushEntries([entry]);
++      };
++      return {
++        debouncer: {
++          enqueue: async (entry: unknown) => {
++            const debounceMs = opts.resolveDebounceMs?.(entry);
++            debouncerControl.resolvedDebounceMs.push(debounceMs);
++            if (!debouncerControl.holdEntries) {
++              await opts.onFlush([entry], createTestInboundDebounceFlush).completion;
++              return;
++            }
 +            const key = opts.buildKey?.(entry);
++            if (
++              debouncerControl.respectDebouncePolicy &&
++              (!key || (debounceMs ?? 0) <= 0 || opts.shouldDebounce?.(entry) === false)
++            ) {
++              const matching = debouncerControl.entries.filter(
++                (queued) => key && opts.buildKey?.(queued) === key,
++              );
++              debouncerControl.entries = debouncerControl.entries.filter(
++                (queued) => !matching.includes(queued),
++              );
++              if (matching.length)
++                await opts.onFlush(matching, createTestInboundDebounceFlush).completion;
++              await opts.onFlush([entry], createTestInboundDebounceFlush).completion;
++              return;
++            }
++            debouncerControl.entries.push(entry);
++          },
++          flushKey: async (key: string) => {
++            if (debouncerControl.suppressFlushKey) return;
 +            const matching = debouncerControl.entries.filter(
-+              (queued) => key && opts.buildKey?.(queued) === key,
++              (entry) => opts.buildKey?.(entry) === key,
 +            );
 +            debouncerControl.entries = debouncerControl.entries.filter(
-+              (queued) => !matching.includes(queued),
++              (entry) => !matching.includes(entry),
 +            );
-+            if (matching.length)
-+              await opts.onFlush(matching, createTestInboundDebounceFlush).completion;
-+            await opts.onFlush([entry], createTestInboundDebounceFlush).completion;
-+            return;
-+          }
-           debouncerControl.entries.push(entry);
-         },
--        flushKey: async () => {},
-+        flushKey: async () => {
-+          if (!debouncerControl.suppressFlushKey) await debouncerControl.flush?.();
++            await flushEntries(matching);
++          },
++          cancelKey: () => false,
++          drain: async () => {},
 +        },
-         cancelKey: () => false,
-         drain: async () => {},
-       },
-@@ -175,7 +217,7 @@ vi.mock("openclaw/plugin-sdk/channel-inbound", async (importOriginal) => {
++      };
++    },
+   ),
+ );
+ 
+@@ -175,7 +243,7 @@
    return {
      ...actual,
      createChannelInboundDebouncer: createChannelInboundDebouncerMock,
@@ -157,10 +200,13 @@ index 9716516..29c3300 100644
    };
  });
  
-@@ -191,6 +233,43 @@ vi.mock("./probe.js", async (importOriginal) => {
-   };
- });
- 
+@@ -188,6 +256,43 @@
+   return {
+     ...actual,
+     probeIMessagePrivateApi: probeIMessagePrivateApiMock,
++  };
++});
++
 +vi.mock("./monitor/catchup.js", async (importOriginal) => {
 +  const actual = await importOriginal<typeof import("./monitor/catchup.js")>();
 +  return {
@@ -195,13 +241,10 @@ index 9716516..29c3300 100644
 +            windowEndMs: 0,
 +          })
 +        : actual.runIMessageCatchup(...args),
-+  };
-+});
-+
- vi.mock("./monitor/abort-handler.js", () => ({
-   attachIMessageMonitorAbortHandler: vi.fn(() => () => {}),
- }));
-@@ -248,6 +327,7 @@ describe("iMessage monitor last-route updates", () => {
+   };
+ });
+ 
+@@ -248,6 +353,7 @@
            rpcMethods: [],
          },
      );
@@ -209,7 +252,7 @@ index 9716516..29c3300 100644
      readChannelAllowFromStoreMock.mockReset().mockResolvedValue([]);
      ensureConfiguredBindingRouteReadyMock.mockReset().mockResolvedValue({ ok: true });
      dispatchReplyWithBufferedBlockDispatcherMock.mockClear();
-@@ -1485,5 +1565,1717 @@ describe("iMessage monitor last-route updates", () => {
+@@ -1485,5 +1591,1735 @@
        );
      },
    );
@@ -279,6 +322,7 @@ index 9716516..29c3300 100644
 +    });
 +
 +    await monitorIMessageProvider({
++      scheduler: createTestPluginServiceScheduler(),
 +      config: {
 +        channels: {
 +          imessage: {
@@ -429,6 +473,7 @@ index 9716516..29c3300 100644
 +
 +    try {
 +      await monitorIMessageProvider({
++        scheduler: createTestPluginServiceScheduler(),
 +        config: {
 +          channels: {
 +            imessage: {
@@ -544,6 +589,7 @@ index 9716516..29c3300 100644
 +      );
 +    });
 +    await monitorIMessageProvider({
++      scheduler: createTestPluginServiceScheduler(),
 +      config: {
 +        channels: {
 +          imessage: {
@@ -621,6 +667,7 @@ index 9716516..29c3300 100644
 +    });
 +
 +    await monitorIMessageProvider({
++      scheduler: createTestPluginServiceScheduler(),
 +      config: {
 +        channels: {
 +          imessage: {
@@ -736,6 +783,7 @@ index 9716516..29c3300 100644
 +      });
 +
 +      await monitorIMessageProvider({
++        scheduler: createTestPluginServiceScheduler(),
 +        config: {
 +          channels: {
 +            imessage: {
@@ -876,6 +924,7 @@ index 9716516..29c3300 100644
 +        expect(mergedBody).toContain("https://www.quince.com/");
 +      });
 +      await monitorIMessageProvider({
++        scheduler: createTestPluginServiceScheduler(),
 +        config: {
 +          channels: {
 +            imessage: {
@@ -1022,6 +1071,7 @@ index 9716516..29c3300 100644
 +    });
 +
 +    await monitorIMessageProvider({
++      scheduler: createTestPluginServiceScheduler(),
 +      config: {
 +        channels: {
 +          imessage: {
@@ -1116,6 +1166,7 @@ index 9716516..29c3300 100644
 +    });
 +
 +    await monitorIMessageProvider({
++      scheduler: createTestPluginServiceScheduler(),
 +      config: {
 +        channels: {
 +          imessage: {
@@ -1254,6 +1305,7 @@ index 9716516..29c3300 100644
 +        expect(mergedBody).toContain("And the magic word is foo");
 +      });
 +      await monitorIMessageProvider({
++        scheduler: createTestPluginServiceScheduler(),
 +        config: {
 +          messages: inbound ? { inbound } : undefined,
 +          channels: {
@@ -1352,6 +1404,7 @@ index 9716516..29c3300 100644
 +      );
 +    });
 +    await monitorIMessageProvider({
++      scheduler: createTestPluginServiceScheduler(),
 +      config: {
 +        channels: {
 +          imessage: {
@@ -1397,6 +1450,7 @@ index 9716516..29c3300 100644
 +        });
 +        await vi.waitFor(() => {
 +          expect(debouncerControl.flush).toBeDefined();
++          expect(debouncerControl.entries).toHaveLength(1);
 +        });
 +        expect(dispatchReplyWithBufferedBlockDispatcherMock).not.toHaveBeenCalled();
 +        await debouncerControl.flush?.();
@@ -1412,6 +1466,7 @@ index 9716516..29c3300 100644
 +    });
 +
 +    await monitorIMessageProvider({
++      scheduler: createTestPluginServiceScheduler(),
 +      config: {
 +        channels: {
 +          imessage: {
@@ -1504,6 +1559,7 @@ index 9716516..29c3300 100644
 +    });
 +
 +    await monitorIMessageProvider({
++      scheduler: createTestPluginServiceScheduler(),
 +      config: {
 +        channels: {
 +          imessage: {
@@ -1594,6 +1650,7 @@ index 9716516..29c3300 100644
 +    });
 +
 +    await monitorIMessageProvider({
++      scheduler: createTestPluginServiceScheduler(),
 +      config: {
 +        channels: {
 +          imessage: {
@@ -1679,6 +1736,7 @@ index 9716516..29c3300 100644
 +    });
 +
 +    await monitorIMessageProvider({
++      scheduler: createTestPluginServiceScheduler(),
 +      config: {
 +        channels: {
 +          imessage: {
@@ -1778,6 +1836,7 @@ index 9716516..29c3300 100644
 +    });
 +
 +    await monitorIMessageProvider({
++      scheduler: createTestPluginServiceScheduler(),
 +      config: {
 +        channels: {
 +          imessage: {
@@ -1850,6 +1909,7 @@ index 9716516..29c3300 100644
 +    });
 +
 +    await monitorIMessageProvider({
++      scheduler: createTestPluginServiceScheduler(),
 +      config: {
 +        channels: {
 +          imessage: {
@@ -1904,6 +1964,7 @@ index 9716516..29c3300 100644
 +    });
 +
 +    await monitorIMessageProvider({
++      scheduler: createTestPluginServiceScheduler(),
 +      config: {
 +        channels: {
 +          imessage: {
