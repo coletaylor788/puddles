@@ -1,6 +1,6 @@
 # Replace OpenClaw browser tools with Vercel agent-browser
 
-Status: Production approved; browser isolation blocked
+Status: Docker fallback approved; host output confinement proposed
 Issue: https://github.com/coletaylor788/puddles/issues/353
 Last updated: 2026-11-12
 
@@ -17,9 +17,9 @@ graph TD
     A["OpenClaw"] --> B["Browser agent using Claude Code CLI"]
     B --> C["Sandboxed Bash and native file tools"]
     B --> G["OpenClaw host MCP bridge"]
-    G --> D["Stock agent-browser MCP server"]
-    V["Vercel encrypted vault"] --> D
-    D -->|"CDP"| E["Chromium with separate process isolation"]
+    G --> D["Stock Vercel MCP inside SRT (proposed)"]
+    V["Host vault, read-only to Vercel"] --> D
+    D -->|"CDP"| E["Chromium in Docker"]
     E --> F["Website"]
 ```
 
@@ -29,8 +29,23 @@ Register Vercel's native `agent-browser mcp` server through OpenClaw's existing
 configured-MCP support. The host bridge applies the browser agent's tool policy;
 Vercel supplies the upstream tools and behavior, including auth and page evaluation.
 The trusted Vercel process runs outside Claude's Bash sandbox and attaches through
-CDP. It needs no additional sandbox. Agent Bash/file tools and the browser process
-must not read the vault or key.
+CDP. Agent Bash/file tools and the browser process must not read the vault or key.
+
+**Proposed revision:** also run the stock Vercel process inside stock SRT with
+write access limited to its socket/runtime files and browser output directory.
+The vault and key remain readable only to Vercel, but read-only in this process.
+The owner manages saved logins with the native CLI outside that restriction.
+Keep owner CLI and MCP daemon sockets separate so the MCP process cannot reuse
+an unsandboxed owner daemon. Use native browser navigation and page tools; omit
+the host-side URL-fetch helper. This leaves browser and credential tools native.
+
+This additional boundary addresses a reproduced host-write escape: Vercel's
+screenshot tool accepts an absolute output path, and its screenshot directory
+setting is only a default. In a synthetic test it overwrote a protected dummy
+control file. Claude's sandbox and the browser container cannot block a write
+performed by the trusted MCP server. Stock SRT blocked that write while native
+login, eval, snapshots, and screenshots continued working. This is separate from
+the Chrome/SRT compatibility problem because Chrome stays in Docker.
 
 Add configuration and necessary launcher wiring only. No custom browser plugin,
 credential broker, login algorithm, session handoff, or replacement tool schemas.
@@ -38,19 +53,24 @@ credential broker, login algorithm, session handoff, or replacement tool schemas
 
 #### Browser isolation decision
 
-The approved design launches Chromium under `srt` on macOS and retains Chromium's
-own sandbox. The compatibility probe failed. Chrome works with its native sandbox
-alone, but its child processes fail to initialize their sandboxes under even a
-permissive outer Seatbelt policy. CDP opens, but page evaluation times out.
-The tested `srt` policy fails earlier during browser startup.
+Run Chromium in Docker using the existing browser image and persistent profile.
+The host launch command starts or reuses that container, then executes stock
+Vercel MCP. CDP and the owner viewer bind only to host loopback and retain the
+image's native authentication. Mount only the profile and download directory;
+the Vercel vault and its key stay outside the container.
 
-The recommended revision is to keep a Linux browser container as the outer
-isolation boundary and attach stock Vercel over CDP. Keep the vault on the trusted
-host, outside its mounts. Reuse the existing browser image and profile where
-compatible. This changes the approved choice of browser isolation and needs a
-requester decision before implementing the affected launch and deployment work.
-The revision still needs validation of CDP access and the image's sandbox settings.
-Do not work around the macOS failure by silently disabling Chromium's sandbox.
+Extend the existing application stop helper to include this browser container.
+Stop browser writers before backup and remove test-owned containers during
+environment teardown. The helper currently covers only OpenClaw-registered containers.
+Keep OpenClaw's browser tool disabled for this agent so only Vercel controls it.
+The existing image uses Docker as its isolation boundary and launches Chromium
+with its internal sandbox disabled, matching the current OpenClaw container setup.
+Do not add privileged mode, host networking, the Docker socket, or broad host mounts.
+
+The requester approved Docker if further `srt` investigation found no solution.
+The macOS checks below did not find a supported configuration that runs Chromium
+while retaining its own sandbox. Docker is the selected fallback; Claude Code's
+separate Bash sandbox remains in place.
 
 #### How credentials work
 
@@ -99,10 +119,13 @@ tokens to JavaScript. Report this separately from enforced vault/file isolation.
 following the native Vercel, separate `srt`, and eval-with-instructions design.
 This covers implementation, review, publication, and production delivery.
 
-Browser launch is blocked by the macOS sandbox compatibility result. The proposed
-container revision awaits a decision. No production configuration, credentials,
-browser profiles, or agent instructions have changed. Stock MCP qualification and
-configuration investigation can continue independently.
+**Fallback approval:** The requester said, “If SRT is blocked and we can’t find a
+solution, approved to replace with docker, just update the design, keep seeing if
+SRT can work first.” Further stock-setting and sandbox API checks confirmed the
+compatibility problem. Docker is approved under that condition. The additional
+SRT boundary around Vercel is proposed after review reproduced arbitrary host
+screenshot writes. A focused compatibility test passes, but this design revision
+needs approval before implementation. Production is unchanged.
 
 ## Agent section
 
@@ -110,8 +133,9 @@ configuration investigation can continue independently.
 
 Public branch: `codex/vercel-browser-proposal`, based on `661f8e2d`.
 The isolated companion branch is `codex/vercel-browser-integration`, based on
-`baadebd6`. Source was refreshed before implementation. This publication records
-the approved scope and the compatibility blocker, not a deployed feature.
+`baadebd6`. Source was refreshed before implementation. The public plan is in PR #354. The implementation is not deployed. Local changes
+include stock MCP packaging, configuration, guidance and a synthetic browser
+qualifier. Host output confinement and shutdown integration remain unfinished.
 
 ### Scope and acceptance criteria
 
@@ -145,11 +169,13 @@ this limitation when the runtime integration is implemented.
 
 Pin and package stock agent-browser. Add managed MCP configuration and select the
 browser's workspace profile. Add the authentication rule while preserving the
-existing Link payment exception. Browser launch and deployment bindings depend on
-the isolation decision. Keep private bindings in the companion repository.
+existing Link payment exception. Reuse the existing Docker image and extend the maintained stop helper.
+Keep private bindings in the companion repository. Implement the proposed host
+SRT boundary only after the design decision.
 
-No launcher workaround, runtime prompt change, dependency pin, or deployment has
-been committed yet. Temporary compatibility probes used empty, owned profiles.
+The package pins unmodified agent-browser 0.43.0. Configuration selects its native
+tools, including eval and named auth login, and preserves Link permissions.
+Temporary compatibility probes used empty, owned profiles.
 
 ### Validation
 
@@ -164,33 +190,54 @@ Compatibility probe on 2026-11-12 used agent-browser 0.43.0, srt 0.0.82, and Chr
 
 The permissive-wrapper control isolates the nested-sandbox issue from restrictive
 filesystem rules. It is local evidence, not a deployed Mini acceptance result.
-Related upstream [Chromium sandbox documentation](https://github.com/chromium/chromium/blob/main/sandbox/mac/README.md)
+Further checks with srt filesystem restrictions disabled and all Mach lookups
+allowed still failed at Mach bootstrap registration. A minimal application calling
+`sandbox_init` succeeds outside an outer restrictive Seatbelt profile and returns
+EPERM inside it. The system `sandbox-exec` utility is not an equivalent control:
+it can itself execute a nested invocation on this OS. No supported stock setting
+was found that fixes Chromium. Related upstream [Chromium sandbox documentation](https://github.com/chromium/chromium/blob/main/sandbox/mac/README.md)
 and [macOS launch report](https://github.com/anthropics/claude-code/issues/82660)
 provide context; the launch report describes a separate Mach registration failure.
 
-Remaining acceptance: stock MCP discovery and calls; synthetic native login,
-renewal, session reuse, screenshot, restart, and challenge behavior; workspace
+Six focused package tests pass. A synthetic Docker run passes native saved login,
+eval, snapshots, screenshots, denied file URL access, authenticated CDP, vault
+absence in the container, and profile reuse after container recreation. Chromium
+buffers cookie writes; persisted cookies survive the restart, while an immediate
+forced stop can lose recent state. No custom session exporter is needed.
+
+Independent review reproduced a native screenshot overwriting a protected dummy
+host file. A stock SRT probe around Vercel, with Chromium in Docker, passes login,
+eval, snapshots and normal screenshots while denying the same write. The vault
+is read-only. This is compatibility evidence, not installed acceptance.
+
+Remaining acceptance: synthetic renewal and challenge behavior; complete native
+MCP admission and lifecycle; workspace
 Bash/file isolation; denied vault/key reads and direct CDP; ordinary eval and real
 provider refusal to inspect authentication data. No test may mutate a live account.
 
 ### Rollout and rollback
 
-Follow the approved feature lifecycle after resolving browser isolation. Switch
+Follow the approved feature lifecycle with the Docker fallback. Switch
 controllers only after acceptance. Retain the previous profile for rollback without
 concurrent control. Use managed CI for DEV, TEST, production, and exact paired merge.
-No runtime deployment is included in this blocked design publication.
+Production deployment remains pending the required acceptance gates.
 
 ### Review log
 
-The current plan records the approved scope, existing host MCP support, preservation
-of Link checkout, and observed macOS compatibility failure. Independent review of
-the complete behavior diff is required before freezing an implementation candidate.
+Retained independent reviewer: `browser_review`. Early review found one P1:
+native screenshots can write caller-selected host paths. Accepted. No additional
+direct host-read bypass was found in the selected tools; native read rejects
+non-HTTP URLs, eval uses stdin, and tool arguments reject host configuration
+and executable overrides. The proposed SRT boundary passed a synthetic probe.
+The reviewer must recheck the complete paired implementation after the design
+decision and lifecycle work. There is no release clearance yet.
 
 ### Checklist
 
 - [x] Verify stock MCP and native auth support upstream.
 - [x] Record production approval.
 - [x] Run a synthetic browser sandbox compatibility probe.
-- [ ] Resolve the browser isolation decision.
+- [x] Resolve browser isolation with the conditionally approved Docker fallback.
+- [ ] Approve and implement native host output confinement.
 - [ ] Verify configured MCP admission and agent instruction adherence.
 - [ ] Complete implementation, independent review, and release validation.
