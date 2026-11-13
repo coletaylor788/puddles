@@ -14,6 +14,14 @@ Confirmed delivery places bounded awareness in the destination session for its n
 
 The Copilot adapter forwards that native inbound context through the shared prompt builder on ordinary turns. Its transcript journal validates the exact prompt sent to the SDK, while retaining the original user message in canonical history. A mismatched SDK user event still invalidates replay. Raw probes and settled finalization do not receive the additional context.
 
+## Stable upgrade compatibility
+
+The patch targets OpenClaw 2026.11.3. It keeps stable's final-reaction reply
+contract, source authority, transcript grouping, and isolated heartbeat handling.
+The heartbeat exception is applied to stable's inline output directives, without
+restoring the retired prompt builder. Copilot tests use the current prompt hooks,
+raw-run fixtures, and transcript journal.
+
 ## Validation and rollback
 
 The cumulative manifest registers selector, prompt, tool assembly, terminal completion, and destination-awareness regressions. The committed native heartbeat scenario uses a real Gateway with synthetic provider responses and recorded iMessage delivery. It runs the persisted monitor through native cron execution, seeds its checklist with revision-checked scratch updates, and asserts that checklist reaches the model. It checks three fresh heartbeat sessions, quiet completion, a single question, an intervening poll, and the question in the next main reply prompt. The tool assembly regression checks agent and sandbox grants independently and preserves denial when either is missing.
