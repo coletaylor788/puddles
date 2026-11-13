@@ -1,5 +1,5 @@
 {
-  "openclawRef": "eb377ac59e6c9fd6c7705028034812becf00271b",
+  "openclawRef": "847611dcaa3bf0e2783335f961dd1fd0580e4d9f",
   "testProjects": {
     "src/agents/provider-local-service.test.ts": "agents-core",
     "src/agents/provider-local-service.shutdown.test.ts": "agents-core",
@@ -228,7 +228,10 @@
     "src/agents/agent-bundle-mcp-harness.test.ts": "agents-core",
     "extensions/copilot/src/tool-bridge.host-surface.test.ts": "extensions",
     "src/agents/cli-runner/prepare.configured-mcp.test.ts": "agents-support",
-    "src/gateway/mcp-http.configured-tools.test.ts": "gateway-core"
+    "src/gateway/mcp-http.configured-tools.test.ts": "gateway-core",
+    "src/commands/doctor-service-repair-policy.test.ts": "commands",
+    "src/commands/doctor-schema-migrations.test.ts": "commands",
+    "src/commands/doctor-maintenance.agent-schema.test.ts": "commands"
   },
   "patches": [
     {
@@ -702,7 +705,10 @@
     "src/agents/agent-tools.before-tool-call.embedded-mode.test.ts",
     "src/agents/command/claude-cli-project-dir.test.ts",
     "src/agents/command/attempt-execution.test.ts",
-    "src/agents/cli-runner/cli-run-settlement.test.ts"
+    "src/agents/cli-runner/cli-run-settlement.test.ts",
+    "src/commands/doctor-service-repair-policy.test.ts",
+    "src/commands/doctor-schema-migrations.test.ts",
+    "src/commands/doctor-maintenance.agent-schema.test.ts"
   ],
   "candidateTests": [
     "tests/candidate.gmail-approval.test.ts",

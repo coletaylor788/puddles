@@ -1,7 +1,7 @@
 # Latest stable and native CLI voice controls
 
 Status: Production approved in two independent phases; upgrade in progress
-Issue: Publication in progress
+Issue: https://github.com/coletaylor788/puddles/issues/359
 Last updated: 2026-11-13
 
 ## Human section
@@ -107,6 +107,8 @@ Relevant upstream evidence:
 ### Implementation
 
 #### Phase 1
+
+Upgrade compatibility includes the integrity-bound pnpm 12.15.0 toolchain and native schema migration from shared state 18 / agent 23 to shared state 22 / agent 27. The existing-state regression seeds the exact predecessor schemas with synthetic sessions, committed WAL history, memory, disabled cron and execution denial settings. It runs the candidate's native migration and verifies reopened data; fresh state does not substitute for this proof.
 
 1. Fetch both feature repositories and rebase preserved work before submission. Pin stable and review every maintained public and private patch. Port only existing behavior; retire only proved redundant hunks with durable replacement coverage.
 2. Update the package graph, build tooling, test registration and runtime configuration compatibility as required by the stable upgrade. Preserve current provider routing and security boundaries.
