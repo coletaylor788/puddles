@@ -211,8 +211,16 @@ export function treeDigest(root, { portable = false, exclude = [], excludeNames 
         const state = JSON.parse(readFileSync(path, "utf8"));
         if (!state || typeof state !== "object" || Array.isArray(state) ||
             !Number.isFinite(state.lastValidatedTimestamp)) throw new Error("Invalid pnpm workspace-state metadata");
-        // pnpm refreshes only this freshness timestamp after unchanged validation.
+        // Omit validation clocks while retaining all dependency and setting inputs.
         const { lastValidatedTimestamp, ...content } = state;
+        // pnpm 12.15 records a second validation clock. Preserve the actual
+        // lockfile, manifest and file fingerprints beneath this object.
+        if (content.validation !== undefined) {
+          if (!content.validation || typeof content.validation !== "object" || Array.isArray(content.validation) ||
+              !Number.isFinite(content.validation.recordedAtNs)) throw new Error("Invalid pnpm workspace-state validation metadata");
+          const { recordedAtNs, ...validation } = content.validation;
+          content.validation = validation;
+        }
         records.push(["file", jsonDigest(content)]);
       } else {
         records.push(["file", fileDigest(path)]);

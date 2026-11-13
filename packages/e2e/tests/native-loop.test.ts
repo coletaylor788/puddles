@@ -48,7 +48,7 @@ describe("native exact-input evidence", () => {
     const directory = root();
     json(join(directory, "package.json"), {
       name: "synthetic-pnpm-proof", version: "1.0.0", private: true,
-      packageManager: "pnpm@12.4.0", dependencies: { "synthetic-dependency": "file:./dependency" },
+      packageManager: "pnpm@12.15.0", dependencies: { "synthetic-dependency": "file:./dependency" },
     });
     json(join(directory, "dependency/package.json"), { name: "synthetic-dependency", version: "1.0.0", main: "index.js" });
     writeFileSync(join(directory, "dependency/index.js"), "module.exports = 'original';");
@@ -60,7 +60,7 @@ describe("native exact-input evidence", () => {
       env: { ...process.env, CI: "true", COREPACK_ENABLE_NETWORK: "0",
         NPM_CONFIG_USERCONFIG: join(directory, "empty.npmrc") },
     });
-    expect(command(["--version"]).trim()).toBe("12.4.0");
+    expect(command(["--version"]).trim()).toBe("12.15.0");
     const install = (frozen: boolean) => command([
       "install", "--offline", "--ignore-scripts", "--ignore-pnpmfile",
       frozen ? "--frozen-lockfile" : "--no-frozen-lockfile", "--store-dir", join(directory, "store"),
@@ -83,7 +83,10 @@ describe("native exact-input evidence", () => {
     install(true);
     const after = JSON.parse(readFileSync(metadata, "utf8"));
     expect(after.lastValidatedTimestamp).toBeGreaterThan(before.lastValidatedTimestamp);
-    expect({ ...after, lastValidatedTimestamp: 0 }).toEqual({ ...before, lastValidatedTimestamp: 0 });
+    expect(after.validation.recordedAtNs).toBeGreaterThan(before.validation.recordedAtNs);
+    const withoutValidationClocks = (state: any) => ({ ...state, lastValidatedTimestamp: 0,
+      validation: { ...state.validation, recordedAtNs: 0 } });
+    expect(withoutValidationClocks(after)).toEqual(withoutValidationClocks(before));
     expect(treeDigest(modules)).not.toBe(rawBefore);
     expect(treeDigest(modules, options)).toBe(normalizedBefore);
     await proof();
@@ -96,7 +99,7 @@ describe("native exact-input evidence", () => {
     expect(treeDigest(modules, options)).not.toBe(normalizedBefore);
   }, 60_000);
 
-  it("normalizes only the root pnpm timestamp and rejects malformed metadata", () => {
+  it("normalizes only root pnpm validation clocks and rejects malformed metadata", () => {
     const directory = root();
     const options = { normalizePnpmWorkspaceState: true };
     const metadata = join(directory, ".pnpm-workspace-state-v1.json");
@@ -108,6 +111,20 @@ describe("native exact-input evidence", () => {
     }
     json(metadata, { lastValidatedTimestamp: 2, settings: {}, projects: {} });
     expect(treeDigest(directory, options)).toBe(first);
+    const validation = { recordedAtNs: 1, lockfile: "lock-digest", manifests: { ".": "manifest-digest" }, files: {} };
+    json(metadata, { lastValidatedTimestamp: 2, validation });
+    const current = treeDigest(directory, options);
+    json(metadata, { lastValidatedTimestamp: 3, validation: { ...validation, recordedAtNs: 2 } });
+    expect(treeDigest(directory, options)).toBe(current);
+    for (const change of [{ lockfile: "changed" }, { manifests: {} }, { files: { source: { digest: "changed" } } }, { unknown: true }]) {
+      json(metadata, { lastValidatedTimestamp: 3, validation: { ...validation, ...change } });
+      expect(treeDigest(directory, options)).not.toBe(current);
+    }
+    for (const validation of [null, [], {}, { recordedAtNs: "invalid" }]) {
+      json(metadata, { lastValidatedTimestamp: 3, validation });
+      expect(() => treeDigest(directory, options)).toThrow("Invalid pnpm");
+    }
+    json(metadata, { lastValidatedTimestamp: 2, settings: {}, projects: {} });
     const nested = join(directory, "dependency/.pnpm-workspace-state-v1.json");
     json(nested, { lastValidatedTimestamp: 1 });
     const withNested = treeDigest(directory, options);
