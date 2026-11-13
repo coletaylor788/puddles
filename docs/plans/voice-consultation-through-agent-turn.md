@@ -71,7 +71,7 @@ The complete repair still must prove one continuous scenario: delegate research,
 
 **Approval reference:** “One change. Make it have two phases, that follow dev process independently. I.e we upgrade first, safely roll to prod, then we make the patch and safely roll to prod. Upgrade is holistically ensuring existing tests and behavior doesn’t break. Then approved to ship, push, and implement” (2026-11-13).
 
-**Progress:** Phase 1 compatibility qualification is active. Focused public plugin, memory, FaceTime, recovery, progress and iMessage checks pass. Reviewed export corrections use exact stable source as their baseline. The remaining Code Mode/MCP review, private patch composition, complete typecheck and installed candidate qualification are open. Workshop proposal retirement is held for design review; independent compatibility work continues. Production is unchanged. No frozen build or installed CI run has been submitted. Phase 2 implementation has not started.
+**Progress:** Phase 1 compatibility qualification is active. Focused public plugin, memory, FaceTime, recovery, progress and iMessage checks pass. Reviewed export corrections use exact stable source as their baseline. Code Mode/MCP and private compatibility ports are source-reviewed. All selected patches compose in order against exact stable, with the held Workshop port excluded. The prepared source now matches that composition; combined native tests, complete typecheck and installed candidate qualification are open. Workshop proposal retirement is held for design review; independent compatibility work continues. Production is unchanged. No frozen build or installed CI run has been submitted. Phase 2 implementation has not started.
 
 ## Agent section
 

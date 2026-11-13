@@ -19,3 +19,27 @@ Claude transcript readiness and orphan-tool checks resolve the same account dire
 Idle maintenance forwards the admitted persisted native session binding into the shared compaction entry point. Without it, native control rejects the request before PreCompact, even when the source session has a valid binding. A regression uses real SQLite persistence and the real memory-to-compaction path, replacing only the external CLI execution.
 
 Snapshot restoration requires a resolved session-store path. The caller uses the same native store resolver as ordinary memory saves, honoring either an explicit path or the configured default while keeping a distinct internal session identity.
+
+On v2026.11.3, retained input enters native memory-flush preparation. Native plan
+selection, memory audience delegation, tool projection and release remain the
+owners. The retained job records the source session incarnation and compaction
+count and session restrictions. Its saver reads the canonical source through the
+native worker and holds a native generation lease through completion. Native
+delayed-work helpers intersect captured and current restrictions, then fence
+new restrictions at effect boundaries. A reset or revoked source refuses the
+save; old jobs without those facts remain for reconciliation. The original
+owner fact selects the memory audience separately from the nonowner maintenance
+execution.
+
+Each bounded retained input has a deterministic part identity under its job.
+The native memory mutation identity adds a separate retained-part suffix, while
+ordinary flush identities stay unchanged. File plans retain the captured day's
+target. Native provider plans use native coding-tool assembly once, retaining only the
+declared owner's persistence and lookup tools plus read.
+Both use an exact mediated CLI tool ceiling intersected with source policy.
+Memory audiences and persistence callbacks stay in the native host grant, outside
+child-visible context, and follow its existing transfer and revocation rules.
+
+Compatibility qualification is in progress. A composed core type check passes;
+focused native tests, complete patch composition and installed qualification are
+still required before release.
