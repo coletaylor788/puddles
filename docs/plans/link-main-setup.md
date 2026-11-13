@@ -2,7 +2,7 @@
 
 Status: Released; owner connection and retained-build cleanup pending
 Issue: [350](https://github.com/coletaylor788/puddles/issues/350)
-Last updated: 2026-11-12
+Last updated: 2026-11-13
 
 ## Human section
 
@@ -150,7 +150,8 @@ No real purchase is authorized by setup.
 2026-11-12 the requester said “Yes. Fix it” after approving removal of additional
 OpenClaw confirmations for the scoped Link tools. Link sign-in consent and payment
 approval, per-agent restrictions, and unrelated tool approvals remain in place.
-The correction is in development; it has not yet been deployed.
+The correction is deployed and merged. Installed DEV and TEST qualification
+completed all four onboarding turns without generic OpenClaw approval requests.
 
 Link is installed in production. Main has financial insights and the personal
 browser has payments, with direct Link owner approval. Interactive login remains
@@ -174,7 +175,7 @@ can prove they are no longer needed.
 - Installed qualification must fail on any generic approval request. It no longer
   accepts synthetic OpenClaw approvals to complete Link onboarding. Link's local
   approval fixture still checks that pending payments do not expose credentials.
-- Correction branch: `codex/link-tool-approval-fix`, based on public `661f8e2d`.
+- Correction branch `codex/link-tool-approval-fix` landed through PR #355.
 - The correction extends the existing `claude-configured-mcp.patch` only to
   support exact per-profile MCP grants through Claude's native permission
   settings. The extra confirmation comes from our workspace profile override,
@@ -190,12 +191,11 @@ can prove they are no longer needed.
   existing profile override. Retire this addition when a supported per-agent
   permission setting replaces it or the native profile patch is retired. This
   investigation does not authorize an upgrade or another runtime patch.
-- DEV passed the four zero-approval onboarding turns. Production attempts
-  stopped before deployment on a stale companion patch hash and an obsolete
-  installed permission expectation; both are corrected. A separate reader
-  restart database-cleanup failure did not recur in three isolated repetitions
-  against the unchanged artifact. Keep its failure evidence and rerun the full
-  required release gate; do not weaken that test or patch the reader runtime.
+- The correction passed focused regressions, retained independent review, the
+  complete application suite, installed DEV and TEST qualification, and read-only
+  production checks. Its target transaction and source transfer cleanup are
+  closed. The guarded retirement command still retains the build because CI
+  references it; keep the source and warm output intact until that hold clears.
 
 - Implementation branch `codex/link-main-setup` landed through PR #349.
 - Public starting revision: `a2a5338d`.
@@ -321,7 +321,29 @@ routing fallbacks, and replaced transcript text searches with structured tool
 call/result checks. Those corrections have focused regressions. The retained reviewer cleared the
 final paired source and exact frozen candidate after installed provider proof.
 
+The same retained reviewer cleared the confirmation correction, including exact
+MCP grants, preservation of restricted profiles, rejection of malformed grants,
+and qualification that fails on any generic approval request. The installed
+configuration assertion was updated to check the exact permitted operations.
+
 ### Release evidence
+
+The confirmation correction shipped in candidate
+`9707ab4d29d24dcb7747ba9c093d2dba2cfe4a442827a63f6b1c0a3ace234fc2`,
+with artifact digest
+`4ae4d44c633c730aecc0af84a1f629ebd94a8abe3e37fba06e7a1595cf3f0743`.
+DEV `gh-43371666755-1` and PROD `gh-43389264823-1` passed. The latter
+completed the full application suite, TEST, backup, read-only production checks,
+and exact paired merges. Its terminal receipt is `passed`, `phase=complete`,
+`child=null`; source queue closure and transfer cleanup are confirmed.
+Public PR [#355](https://github.com/coletaylor788/puddles/pull/355) merged
+reviewed head `679edc19b6ab7b4b6f33256f317ebb7be707b9b6` as
+`2b50e48230c98a6a30e8445360f84e2df5820ed0`. The companion source merged in
+the same transaction. Installed DEV and TEST exercised four onboarding turns
+with zero generic approval requests. Link consent and payment decisions remain
+covered by fixtures; no real payment or owner login was performed by these tests.
+
+The original integration release follows for reference.
 
 Candidate `606c08ea5915a136d88f65a8ab5ecb49a0c0f4a40b3c34fc395918102c70a2b2`
 contains the reviewed source. Its artifact digest is
@@ -360,5 +382,6 @@ authorized by this release.
 - [x] Approve native MCP design, interactive auth, and specific policy exception.
 - [x] Implement and validate the pinned integration.
 - [x] Complete review, DEV, TEST, production validation, merges, and transaction cleanup.
+- [x] Ship the approved confirmation correction with zero generic approvals in installed qualification.
 - [ ] Retire generated build resources after CI releases retained candidate references.
 - [ ] Complete owner login and verify each agent's permitted access.
