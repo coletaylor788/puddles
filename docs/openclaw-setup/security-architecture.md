@@ -301,7 +301,7 @@ flowchart TB
 
 ##### Personal browser authentication
 
-The approved [Vercel browser integration](../plans/vercel-browser-authentication.md)
+The shipped [Vercel browser integration](../plans/completed/vercel-browser-authentication.md)
 uses stock agent-browser MCP on the trusted host. Claude Code runs the personal
 browser agent with workspace Bash and file restrictions. Chromium runs in a Docker
 container with only its profile and downloads mounted. The Vercel vault, encryption
