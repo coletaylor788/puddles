@@ -1,6 +1,6 @@
 # Replace OpenClaw browser tools with Vercel agent-browser
 
-Status: Production approved; refreshed candidate validation pending
+Status: Shipped; production validation and exact source merge complete
 Issue: https://github.com/coletaylor788/puddles/issues/353
 Last updated: 2026-11-13
 
@@ -41,8 +41,8 @@ CDP connection. Vercel still owns browser actions, login and credential storage.
 
 This uses the installed plugin API. No OpenClaw upgrade or new source patch is
 required for registration. The machine-wide Claude policy proposal is withdrawn.
-DEV has passed the plugin route, native Bash/files, and complete teardown.
-The refreshed candidate must pass again before release.
+Installed validation passed the plugin route, native Bash/files, and complete
+teardown. The same candidate passed production acceptance.
 
 The trusted Vercel process and vault remain outside Claude's Bash sandbox and
 the browser container. Vercel is unsandboxed, as requested. Native screenshots
@@ -124,31 +124,32 @@ image-file overwrites are an accepted limitation. **Implementation limit:**
 “Remove patch. Fix via native. If you want to patch openclaw code, get my approval
 first.” No new OpenClaw patch or machine-wide Claude policy is authorized.
 
-The plugin, native tools, protected access, authentication guidance, and shutdown
-repair pass installed DEV validation. The branches now include the shipped Link
-correction. The browser workspace profile retains its ten exact Link tool
-permissions, preserving Link's own payment approval. Prepared source recovery and
-a fresh build/DEV pass are required before production. Production has not switched
-to this browser integration.
+The integration is shipped. Installed DEV, the full application suite, TEST,
+read-only production acceptance, and exact paired source merge passed. Public
+implementation PR [#354](https://github.com/coletaylor788/puddles/pull/354) is merged.
+The browser workspace profile retains the ten existing Link permissions.
+No browser-specific OpenClaw patch or machine-wide Claude policy was added.
+
+Login validation used synthetic credentials. Real account setup and any site MFA
+remain owner actions. Eval remains subject to the behavioral rule above.
+Deployment teardown and source transfer cleanup are complete. CI still retains
+candidate references to the development builds, so guarded workspace retirement
+is held. This does not hold the production lane.
 
 ## Agent section
 
 ### State
 
-Public branch: `codex/vercel-browser-proposal`, refreshed from `2c998366`.
-The isolated companion branch is `codex/vercel-browser-integration`, refreshed
-from `b0b36fdd`. Public PR #354 and the companion PR carry one candidate.
-No browser OpenClaw patch or machine-wide Claude policy is included. The source
-refresh incorporates the already-shipped Link profile capability unchanged.
+The reviewed implementation and companion configuration are merged and deployed.
+Production used the exact candidate that passed the final DEV run and full
+application suite. Its terminal deployment receipt has `status=passed`,
+`phase=complete`, and `child=null`. The source queue is closed and its transfer
+is cleaned. Merge parents and trees match the reviewed heads and expected bases.
+Exact candidate, run, source and merge identities remain in private release records.
 
-DEV `gh-43380177321-1`, candidate
-`dee2fa5ee1e2d05bc784e2bab76cc2f793994526cee0e1bc45fe9714974a85a1`,
-passed with `phase=complete`, `child=null`, source queue closed, and transfer
-cleaned. The detached-daemon cleanup repair is accepted. Fresh validation is
-required after the Link base refresh and exact native permission preservation.
-Prepared-source recovery is in progress after app worktree cleanup removed it.
-The previous candidate output remains retained; no production browser cutover
-has occurred.
+Keep the retained candidate source and build output intact until maintained CI
+retirement permits removal. Both owned build retirement attempts returned
+`Retained candidate references build`; no guard was bypassed.
 
 ### Scope and acceptance criteria
 
@@ -205,8 +206,8 @@ direct MCP entry.
 CDP attach cannot use Vercel's domain allowlist. Check direct CDP denial from
 agent Bash and use the browser's process boundary for filesystem restrictions.
 Allowing eval is the explicitly accepted limitation to the original secrecy goal.
-The [security architecture](../openclaw-setup/security-architecture.md) must describe
-this limitation when the runtime integration is implemented.
+The [security architecture](../../openclaw-setup/security-architecture.md) describes
+this limitation in the shipped integration.
 
 ### Implementation
 
@@ -280,9 +281,15 @@ The repaired candidate passes complete installed DEV, including the native
 provider checks and teardown. Retained review cleared the full behavior diff.
 After the Link merge, focused tests cover migration from its restricted browser
 profile, exact equality with the ten existing payment tool permissions, and
-unchanged main/household profiles. The refreshed candidate requires retained
-review, fresh DEV, and the normal full-suite TEST/PROD gates. No test may mutate
-a live account.
+unchanged main/household profiles. The final candidate passed retained review,
+fresh DEV, the full application suite, TEST and read-only PROD acceptance.
+
+The full-suite retry corrected the installed harness expectations for the browser's
+workspace profile. A later DEV failure exposed missing captured diagnostics for a
+Docker bind-mount startup failure. Bounded, redacted failure output and host path
+metadata now survive teardown. Isolated mount probes and the final DEV and PROD
+runs passed without a runtime workaround. The intermittent mount failure's root
+cause remains unproven. No test mutated a live account.
 
 ### Rollout and rollback
 
@@ -290,7 +297,9 @@ Qualify the plugin route on the pinned runtime without a new source patch.
 Follow the approved feature lifecycle with the Docker fallback. Switch
 controllers only after acceptance. Retain the previous profile for rollback without
 concurrent control. Use managed CI for DEV, TEST, production, and exact paired merge.
-Production deployment remains pending the required acceptance gates.
+The production transaction completed acceptance, exact paired merge, intake
+resumption, and test environment teardown. Source queue and transfer cleanup
+are closed. Retained development builds remain protected by CI references.
 
 ### Review log
 
@@ -302,8 +311,9 @@ direct host-read bypass was found in the selected tools; native read rejects
 non-HTTP URLs, eval uses stdin, and tool arguments reject host configuration
 and executable overrides. The optional SRT boundary passed a synthetic probe but is not part of this design.
 The retained reviewer cleared the complete paired source diff after fixing
-all-session shutdown and first-install rollback. Installed acceptance and release
-clearance remain pending.
+all-session shutdown and first-install rollback. The same reviewer cleared the
+profile expectation and bounded diagnostic repairs. Installed acceptance and
+production release are complete, with no unresolved review findings.
 
 ### Checklist
 
@@ -316,4 +326,6 @@ clearance remain pending.
 - [x] Record approval to use the existing plugin registration pattern.
 - [x] Implement and qualify plugin forwarding with native workspace tools.
 - [x] Verify Gateway-owned MCP admission and agent instruction adherence.
-- [ ] Complete implementation, independent review, and release validation.
+- [x] Complete implementation, independent review, and release validation.
+- [x] Verify exact source merge, terminal deployment, and source queue closure.
+- [x] Attempt guarded build retirement and preserve retained CI references.
