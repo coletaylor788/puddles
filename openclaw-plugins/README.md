@@ -85,6 +85,12 @@ See each plugin's README for its schema.
 
 ## Conventions
 
+Prefer OpenClaw's supported extension APIs and built-in configuration. Check
+whether a later stable release supplies a missing capability before proposing
+an internal workaround. Rewriting OpenClaw internals from a plugin is still a
+patch and requires explicit design approval under the
+[OpenClaw patch policy](../.github/copilot-instructions.md#openclaw-extension-and-patch-policy).
+
 Every plugin ships an `openclaw.plugin.json` manifest with its identity and
 configuration schema, exposes registration through its declared extension
 entrypoint, and extends the root TypeScript configuration.

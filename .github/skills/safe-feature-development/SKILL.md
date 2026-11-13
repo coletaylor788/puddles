@@ -166,6 +166,8 @@ The [development-loop-manager](../development-loop-manager/SKILL.md) defines
 preauthorized maintenance scope when invoked. Within that scope, record the
 design and proceed without another design approval; all review and release
 checks still apply. The design-approval checkpoints below apply outside it.
+Maintenance authorization never waives the explicit design approval required
+for each OpenClaw patch by the [patch policy](../../copilot-instructions.md#openclaw-extension-and-patch-policy).
 
 Always research and develop the design with the requester before implementation
 outside that preauthorized maintenance scope.
@@ -343,12 +345,22 @@ investigating instead of asking.
      current plans, component documentation, and affected runtime topology.
    - Trace existing behavior, trust boundaries, helpers, tests, deployment
      surfaces, and rollback mechanisms. Reuse existing patterns.
+   - For OpenClaw work, prefer built-in behavior and supported extension points.
+     Check whether a later stable release solves the problem or exposes the
+     needed capability. Record the pinned and later stable versions examined,
+     upstream evidence, and whether our own overrides cause the failure.
    - Identify production state, credentials, delivery channels, external
      mutation surfaces, ports, processes, and artifacts that must stay isolated.
      Distinguish operational separation from an explicitly requested security
      boundary. Do not infer host confinement from the word "isolated."
 
 2. **Plan**
+   - Follow the OpenClaw patch policy. Present supported extensibility and the
+     later-stable-release findings in the design. Treat patching as a last
+     resort: identify each proposed patch, its scope, and why those alternatives
+     are insufficient. Obtain and record explicit requester design approval for
+     every patch before implementing it. A general feature or maintenance
+     approval does not cover an unspecified patch.
    - Align the design with the security architecture. Identify any proposed
      deviation or exception, explain its impact, and obtain explicit human
      approval for it before affected implementation. General feature approval
@@ -419,6 +431,10 @@ investigating instead of asking.
      implementation owner's responsibility.
 
 3. **Implement through the fast local and DEV loop**
+   - Before editing OpenClaw source or changing a patch, verify that the design
+     explicitly approves that patch and its scope. If a repair, CI failure, or
+     review finding requires another patch or an expanded scope, pause that
+     affected work for design approval. Do not treat it as a routine exception.
    - The implementer iterates locally using the repository's established
      development workflow and runs focused tests that cover the changed
      behavior. Reuse one incremental workspace per feature; independent worktrees
@@ -443,8 +459,8 @@ investigating instead of asking.
      repair helpers and their fixtures once current state and the recovery backup
      no longer need them. Application behavior and generic deployment, backup, and
      restore behavior belong in the independent release package suite.
-   - Promote upstream source edits into maintained repository patches before
-     release. An edit left only in the persistent OpenClaw checkout is not a
+   - Promote explicitly approved upstream source edits into maintained repository
+     patches before release. An edit left only in the persistent OpenClaw checkout is not a
      delivered feature. Register its regression targets in the shared pool.
 
 4. **Audit and freeze the feature candidate**
