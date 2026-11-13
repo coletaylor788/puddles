@@ -1,10 +1,10 @@
 diff --git a/docs/plugins/memory-wiki.md b/docs/plugins/memory-wiki.md
-index ae33aa58..4d9a9d9e 100644
+index 41fd542..81f3d94 100644
 --- a/docs/plugins/memory-wiki.md
 +++ b/docs/plugins/memory-wiki.md
-@@ -294,6 +294,19 @@ includes compact `Claim:` and `Evidence:` lines when available.
- | `wiki_apply`  | narrow synthesis/metadata mutations without freeform page surgery                                                                                             |
- | `wiki_lint`   | structural checks, provenance gaps, contradictions, open questions                                                                                            |
+@@ -314,6 +314,19 @@ includes compact `Claim:` and `Evidence:` lines when available.
+ or cancellation returns a tool error rather than an empty result, and stops
+ the ongoing page scan. For a known page, use `wiki_get` with its id or path.
  
 +Before changing a synthesis, call `wiki_get` with `includeMetadata: true`.
 +Its text result is JSON containing the page body, pagination, and complete
@@ -23,29 +23,30 @@ index ae33aa58..4d9a9d9e 100644
  `memory_search` and `memory_get` can reach the wiki when the active memory
  plugin supports corpus selection.
 diff --git a/extensions/memory-wiki/src/query.ts b/extensions/memory-wiki/src/query.ts
-index 395afb2a..f96a5ce2 100644
+index 92b8eac..54fb68b 100644
 --- a/extensions/memory-wiki/src/query.ts
 +++ b/extensions/memory-wiki/src/query.ts
-@@ -140,12 +140,18 @@ type WikiSearchResult = {
+@@ -140,6 +140,11 @@ type WikiSearchResult = WikiResultMetadata & {
    evidenceSourceIds?: string[];
- };
+ } & WikiResultSource;
  
 +type WikiPageMutationMetadata = Pick<
 +  WikiPageSummary,
 +  "sourceIds" | "claims" | "contradictions" | "questions" | "confidence"
 +> & { status?: string };
 +
- type WikiGetResult = {
-   corpus: "wiki" | "memory";
-   path: string;
-   title: string;
-   kind: WikiPageSummary["kind"] | "memory";
+ // Wiki pages and legacy memory read by path; native provider records use opaque lookups.
+ type WikiResultSource =
+   | { corpus: "wiki"; path: string }
+@@ -148,6 +153,7 @@ type WikiResultSource =
+ 
+ type WikiGetResult = WikiResultMetadata & {
    content: string;
 +  metadata?: WikiPageMutationMetadata;
    fromLine: number;
    lineCount: number;
    totalLines?: number;
-@@ -1306,6 +1312,16 @@ export async function getMemoryWikiPage(input: {
+@@ -1020,6 +1026,16 @@ export async function getMemoryWikiPage(
          totalLines,
          truncated,
          ...buildWikiResultMetadata(page),
@@ -63,12 +64,12 @@ index 395afb2a..f96a5ce2 100644
      }
    }
 diff --git a/extensions/memory-wiki/src/tool.test.ts b/extensions/memory-wiki/src/tool.test.ts
-index 7bb8255a..b9409d9a 100644
+index 239f055..48f0682 100644
 --- a/extensions/memory-wiki/src/tool.test.ts
 +++ b/extensions/memory-wiki/src/tool.test.ts
-@@ -4,9 +4,9 @@ import path from "node:path";
+@@ -3,9 +3,9 @@ import fs from "node:fs/promises";
+ import path from "node:path";
  import { describe, expect, it } from "vitest";
- import type { ResolvedMemoryWikiConfig } from "./config.js";
  import { lintMemoryWikiVault } from "./lint.js";
 -import { parseWikiMarkdown } from "./markdown.js";
 +import { parseWikiMarkdown, renderWikiMarkdown } from "./markdown.js";
@@ -78,7 +79,7 @@ index 7bb8255a..b9409d9a 100644
  
  function asSchemaObject(value: unknown): Record<string, unknown> {
    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-@@ -29,6 +29,104 @@ function unionLiteralValues(schema: Record<string, unknown>): string[] {
+@@ -17,6 +17,104 @@ function asSchemaObject(value: unknown): Record<string, unknown> {
  describe("memory-wiki tools", () => {
    const harness = createMemoryWikiTestHarness();
  
@@ -140,7 +141,7 @@ index 7bb8255a..b9409d9a 100644
 +    const plain = await get.execute("read-body", { lookup: "synthesis.alpha", lineCount: 1 });
 +    expect(plain.content.find((part) => part.type === "text")?.text).toBe(snapshot.content);
 +    await createWikiApplyTool(config).execute("update-summary", {
-+      op: "synthesis",
++      op: "create_synthesis",
 +      title: "Alpha",
 +      body: "Updated summary.",
 +      ...snapshot.metadata,
@@ -180,14 +181,14 @@ index 7bb8255a..b9409d9a 100644
 +    expect(JSON.stringify(result)).not.toContain("Private claim");
 +  });
 +
-   it("accepts CLI-style operation aliases in wiki_apply schema", () => {
-     const tool = createWikiApplyTool({} as ResolvedMemoryWikiConfig);
-     const applyProperties = asSchemaObject(asSchemaObject(tool.parameters).properties);
+   it("rejects non-object wiki_apply arguments without throwing a TypeError", async () => {
+     const { config } = await harness.createVault({ initialize: true });
+     const tool = createWikiApplyTool(config);
 diff --git a/extensions/memory-wiki/src/tool.ts b/extensions/memory-wiki/src/tool.ts
-index 075f3095..a694b796 100644
+index 8f6c896..02c62b3 100644
 --- a/extensions/memory-wiki/src/tool.ts
 +++ b/extensions/memory-wiki/src/tool.ts
-@@ -51,6 +51,12 @@ const WikiSearchSchema = Type.Object(
+@@ -54,6 +54,12 @@ const WikiSearchSchema = Type.Object(
  const WikiGetSchema = Type.Object(
    {
      lookup: Type.String({ minLength: 1 }),
@@ -200,15 +201,7 @@ index 075f3095..a694b796 100644
      fromLine: Type.Optional(Type.Integer({ minimum: 1 })),
      lineCount: Type.Optional(Type.Integer({ minimum: 1 })),
      backend: Type.Optional(WikiSearchBackendSchema),
-@@ -262,6 +268,7 @@ export function createWikiGetTool(
-     execute: async (_toolCallId, rawParams) => {
-       const params = asNonArrayRecord(rawParams) as {
-         lookup?: string;
-+        includeMetadata?: boolean;
-         fromLine?: number;
-         lineCount?: number;
-         backend?: ResolvedMemoryWikiConfig["search"]["backend"];
-@@ -288,7 +295,10 @@ export function createWikiGetTool(
+@@ -295,7 +301,10 @@ export function createWikiGetTool(
        if (!result) {
          return textResult(`Wiki page not found: ${lookup}`, { found: false });
        }
