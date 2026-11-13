@@ -47,7 +47,6 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `code-mode-additive-surface.patch` | Keep direct tools alongside contained scripting through the bundled QuickJS executor |
 | `claude-code-mode-mcp.patch` | Connect native Claude MCP calls to the shared contained runtime and existing execution policy |
 | `claude-configured-mcp.patch` | Carry permitted configured MCP tools through the restricted CLI host bridge |
-| `claude-workspace-mcp.patch` | Opt workspace profiles into host MCP while retaining native Bash and file tools |
 | `copilot-configured-mcp.patch` | Connect configured MCP tools to the Copilot host tool bridge with role policy and owned cleanup |
 
 Each patch has a neighboring document explaining its behavior and history.

@@ -52,7 +52,7 @@ export function configureAgentBrowser(before, { command, args, env, protectedPat
     agent.sandbox ??= {}; agent.sandbox.browser ??= {};
     agent.sandbox.browser.enabled = false;
   }
-  profiles[browserAgent] = { ...profiles[browserAgent], mode: 'workspace', hostMcp: true,
+  profiles[browserAgent] = { ...profiles[browserAgent], mode: 'workspace',
     protectedPaths: add(profiles[browserAgent].protectedPaths, protectedPaths) };
   return config;
 }

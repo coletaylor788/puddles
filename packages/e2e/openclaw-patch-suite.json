@@ -692,13 +692,6 @@
         "src/gateway/mcp-grant-store.test.ts",
         "src/gateway/tool-resolution.test.ts"
       ]
-    },
-    {
-      "name": "claude-workspace-mcp",
-      "tests": [
-        "src/agents/cli-runner/prepare.configured-mcp.test.ts",
-        "extensions/anthropic/cli-profile.test.ts"
-      ]
     }
   ],
   "tests": [
