@@ -12,7 +12,7 @@ index 7ac94c6750a..d96926e9c98 100644
  <ParamField path="agents.defaults.subagents.announceTimeoutMs" type="number" default="120000">
    Timeout for gateway `agent` announcement handoff attempts. Once a handoff is accepted, waiting for the parent session's turn does not consume this budget. After execution starts, the requester's normal [runtime timeout and cancellation controls](/concepts/agent-loop#timeouts) apply; the announcement timer does not restart. Values are positive integer milliseconds and are clamped to the platform-safe timer maximum. Queue waits, requester execution, and transient retries can make total delivery time longer than one configured timeout.
 diff --git a/src/agents/subagents/spawn/acp-spawn.test.ts b/src/agents/subagents/spawn/acp-spawn.test.ts
-index eebb2c9b0e4..31e3c6f0bbf 100644
+index eebb2c9b0e4..6210534510c 100644
 --- a/src/agents/subagents/spawn/acp-spawn.test.ts
 +++ b/src/agents/subagents/spawn/acp-spawn.test.ts
 @@ -309,6 +309,10 @@ function expectGatewayMethodNotCalled(method: string): void {
@@ -26,7 +26,7 @@ index eebb2c9b0e4..31e3c6f0bbf 100644
  function expectInitializeSessionFields(expected: Record<string, unknown>): Record<string, unknown> {
    return expectRecordFields(
      firstMockCall(hoisted.initializeSessionMock, "session initialization")[0],
-@@ -1406,5 +1410,368 @@ describe("spawnAcpDirect", () => {
+@@ -1406,5 +1410,369 @@ describe("spawnAcpDirect", () => {
        }),
      );
    });
@@ -59,6 +59,7 @@ index eebb2c9b0e4..31e3c6f0bbf 100644
 +        enabled: true,
 +        backend: "acpx",
 +        defaultAgent: "main",
++        allowedAgents: ["main", "codex"],
 +      },
 +      agents: {
 +        defaults: {
