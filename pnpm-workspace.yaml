@@ -6,6 +6,7 @@ packages:
 # Preserve the existing policy: only esbuild may run an install script.
 # pnpm 12 requires every discovered build to be classified explicitly.
 allowBuilds:
+  agent-browser: false
   "@stripe/link-cli": false
   "@google/genai": false
   esbuild: true
@@ -14,6 +15,16 @@ allowBuilds:
   openclaw: false
   protobufjs: false
   tree-sitter-bash: false
+
+minimumReleaseAgeExclude:
+  - '@agent-browser/cli-darwin-arm64@0.43.0'
+  - '@agent-browser/cli-darwin-x64@0.43.0'
+  - '@agent-browser/cli-linux-arm64-gnu@0.43.0'
+  - '@agent-browser/cli-linux-arm64-musl@0.43.0'
+  - '@agent-browser/cli-linux-x64-gnu@0.43.0'
+  - '@agent-browser/cli-linux-x64-musl@0.43.0'
+  - '@agent-browser/cli-win32-x64-msvc@0.43.0'
+  - agent-browser@0.43.0
 
 overrides:
   "uuid@<14.0.0": ">=14.0.0"

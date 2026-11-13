@@ -1,0 +1,12 @@
+{
+  "name": "@puddles/agent-browser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": { "agent-browser": "0.43.0" },
+  "scripts": {
+    "build": "node --check build.mjs && node --check configuration.mjs && node --check launch.mjs",
+    "lint": "node --check build.mjs && node --check configuration.mjs && node --check launch.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

@@ -12,6 +12,8 @@ function environmentLeaf(path, category) {
     if (category === "path") return /\/(?:command|env\/LINK_AUTH_FILE)$/.test(joined);
     if (category === "fixture") return /\/env\/LINK_(?:API|AUTH)_BASE_URL$/.test(joined);
   }
+  if (category === "path" && /^plugins\/entries\/agent-browser\/config\/(?:command|args\/[01])$/.test(joined)) return true;
+  if (category === "path" && /^plugins\/entries\/anthropic\/config\/cliProfiles\/browser-agent\/protectedPaths\/[01]$/.test(joined)) return true;
   if (category === "port") return /^(?:port|[a-zA-Z]+Port)$/.test(leaf);
   if (category === "credential-reference") return /^secrets\/providers\/[^/]+\/path$/.test(joined);
   if (category === "account" && /^approvals\/plugin\/targets\/\d+\/(?:to|accountId)$/.test(joined)) return true;
@@ -72,7 +74,8 @@ export function validateConfigurationBindings(base, bindings) {
       throw new Error(`Only a service port argument can vary: ${binding.path}`);
     }
     if (binding.category === "path" && path.at(-2) === "args" &&
-        parent[Number(leaf) - 1] !== "--models-preset") {
+        parent[Number(leaf) - 1] !== "--models-preset" &&
+        !/^plugins\/entries\/agent-browser\/config\/args\/[01]$/.test(path.join("/"))) {
       throw new Error(`Only a declared service path argument can vary: ${binding.path}`);
     }
     if (value !== null && typeof value === "object") throw new Error(`Configuration binding must select a leaf: ${binding.path}`);
