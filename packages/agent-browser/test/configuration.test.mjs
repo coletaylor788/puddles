@@ -29,11 +29,15 @@ test('personal browser switches controllers while other agents and payment permi
   assert.deepEqual(after.mcp.servers.link_payments, before.mcp.servers.link_payments);
   for (const id of ['main', 'household-browser-agent']) {
     assert.deepEqual(after.agents.entries[id].tools.allow, before.agents.entries[id].tools.allow);
-    assert.ok(after.agents.entries[id].tools.deny.includes(namespace + '__*'));
+    assert.ok(after.agents.entries[id].tools.deny.includes(namespace + '_*'));
   }
   assert.equal(after.plugins.entries.anthropic.config.cliProfiles['browser-agent'].mode, 'workspace');
   assert.deepEqual(after.plugins.entries.anthropic.config.cliProfiles['browser-agent'].protectedPaths, options.protectedPaths);
-  const allowed = after.mcp.servers[namespace].toolFilter.include;
+  assert.equal(after.mcp.servers.agent_browser, undefined);
+  const plugin = after.plugins.entries['agent-browser'];
+  assert.equal(plugin.config.agentId, 'browser-agent');
+  assert.deepEqual(plugin.config.args, options.args);
+  const allowed = personal.tools.allow;
   assert.ok(allowed.includes('agent_browser_eval') && allowed.includes('agent_browser_auth_login'));
   for (const name of ['auth_save', 'auth_delete', 'cookies_get', 'storage_get', 'state_save']) {
     assert.ok(!allowed.includes('agent_browser_' + name));

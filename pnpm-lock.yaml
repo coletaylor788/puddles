@@ -184,6 +184,19 @@ importers:
         specifier: 3.7.22
         version: 3.7.22(patch_hash=d4a7cf492f72741d0f38dcbc7dcf15f48dca126d31464f8fd88658481e44d824)(@aws-sdk/credential-provider-node@3.972.36)
 
+  openclaw-plugins/agent-browser:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.18.0
+        version: 1.29.0(zod@4.6.5)
+    devDependencies:
+      '@puddles/agent-browser':
+        specifier: workspace:*
+        version: link:../../packages/agent-browser
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
+
   openclaw-plugins/approved-session-send:
     devDependencies:
       '@types/node':

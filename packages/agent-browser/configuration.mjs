@@ -1,6 +1,7 @@
 import { isAbsolute } from 'node:path';
 
 export const namespace = 'agent_browser';
+export const pluginId = 'agent-browser';
 // Native MCP selection. No replacement tool schemas or result filtering.
 // Leave vault management to the owner, and expose only named login and discovery.
 export const browserTools = [
@@ -27,16 +28,16 @@ export function configureAgentBrowser(before, { command, args, env, protectedPat
   if (!entries?.[browserAgent]) throw new Error('Browser agent must already exist');
   const profiles = config.plugins?.entries?.anthropic?.config?.cliProfiles;
   if (!profiles?.[browserAgent]) throw new Error('Explicit Claude browser profile required');
-  config.mcp ??= {}; config.mcp.servers ??= {};
-  if (config.mcp.servers[namespace]) throw new Error('Browser MCP namespace is already configured');
-  config.mcp.servers[namespace] = { command, args: [...args], env: { ...env },
-    toolFilter: { include: [...browserTools] }, requestTimeoutMs: 120_000,
-    supportsParallelToolCalls: false };
+  if (config.mcp?.servers?.[namespace]) throw new Error('Direct browser MCP is already configured');
+  if (config.plugins.entries[pluginId]) throw new Error('Browser plugin is already configured');
+  config.plugins.entries[pluginId] = { enabled: true,
+    config: { command, args: [...args], env: { ...env }, agentId: browserAgent } };
+  if (Array.isArray(config.plugins.allow) && !config.plugins.allow.includes(pluginId)) config.plugins.allow.push(pluginId);
   const add = (previous, next) => [...new Set([...(previous ?? []), ...next])];
   for (const [id, agent] of Object.entries(entries)) {
     agent.tools ??= {};
     if (id !== browserAgent) {
-      agent.tools.deny = add(agent.tools.deny, [namespace + '__*']);
+      agent.tools.deny = add(agent.tools.deny, [namespace + '_*']);
       continue;
     }
     agent.tools.deny = add(agent.tools.deny, ['browser']);
@@ -44,11 +45,11 @@ export function configureAgentBrowser(before, { command, args, env, protectedPat
       if (agent.tools[field]) agent.tools[field] = agent.tools[field].filter(tool => tool !== 'browser');
     }
     const field = Array.isArray(agent.tools.allow) ? 'allow' : 'alsoAllow';
-    agent.tools[field] = add(agent.tools[field], browserTools.map(tool => namespace + '__' + tool));
+    agent.tools[field] = add(agent.tools[field], browserTools);
     agent.tools.sandbox ??= {}; agent.tools.sandbox.tools ??= {};
     agent.tools.sandbox.tools.alsoAllow = add(
       agent.tools.sandbox.tools.alsoAllow?.filter(tool => tool !== 'browser'),
-      browserTools.map(tool => namespace + '__' + tool));
+      browserTools);
     agent.sandbox ??= {}; agent.sandbox.browser ??= {};
     agent.sandbox.browser.enabled = false;
   }
