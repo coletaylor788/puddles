@@ -65,7 +65,7 @@
     "extensions/facetime/tests/talk-driver.shared-talk.test.ts": "extensions",
     "extensions/openai/realtime-quicksilver-gateway-direct.test.ts": "extension-provider-openai",
     "src/gateway/server-plugins.test.ts": "gateway-server",
-    "src/gateway/talk/carrier-session.test.ts": "gateway-core",
+    "src/gateway/talk/carrier-session.test.ts": "gateway-database-workers",
     "src/plugins/loader.runtime-metadata.test.ts": "plugins",
     "src/plugins/registry.runtime-config.test.ts": "infra",
     "src/talk/carrier-call-control.test.ts": "unit-src",
@@ -74,7 +74,6 @@
     "extensions/facetime/tests/capture-launcher.test.ts": "extensions",
     "extensions/facetime/tests/call-events.test.ts": "extensions",
     "extensions/facetime/tests/call-lifecycle.test.ts": "extensions",
-    "extensions/facetime/tests/config-compat.test.ts": "extensions",
     "extensions/facetime/tests/driver-setup.test.ts": "extensions",
     "extensions/facetime/tests/helper-rpc.test.ts": "extensions",
     "extensions/facetime/tests/helper-supervisor.test.ts": "extensions",
@@ -235,7 +234,8 @@
     "src/gateway/talk/relay/transcript-readiness.test.ts": "gateway",
     "src/process/gateway-work-admission.test.ts": "process",
     "src/process/gateway-work-admission.continuation.test.ts": "process",
-    "src/config/config.talk-validation.test.ts": "runtime-config"
+    "src/config/config.talk-validation.test.ts": "runtime-config",
+    "src/gateway/talk/carrier-provider.test.ts": "gateway-core"
   },
   "patches": [
     {
@@ -436,6 +436,7 @@
         "extensions/facetime/tests/talk-driver.shared-talk.test.ts",
         "extensions/openai/realtime-quicksilver-gateway-direct.test.ts",
         "src/gateway/server-plugins.test.ts",
+        "src/gateway/talk/carrier-provider.test.ts",
         "src/gateway/talk/carrier-session.test.ts",
         "src/plugins/loader.runtime-metadata.test.ts",
         "src/plugins/registry.runtime-config.test.ts",
@@ -445,7 +446,6 @@
         "extensions/facetime/tests/capture-launcher.test.ts",
         "extensions/facetime/tests/call-events.test.ts",
         "extensions/facetime/tests/call-lifecycle.test.ts",
-        "extensions/facetime/tests/config-compat.test.ts",
         "extensions/facetime/tests/driver-setup.test.ts",
         "extensions/facetime/tests/helper-rpc.test.ts",
         "extensions/facetime/tests/helper-supervisor.test.ts",
