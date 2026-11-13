@@ -71,7 +71,7 @@ The complete repair still must prove one continuous scenario: delegate research,
 
 **Approval reference:** “One change. Make it have two phases, that follow dev process independently. I.e we upgrade first, safely roll to prod, then we make the patch and safely roll to prod. Upgrade is holistically ensuring existing tests and behavior doesn’t break. Then approved to ship, push, and implement” (2026-11-13).
 
-**Progress:** Phase 1 is in progress. Both source branches were refreshed onto main while preserving research. Stable component checks and public plugin compilation/unit tests passed. Maintained patch ports and complete application qualification remain open. Testing found a mismatch between the migration preview and native configuration writer; exact preview/persisted equality remains a release gate. Workshop proposal retirement needs review before its port can proceed. Other compatibility work continues. Phase 2 implementation has not started. The held first repair remains excluded.
+**Progress:** Phase 1 is in progress. Both source branches were refreshed onto main while preserving research. Stable component checks and public plugin compilation/unit tests passed. Maintained patch ports and complete application qualification remain open. The migration preview/writer mismatch is corrected and its six Doctor cases pass; exact preview/persisted equality remains a release gate. Native stable replaces the Talk permission-parity patch, with its offer-close lifetime coverage retained. Workshop proposal retirement needs review before its port can proceed. Other compatibility work continues. Phase 2 implementation has not started. The held first repair remains excluded.
 
 ## Agent section
 
@@ -132,6 +132,13 @@ Upgrade compatibility includes the integrity-bound pnpm 12.15.0 toolchain and na
 3. Run focused compatibility checks and retain independent review of the complete upgrade diff. Build one reusable candidate and submit it through `ci-dev`, then `ci-prod` with its full application suite and installed acceptance.
 4. Require the terminal production receipt, exact source merge and all source/transfer/cleanup closure before starting Phase 2. Record physical acceptance separately from automated readiness.
 
+The stable Talk implementation replaces `talk-agent-parity.patch`. Remove its
+runtime hunks and retain the two offer-close lifetime cases under the existing
+Talk overlap regression patch. Native tool permissions, detached admission,
+source revocation and result ownership remain the runtime owners. Existing
+configuration that selects ordinary approvals must migrate only its obsolete
+setting, with exact before/after validation.
+
 #### Phase 2
 
 1. Start a fresh feature branch from the landed Phase 1 baseline. Reconfirm the three approved contracts against that exact runtime.
@@ -146,7 +153,7 @@ Phase 1 local compatibility: all eight public plugins compile against the pinned
 
 Focused compatibility ports now have additional evidence. The iMessage coalescer passes 41 cases, independently rerun by the retained reviewer. The browser entrypoint fixture passes against the ported source. The corrected native delegation suite passes 43 cases in 35.05 seconds. Heartbeat prompt and terminal resolution pass 65 cases in 16.05 seconds; the two Copilot inbound-context cases pass in 27.28 seconds. These focused source checks do not prove the final composed runtime, prompt generation, installed startup, or production readiness.
 
-The retained reviewer cleared the wiki metadata port and verified correction of delegation fixtures that still used the retired roster shape and test configuration owner. State-migration SDK qualification remains in progress: native worker compilation exposed a removed roster helper, now replaced by the stable Doctor migration owner. The port retains and expands the roster regression. A frozen source run passed 42 tests across SQL, cron, worker and Doctor checks, but the markerless roster case failed. The preview lost the original legacy owner while the native writer retained it and materialized ownership. This is a real release-gate mismatch, not a reason to weaken the assertion. The correction carries native owner provenance through the preview; exact equality, explicit owners, workspace, fixed-store and include cases remain under qualification.
+The retained reviewer cleared the wiki metadata port and verified correction of delegation fixtures that still used the retired roster shape and test configuration owner. State-migration SDK qualification now passes all six Doctor cases. The preview preserves legacy owner provenance and uses native authentication ownership preparation, matching the writer without weakening exact equality. Explicit owners, workspace, fixed-store and included-file refusal cases pass. Installed schema migration still requires the composed build.
 
 Completed on unmodified `847611dcaa3bf0e2783335f961dd1fd0580e4d9f`:
 
