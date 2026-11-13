@@ -5,12 +5,22 @@
   "type": "module",
   "description": "OpenClaw registration for stock Vercel browser MCP tools",
   "main": "dist/plugin.js",
-  "openclaw": { "extensions": ["./dist/plugin.js"] },
+  "openclaw": {
+    "extensions": [
+      "./dist/plugin.js"
+    ]
+  },
   "scripts": {
     "build": "node build.mjs",
     "lint": "node --check src/bridge.mjs && node --check src/register.mjs && node --check src/plugin.mjs && node --check build.mjs",
     "test": "node --test test/*.test.mjs"
   },
-  "dependencies": { "@modelcontextprotocol/sdk": "^1.18.0" },
-  "devDependencies": { "esbuild": "^0.25.0", "@puddles/agent-browser": "workspace:*" }
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "@puddles/agent-browser": "workspace:*",
+    "openclaw": "2026.9.6"
+  }
 }

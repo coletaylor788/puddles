@@ -196,6 +196,9 @@ importers:
       esbuild:
         specifier: ^0.25.0
         version: 0.25.12
+      openclaw:
+        specifier: 2026.9.6
+        version: 2026.9.6(@aws-sdk/credential-provider-node@3.972.36)
 
   openclaw-plugins/approved-session-send:
     devDependencies:

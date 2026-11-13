@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { resolveToolResultFailureKind } from 'openclaw/plugin-sdk/agent-harness-runtime';
 import { registerBrowser } from '../src/register.mjs';
 
 const tools = [{ name: 'agent_browser_eval', description: 'Native eval', inputSchema: {
@@ -32,7 +33,8 @@ test('synchronous native registration, agent scoping and shared process owner ac
   assert.deepEqual(result.content, raw.content);
   assert.deepEqual(result.structuredContent, raw.structuredContent);
   assert.equal(result.isError, true);
-  assert.deepEqual(result.details, raw);
+  assert.deepEqual(result.details, { ...raw, ok: false });
+  assert.equal(resolveToolResultFailureKind(result), 'failed');
   await first.service.stop();
   assert.equal(closed, 1);
   await assert.rejects(second.tool.execute('stopped', {}), /stopped/);
@@ -65,7 +67,7 @@ test('uncertain transport failure is never retried; a later request reconnects',
   });
   await assert.rejects(fixture.tool.execute('one', {}), /transport lost/);
   assert.equal(connections, 1); assert.equal(calls, 1);
-  await fixture.tool.execute('two', {});
+  assert.equal(resolveToolResultFailureKind(await fixture.tool.execute('two', {})), undefined);
   assert.equal(connections, 2); assert.equal(calls, 2);
   await fixture.service.stop();
 });

@@ -24,7 +24,7 @@ export function registerBrowser(api, tools, connect, runtime = sharedRuntime(), 
       async execute(_id, args, signal) {
         // Preserve native content (including images), structured output and errors.
         const result = await getBridge().call(tool.name, args, signal);
-        return { ...result, details: { ...result, isError: result.isError === true } };
+        return { ...result, details: { ...result, ok: result.isError !== true, isError: result.isError === true } };
       },
     } : null, { names: [tool.name] });
   }
