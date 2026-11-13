@@ -11,6 +11,16 @@ on 24.x, or Node 26.1.0 or later. Earlier runtimes can truncate SQLite text.
 Use the same exact Node binary for packaging, installed rehearsal, and the
 activated gateway. Keep the previous interpreter available for rollback.
 
+## Before adding or changing a patch
+
+Follow the [OpenClaw patch policy](../../../.github/copilot-instructions.md#openclaw-extension-and-patch-policy).
+Always prefer built-in behavior and supported extensibility, and check whether
+a later stable release solves the problem. Patching is a last resort. Obtain
+explicit requester approval in the design for each patch before editing source,
+including prepared development checkouts. Record its scope, the alternatives
+investigated, the upstream evidence, and the approval reference. The existing
+patch inventory and application commands do not authorize a new or changed patch.
+
 ## Maintained patches
 
 | Patch | Purpose |
