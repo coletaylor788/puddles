@@ -28,6 +28,12 @@
     "src/agents/subagents/spawn/subagent-spawn.test.ts": "infra",
     "src/agents/tools/sessions-spawn-tool.test.ts": "agents-tools",
     "src/agents/tools/skill-workshop-tool.test.ts": "infra",
+    "src/skills/workshop/library.test.ts": "infra",
+    "src/skills/workshop/review-undo.test.ts": "unit-fast",
+    "src/gateway/skill-library-authoring.test.ts": "gateway-database-workers",
+    "src/gateway/server-methods/skills-workshop.test.ts": "gateway-methods",
+    "src/commands/doctor-skill-workshop-retire-proposals.test.ts": "commands",
+    "src/commands/doctor/shared/legacy-config-migrations.runtime.skills.test.ts": "commands",
     "extensions/imessage/src/monitor.last-route.test.ts": "extension-database-workers",
     "extensions/imessage/src/monitor/coalesce.test.ts": "extension-imessage",
     "extensions/imessage/src/config-schema.test.ts": "extension-imessage",
@@ -47,7 +53,6 @@
     "packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts": "gateway-client",
     "src/cron/stopped-state-sdk.test.ts": "cron",
     "src/commands/doctor/stopped-config-repair.test.ts": "commands",
-    "src/agents/tools/skill-workshop-tool.availability.test.ts": "agents-tools",
     "src/skills/workshop/tool-policy-diagnostic.test.ts": "unit-fast",
     "src/agents/tool-allowlist-guard.test.ts": "unit-fast",
     "src/state/openclaw-agent-db.storage-migration.test.ts": "infra",
@@ -309,7 +314,6 @@
       "name": "skill-workshop-sandbox-fix",
       "tests": [
         "src/agents/tools/skill-workshop-tool.test.ts",
-        "src/agents/tools/skill-workshop-tool.availability.test.ts",
         "src/skills/workshop/tool-policy-diagnostic.test.ts",
         "src/agents/tool-allowlist-guard.test.ts"
       ]
@@ -723,7 +727,13 @@
     "src/process/gateway-work-admission.continuation.test.ts",
     "src/agents/agent-tools.before-tool-call.integration.e2e.test.ts",
     "src/config/talk.normalize.test.ts",
-    "src/config/config.talk-validation.test.ts"
+    "src/config/config.talk-validation.test.ts",
+    "src/skills/workshop/library.test.ts",
+    "src/skills/workshop/review-undo.test.ts",
+    "src/gateway/skill-library-authoring.test.ts",
+    "src/gateway/server-methods/skills-workshop.test.ts",
+    "src/commands/doctor-skill-workshop-retire-proposals.test.ts",
+    "src/commands/doctor/shared/legacy-config-migrations.runtime.skills.test.ts"
   ],
   "candidateTests": [
     "tests/candidate.gmail-approval.test.ts",

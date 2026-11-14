@@ -2,7 +2,7 @@
 
 Status: Production approved in two independent phases; upgrade in progress
 Issue: https://github.com/coletaylor788/puddles/issues/359
-Last updated: 2026-11-13
+Last updated: 2026-11-14
 
 ## Human section
 
@@ -41,13 +41,14 @@ The upgrade provides
 
 Stable does not include main's unified session controller or the injected child-result context fix. Those must not be counted as upgrade benefits.
 
-One upgrade behavior needs a separate decision. Stable removes Workshop's staged
-skill proposals and uses immediate, versioned skill changes with native undo.
-The previous tool already allowed an authorized caller to apply its proposal,
-but creation itself stayed pending. The proposed adjustment is to adopt native
-Workshop behavior, preserve the existing tool and agent access limits, and use
-native Doctor to export pending drafts. It does not recreate a proposal queue.
-This adjustment remains proposed; the affected compatibility port is paused.
+The approved upgrade adopts native Workshop behavior: skill edits save
+immediately with version history and undo. Preserve the existing tool and agent
+access limits. Use native Doctor to export pending drafts without activating
+them, and retain regressions for scope, revocation, history and recovery.
+Keep the existing narrow access compatibility for sandboxed agents already
+allowed to use Workshop. Native authoring grants cover authenticated Gateway
+human turns, but do not cover all existing channel and background callers.
+Skill writes, version history, undo and migration remain native.
 
 #### Phase 2: repair native CLI voice coordination
 
@@ -71,7 +72,9 @@ The complete repair still must prove one continuous scenario: delegate research,
 
 **Approval reference:** “One change. Make it have two phases, that follow dev process independently. I.e we upgrade first, safely roll to prod, then we make the patch and safely roll to prod. Upgrade is holistically ensuring existing tests and behavior doesn’t break. Then approved to ship, push, and implement” (2026-11-13).
 
-**Progress:** Phase 1 remains in qualification. All 46 selected ports are reviewed and compose in order, excluding the held Workshop port. The final repair run passes 416 native cases across 15 files. Runtime types, extension test types and all 17 relevant core test type groups pass. Workshop proposal retirement still needs the behavior decision below. No immutable build or installed CI run has been submitted; the full application suite, DEV, TEST, production acceptance, merge and cleanup remain required. Phase 2 implementation has not started.
+**Workshop approval:** Production approved on 2026-11-14. The requester answered “Yes I like that better anyways” to adopting native immediate, versioned skill edits with undo, preserving existing access limits and exporting pending drafts without activation. This lifts the prior Workshop design hold; the two independent release phases remain unchanged.
+
+**Progress:** Phase 1 continues with the approved native Workshop transition. The preceding local checkpoint passed the 416-case repair run, runtime and extension test types, and all 17 relevant core test type groups. Workshop source review is complete. All 47 patches compose, the 48 native Workshop cases and 42 affected access and authority cases pass, and affected type qualification is finishing before build. Installed migration proof remains required in CI. CI still owns DEV, the full application suite, TEST, production acceptance, merge and cleanup. Phase 2 implementation has not started.
 
 ## Agent section
 
@@ -116,14 +119,15 @@ Relevant upstream evidence:
 
 #### Phase 1
 
-Workshop compatibility is blocked on a design decision. Old `create`/`update`
-stage a draft, with a separate native `apply` action. Stable
-`src/agents/tools/skill-workshop-tool.ts` calls native library mutations directly;
-`legacy-config-migrations.runtime.skills.ts` removes `approvalPolicy` and
-`maxPending`. Existing pending-draft export and migration need fixture proof.
-Do not mechanically remove the new sandbox gate or restore a custom proposal
-subsystem. Proposed native adoption must be approved before this affected port
-or configuration migration changes the deployed contract.
+Workshop adoption is approved. Retire obsolete proposal-specific compatibility.
+Retain only the existing sandbox construction and diagnostic compatibility,
+because native human-turn library grants do not cover existing channel and
+background callers. Preserve ordinary and sandbox tool policies and native
+agent ownership and revocation. Use native library mutations and Doctor migration;
+remove obsolete `approvalPolicy` and `maxPending` configuration through the
+reviewed transition. Prove pending-draft export without activation and preserve
+scope and revocation checks. Keep native proposal-retirement recovery behavior.
+Do not recreate a custom proposal subsystem or mint new authoring capabilities.
 
 Upgrade compatibility includes the integrity-bound pnpm 12.15.0 toolchain and native schema migration from shared state 18 / agent 23 to shared state 22 / agent 27. The existing-state regression seeds the exact predecessor schemas with synthetic sessions, committed WAL history, memory, disabled cron and execution denial settings. It runs the candidate's native migration and verifies reopened data; fresh state does not substitute for this proof.
 
@@ -229,3 +233,5 @@ The latest reviewed composition is `6f6f83f5a474eae9510b9bbafe00c9bb51d7f3c6`. A
 The reviewed fixture-only successor composes to `c7b926907eadc10632d3f376abb39ca3cea3b7bf` across all 46 selected patches. The prepared source stays at `57f5209173b2e5e35cb27e649174b92b4e2e85b7` while serial type qualification runs; runtime core and extensions pass in 53.01 and 71.06 seconds. The corrected Copilot tool-bridge file passes all 47 cases, including remote skill source authority and raw argument preservation. The remaining execution-host fixture now distinguishes automatic target selection from supplemental node-only execution, checks exact bounded yield arguments, and retains forbidden-host refusal and disconnect withdrawal. Its recording constructor proves routing, not actual sandbox startup; installed sandbox acceptance remains required. The reviewed final fixture still needs native execution and affected test types. Source rebases onto freshly fetched public and private main were clean. No deployment submission exists.
 
 The current reviewed composition is `21103ac4c5f09d7809b9beec485ef959c0a1ff34`. All 46 selected patches apply strictly; Workshop remains explicitly excluded from this local compatibility checkpoint. The final 15-file native repair run passed all 416 cases in 267.67 seconds on an unchanged source digest. The subsequent text-literal type annotation changes no runtime behavior; the affected configured-MCP file passed all four cases again on the final source, and its Gateway type group passed in 11.59 seconds. All 17 core type groups covering the 129 patched core test paths now pass, together with the native dependency-boundary check, runtime core/extensions types and extension test types. Earlier successful type proofs remain valid because later changes affect test fixtures only. Both mains were fetched again and remain unchanged. These are local compatibility results, not full application or installed release acceptance. Workshop migration and the complete CI lifecycle still block Phase 1 completion.
+
+The November 14 Workshop approval supersedes the earlier hold. The retained reviewer cleared the reduced existing sandbox access patch and the exact-auto configuration retirement. Native writes, history, undo and migration remain unchanged. The installed regression covers JSON and schema-v18 SQLite pending and quarantined drafts, excludes applied rows, preserves later live edits, checks schema-v22 integrity and foreign keys, and repeats Doctor. Full selected composition is `10eefa6d95fab5b6d2c27907cfa7ffbfe5a0d5e7`; all 47 patches apply with no exclusions. Native Workshop cases passed 48/48 and the changed access/authority group passed 42/42. Installed execution is not yet claimed.

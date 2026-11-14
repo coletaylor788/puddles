@@ -1,46 +1,39 @@
-# Skill authoring from sandboxed agents
+# Native Skill Workshop access from sandboxed agents
 
-OpenClaw's `skill_workshop` tool writes proposed skill changes through the
-gateway. It does not write through a sandbox's filesystem mount. Sandboxed
-agents still need this tool because their direct skill mounts are read-only.
+OpenClaw now saves Workshop mutations immediately. It versions every change,
+supports history and undo, and exports pending legacy proposal drafts during
+Doctor repair without activating them. Puddles uses those native behaviors and
+does not restore the retired proposal workflow.
 
-OpenClaw 2026.9.6 still rejects ordinary sandboxed callers in the shared
-`src/skills/workshop/tool-availability.ts` owner. This is a retained Puddles
-authoring policy change, not an upstream crash fix.
+OpenClaw's configured Workshop factory still hides `skill_workshop` from an
+ordinary sandboxed run unless the run carries a human personal-library
+capability. Existing Puddles installations also grant the configured Workshop
+tool to approved iMessage, background, and delegated sandbox agents. Those
+paths cannot mint the human Gateway capability, so removing the old patch
+would silently remove their existing access.
 
-The patch removes the sandbox-specific construction gate from tool assembly
-and its matching unavailable-tool diagnostics. It keeps the required configuration check, normal
-tool policy, proposal review rules, and the configured workshop factory.
-Agents still need permission to use `skill_workshop` in their general and
-sandbox tool policies.
+The reduced patch removes only that sandbox construction gate and its matching
+unavailable-tool diagnostics. It keeps the configured factory, agent and run
+scope, normal allow and deny policy, review guard, native immediate mutation,
+version history, undo, and current-authority checks. Sandboxed agents still
+need `skill_workshop` in their effective tool policy.
 
-## Stable release ownership
+## Native ownership
 
-OpenClaw 2026.9.6 stores Workshop skills in one persistent collection per agent,
-not under each workspace. The configured factory carries the agent identity,
-session origin, review mode, and mutation budget into the tool. This patch
-does not restore workspace ownership or the retired
-`skills.workshop.allowSymlinkTargetWrites` setting. Upstream Doctor owns migration of proven legacy skills. Ambiguous ownership remains for review.
-
-The maintained regression creates a pending proposal from a sandboxed tool
-set. It checks that the proposal is not automatically applied and that no
-workspace skill directory is created. The current release also exposes host-issued library authoring capabilities.
-Their authoring and mutation checks remain unchanged. The availability tests
-exercise ordinary host, sandbox, and authorized library tool construction.
-The existing suite also covers review
-restrictions, apply/reject behavior, and proposal discovery across workspace
-changes for the same agent.
+The cumulative suite runs native regressions for immediate saves, version and
+restore history, review undo, human personal-library authority and revocation,
+agent-scoped Gateway methods, and Doctor export of pending or quarantined
+legacy drafts. Applied legacy skills stay live and are not activated again.
+The patch-owned regression proves that a configured sandbox agent receives the
+native Workshop tool and records an immediate versioned change.
 
 ## Validation and delivery
 
-Workshop authoring, tool availability, policy diagnostics, and empty-tool
-allowlist guards are registered in the cumulative patch manifest. Run
-`node packages/e2e/bin/openclaw-test-env.mjs ci` for the final candidate.
-All automated authoring and application use isolated fixture state, never
-the live assistant or a real message delivery channel.
+The patch tests and native Workshop regressions are registered in
+`packages/e2e/openclaw-patch-suite.json`. The final candidate runs through
+`node packages/e2e/bin/openclaw-test-env.mjs ci`. Tests use isolated fixture
+state and never edit the live assistant's skill library.
 
-The managed pipeline applies this source patch to a detached worktree and
-rehearses the installed artifact. Deploy through `apply-and-deploy.sh` with
-the reviewed receipt and explicit target. Recovery restores the prior runtime,
-state, and service snapshots. Do not remove the patch from a running
-installation or edit generated distribution chunks.
+The managed build composes this patch with the selected stack. Use the installed
+`build`, `ci-dev` and `ci-prod` entrypoints. CI owns installed qualification,
+deployment, recovery, merge and cleanup. Do not edit generated distribution chunks.

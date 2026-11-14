@@ -28,7 +28,7 @@ patch inventory and application commands do not authorize a new or changed patch
 | `file-lock-stale-reclaim-guard.patch` | Guard stale file-lock recovery |
 | `native-parent-continuation.patch` | Native parent delivery regression coverage; test-only worker synchronization |
 | `subagent-cross-agent-spawn-fix.patch` | Explicit targeting and inherited tools |
-| `skill-workshop-sandbox-fix.patch` | Skill workshop in sandboxed agents |
+| `skill-workshop-sandbox-fix.patch` | Preserve configured sandbox Workshop access while using native immediate saves, history, and undo |
 | `imessage-message-part-coalescing.patch` | Selective text, link, and image coalescing |
 | `imessage-group-inbound-policy.patch` | Honor configured unmentioned group events in iMessage |
 | `sandbox-discovery-failure-fix.patch` | Regression tests for native selected-registry discovery and error propagation |

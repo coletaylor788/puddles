@@ -1,29 +1,5 @@
-diff --git a/src/agents/openclaw-tools.ts b/src/agents/openclaw-tools.ts
-index 86412ba00..33168ef63 100644
---- a/src/agents/openclaw-tools.ts
-+++ b/src/agents/openclaw-tools.ts
-@@ -7,7 +7,6 @@ import { isEmbeddedMode } from "../infra/embedded-mode.js";
- import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
- import { getActiveRuntimeWebToolsMetadataFromState } from "../secrets/runtime-web-tools-state.js";
- import { isCronRunSessionKey } from "../sessions/session-key-utils.js";
--import { resolveSkillWorkshopToolConstructionBlock } from "../skills/workshop/tool-availability.js";
- import { resolveAgentWorkspaceDir, resolveSessionAgentIds } from "./agent-scope.js";
- import { finalizeAgentToolAvailability } from "./agent-tool-availability.js";
- import { bindAssembledAgentToolActionDescriptor } from "./agent-tool-metadata.js";
-@@ -493,10 +492,7 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
-       sessionAgentId,
-       config: resolvedConfig,
-     }),
--    ...(resolveSkillWorkshopToolConstructionBlock({
--      sandboxed: options?.sandboxed,
--      libraryAuthoring: options?.skillWorkshop?.libraryAuthoring,
--    }) || !resolvedConfig
-+    ...(!resolvedConfig
-       ? []
-       : [
-           createConfiguredSkillWorkshopTool({
 diff --git a/src/agents/tool-allowlist-guard.test.ts b/src/agents/tool-allowlist-guard.test.ts
-index e13ea8dd5..6911e314f 100644
+index e13ea8dd..6911e314 100644
 --- a/src/agents/tool-allowlist-guard.test.ts
 +++ b/src/agents/tool-allowlist-guard.test.ts
 @@ -12,13 +12,13 @@ describe("tool allowlist guard", () => {
@@ -43,7 +19,7 @@ index e13ea8dd5..6911e314f 100644
      {
        entries: ["query_db"],
 diff --git a/src/agents/tool-allowlist-guard.ts b/src/agents/tool-allowlist-guard.ts
-index e9267588f..41f88025e 100644
+index e9267588..41f88025 100644
 --- a/src/agents/tool-allowlist-guard.ts
 +++ b/src/agents/tool-allowlist-guard.ts
 @@ -4,11 +4,7 @@
@@ -78,116 +54,106 @@ index e9267588f..41f88025e 100644
    const reason =
      params.disableTools === true
        ? "tools are disabled for this run"
-diff --git a/src/agents/tools/skill-workshop-tool.availability.test.ts b/src/agents/tools/skill-workshop-tool.availability.test.ts
-index 97ce111eb..68629cadb 100644
---- a/src/agents/tools/skill-workshop-tool.availability.test.ts
-+++ b/src/agents/tools/skill-workshop-tool.availability.test.ts
-@@ -77,14 +77,6 @@ describe("Workshop construction and runtime allowlist", () => {
-     };
-     const error = buildEmptyExplicitToolAllowlistError(guardInput);
- 
--    if (sandboxed && !authorizedLibrary) {
--      expect(tools).toEqual([]);
--      expect(error?.message).toContain("sandboxed run without library-authoring authority");
--      expect(error?.message).toContain("non-sandboxed session");
--      expect(error?.message).not.toContain("no registered tools matched");
--      expect(error?.message).not.toContain("enable the plugin");
--      return;
--    }
-     expect(error).toBeNull();
-     expect(tools.map((tool) => tool.name)).toEqual(["skill_workshop"]);
-     if (!authorizedLibrary) {
+diff --git a/src/agents/tools/skill-workshop-tool-factory.ts b/src/agents/tools/skill-workshop-tool-factory.ts
+index ec967fff..5016178d 100644
+--- a/src/agents/tools/skill-workshop-tool-factory.ts
++++ b/src/agents/tools/skill-workshop-tool-factory.ts
+@@ -1,7 +1,6 @@
+ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+ import type { OpenClawConfig } from "../../config/types.openclaw.js";
+ import type { SkillLibraryAuthoringCapability } from "../../skills/library/authoring.js";
+-import { resolveSkillWorkshopToolConstructionBlock } from "../../skills/workshop/tool-availability.js";
+ import type { AnyAgentTool } from "./common.js";
+ import { createLibrarySkillWorkshopTool } from "./skill-workshop-tool-library.js";
+ import { createSkillWorkshopTool } from "./skill-workshop-tool.js";
+@@ -21,14 +20,6 @@ export function createConfiguredSkillWorkshopTool(params: {
+   run?: SkillWorkshopRunOptions;
+   sandboxed?: boolean;
+ }): AnyAgentTool | null {
+-  if (
+-    resolveSkillWorkshopToolConstructionBlock({
+-      sandboxed: params.sandboxed,
+-      libraryAuthoring: params.run?.libraryAuthoring,
+-    })
+-  ) {
+-    return null;
+-  }
+   const sessionKey = normalizeOptionalString(params.sessionKey);
+   const runId = normalizeOptionalString(params.runId);
+   const createWorkshop = () =>
 diff --git a/src/agents/tools/skill-workshop-tool.test.ts b/src/agents/tools/skill-workshop-tool.test.ts
-index 9c950ca99..21b3747de 100644
+index 6b7cad43..cf1f3059 100644
 --- a/src/agents/tools/skill-workshop-tool.test.ts
 +++ b/src/agents/tools/skill-workshop-tool.test.ts
-@@ -328,7 +328,7 @@ describe("skill_workshop tool", () => {
-     expect(proposalMutationBudget.remaining).toBe(0);
-   });
+@@ -13,6 +13,7 @@ import {
+   createOpenClawTestState,
+   type OpenClawTestState,
+ } from "../../test-utils/openclaw-test-state.js";
++import { createConfiguredSkillWorkshopTool } from "./skill-workshop-tool-factory.js";
+ import { createSkillWorkshopTool } from "./skill-workshop-tool.js";
  
--  it("is not exposed from sandboxed OpenClaw tool sets", async () => {
-+  it("exposes proposal authoring from sandboxed OpenClaw tool sets", async () => {
-     const workspaceDir = await tempDirs.make("openclaw-skill-workshop-tool-");
-     const tools = createOpenClawTools({
-       workspaceDir,
-@@ -337,7 +337,17 @@ describe("skill_workshop tool", () => {
-       sandboxed: true,
-     });
+ let state: OpenClawTestState;
+@@ -38,6 +39,29 @@ function text(result: { content: Array<{ type: string; text?: string }> }) {
+   return result.content.map((part) => part.text ?? "").join("");
+ }
  
--    expect(tools.some((tool) => tool.name === "skill_workshop")).toBe(false);
-+    const tool = tools.find((tool) => tool.name === "skill_workshop");
-+    expect(tool).toBeDefined();
-+    const result = await tool!.execute("sandbox-proposal", {
-+      action: "create",
-+      name: "Sandbox Workflow",
-+      description: "A reusable sandbox workflow",
-+      proposal_content: "# Sandbox Workflow\n\nReview the inputs before making changes.\n",
-+    });
-+    expect(result.details).toMatchObject({ status: "pending", kind: "create" });
-+    await expect(fs.access(workshopSkillPath("sandbox-workflow", "SKILL.md"))).rejects.toThrow();
-+    await expect(fs.access(path.join(workspaceDir, "skills"))).rejects.toThrow();
-   });
- 
-   it("creates pending skill proposals without applying them", async () => {
-diff --git a/src/skills/workshop/tool-availability.ts b/src/skills/workshop/tool-availability.ts
-index 6210835c7..5287158da 100644
---- a/src/skills/workshop/tool-availability.ts
-+++ b/src/skills/workshop/tool-availability.ts
-@@ -4,17 +4,3 @@ export type SkillWorkshopToolConstructionContext = {
-   sandboxed?: boolean;
-   libraryAuthoring?: SkillLibraryAuthoringCapability;
- };
--
--/** Host-side Workshop access requires an unsandboxed run or a host-issued library capability. */
--export function resolveSkillWorkshopToolConstructionBlock(
--  context: SkillWorkshopToolConstructionContext,
--): { detail: string; fix: string } | undefined {
--  if (context.sandboxed && !context.libraryAuthoring) {
--    return {
--      detail:
--        '"skill_workshop" is unavailable in a sandboxed run without library-authoring authority.',
--      fix: "Use a non-sandboxed session for this agent, or a human turn with host-granted library-authoring authority. The openclaw skills workshop CLI is also available.",
--    };
--  }
--  return undefined;
--}
++it("keeps native immediate Workshop saves available to sandboxed configured agents", async () => {
++  const tool = createConfiguredSkillWorkshopTool({
++    config: {},
++    agentId: "main",
++    runId: "sandbox-authoring",
++    sandboxed: true,
++  });
++  expect(tool?.name).toBe("skill_workshop");
++  expect(
++    text(
++      await tool!.execute("sandbox-create", {
++        action: "create",
++        name: "sandbox-workflow",
++        content:
++          "---\nname: sandbox-workflow\ndescription: A reusable sandbox workflow\n---\n\nReview inputs before changing them.\n",
++      }),
++    ),
++  ).toContain('Created "sandbox-workflow"');
++  expect(await listWorkshopChanges("main", { runId: "sandbox-authoring" })).toEqual([
++    expect.objectContaining({ action: "create", skillName: "sandbox-workflow" }),
++  ]);
++});
++
+ describe("skill_workshop review guard", () => {
+   it("requires viewing an existing skill before a background run edits or archives it", async () => {
+     const tool = createSkillWorkshopTool({
 diff --git a/src/skills/workshop/tool-policy-diagnostic.test.ts b/src/skills/workshop/tool-policy-diagnostic.test.ts
-index 0fbbae9dc..11cdcbbf9 100644
+index 6edd23ad..3d4ef5fc 100644
 --- a/src/skills/workshop/tool-policy-diagnostic.test.ts
 +++ b/src/skills/workshop/tool-policy-diagnostic.test.ts
-@@ -16,7 +16,7 @@ function detect(config: OpenClawConfig, workshopEnabled = true) {
+@@ -15,7 +15,7 @@ function detect(config: OpenClawConfig, workshopEnabled = true) {
+ }
  
  describe("detectSkillWorkshopToolPolicyDiagnostic", () => {
-   it.each([false, true])(
--    "reports the sandbox construction gate before profile advice (alsoAllow=%s)",
-+    "reports only tool policy for sandboxed workshop (alsoAllow=%s)",
-     (alsoAllow) => {
-       const diagnostic = detect({
-         agents: {
-@@ -32,15 +32,16 @@ describe("detectSkillWorkshopToolPolicyDiagnostic", () => {
-         },
-       });
+-  it("reports the sandbox construction gate despite an additive grant", () => {
++  it("reports only tool policy for sandboxed workshop", () => {
+     const diagnostic = detect({
+       agents: {
+         entries: {
+@@ -27,14 +27,10 @@ describe("detectSkillWorkshopToolPolicyDiagnostic", () => {
+       },
+     });
  
--      expect(diagnostic).toMatchObject({ source: "agents.entries.main.sandbox.mode" });
--      expect(diagnostic?.detail).toContain("sandboxed run without library-authoring authority");
--      expect(diagnostic?.fix).toContain("non-sandboxed session");
--      expect(diagnostic?.fix).toContain("host-granted library-authoring authority");
--      expect(diagnostic?.fix).not.toContain("alsoAllow");
-+      if (alsoAllow) {
-+        expect(diagnostic).toBeNull();
-+      } else {
-+        expect(diagnostic).toMatchObject({ source: "agents.entries.main.tools.profile" });
-+        expect(diagnostic?.fix).toContain("alsoAllow");
-+      }
-     },
-   );
+-    expect(diagnostic).toMatchObject({ source: "agents.entries.main.sandbox.mode" });
+-    expect(diagnostic?.detail).toContain("sandboxed run without library-authoring authority");
+-    expect(diagnostic?.fix).toContain("non-sandboxed session");
+-    expect(diagnostic?.fix).toContain("host-granted library-authoring authority");
+-    expect(diagnostic?.fix).not.toContain("alsoAllow");
++    expect(diagnostic).toBeNull();
+   });
  
 -  it("identifies inherited sandbox mode and limits non-main advice to those sessions", () => {
 +  it("allows workshop through inherited sandbox mode when tool policy permits it", () => {
      const diagnostic = detect({
        agents: {
          defaults: { sandbox: { mode: "non-main" } },
-@@ -48,9 +49,7 @@ describe("detectSkillWorkshopToolPolicyDiagnostic", () => {
+@@ -42,9 +38,7 @@ describe("detectSkillWorkshopToolPolicyDiagnostic", () => {
        },
      });
  
@@ -197,12 +163,12 @@ index 0fbbae9dc..11cdcbbf9 100644
 +    expect(diagnostic).toBeNull();
    });
  
-   it("honors an agent's unsandboxed override of the inherited mode", () => {
+   it("returns no diagnostic for an included tool or an unsandboxed additive grant", () => {
 diff --git a/src/skills/workshop/tool-policy-diagnostic.ts b/src/skills/workshop/tool-policy-diagnostic.ts
-index 639942d43..e6495d0fe 100644
+index 1eec0e3f..65c12884 100644
 --- a/src/skills/workshop/tool-policy-diagnostic.ts
 +++ b/src/skills/workshop/tool-policy-diagnostic.ts
-@@ -7,14 +7,12 @@ import {
+@@ -6,14 +6,12 @@ import {
  import { applyFinalEffectiveToolPolicy } from "../../agents/embedded-agent-runner/effective-tool-policy.js";
  import { resolveDefaultModelForAgent } from "../../agents/model-selection.js";
  import { resolveProviderToolPolicyEntry } from "../../agents/provider-tool-policy.js";
@@ -217,9 +183,9 @@ index 639942d43..e6495d0fe 100644
  
  const SKILL_WORKSHOP_TOOL_NAME = "skill_workshop";
  
-@@ -237,24 +235,6 @@ export function detectSkillWorkshopToolPolicyDiagnostic(params: {
+@@ -200,24 +198,6 @@ export function detectSkillWorkshopToolPolicyDiagnostic(params: {
+     return null;
    }
-   const agentId = normalizeAgentId(params.agentId ?? resolveDefaultAgentId(params.config));
    const prefix = `Skill Workshop is active, but ${JSON.stringify(SKILL_WORKSHOP_TOOL_NAME)} is hidden for agent ${JSON.stringify(agentId)}:`;
 -  const sandbox = resolveSandboxConfigForAgent(params.config, agentId);
 -  const constructionBlock = resolveSkillWorkshopToolConstructionBlock({
@@ -239,6 +205,6 @@ index 639942d43..e6495d0fe 100644
 -      message: `${prefix} ${detail} ${constructionBlock.fix}`,
 -    };
 -  }
-   const model = resolveDefaultModelForAgent({ cfg: params.config, agentId });
-   const capabilityProfile = resolveConversationCapabilityProfile({
+   const availability = resolveSkillWorkshopToolPolicyAvailability({
      config: params.config,
+     conversationCapabilityProfile: capabilityProfile,
