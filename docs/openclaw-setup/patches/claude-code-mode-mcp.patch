@@ -2389,7 +2389,7 @@ index c9e7155e..e2147192 100644
 +  });
 +});
 diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
-index 236a1005..24ec980f 100644
+index 236a1005..f82f4d52 100644
 --- a/src/gateway/mcp-http.ts
 +++ b/src/gateway/mcp-http.ts
 @@ -2,6 +2,7 @@ import crypto from "node:crypto";
@@ -2400,7 +2400,15 @@ index 236a1005..24ec980f 100644
  import { withAgentQuestionAnswerAuthority } from "../agents/harness/host-private-capabilities.js";
  import { acknowledgeInternalToolResult } from "../agents/runtime/internal-hooks.js";
  import { withPreparedSessionCapabilityRead } from "../agents/subagents/spawn/subagent-session-store.js";
-@@ -143,7 +144,7 @@ async function startMcpLoopbackServer(
+@@ -57,6 +58,7 @@ import {
+   resolveMcpRequestContext,
+   validateMcpLoopbackRequest,
+ } from "./mcp-http.request.js";
++import type { McpLoopbackTool } from "./mcp-http.schema.js";
+ import { GatewayConnectionWork } from "./server-connection-work.js";
+ 
+ // Loopback MCP server exposes gateway-scoped tools to local MCP clients over a
+@@ -143,7 +145,7 @@ async function startMcpLoopbackServer(
  ): Promise<() => Promise<void>> {
    // Shutdown preloads this module even when no MCP listener is needed.
    const [
@@ -2409,7 +2417,7 @@ index 236a1005..24ec980f 100644
      { McpLoopbackToolCache },
      { assertCompletionGrantLineage, createCompletionGrantLineageAdmission },
    ] = await Promise.all([
-@@ -331,6 +332,73 @@ async function startMcpLoopbackServer(
+@@ -331,6 +333,79 @@ async function startMcpLoopbackServer(
              throw error;
            }
  
@@ -2454,9 +2462,15 @@ index 236a1005..24ec980f 100644
 +              });
 +              try {
 +                const nestedResult = await executeMcpToolCall({
-+                  tool: rewrapToolWithBeforeToolCallHook(call.tool, hookContext, {
-+                    protectNetworkErrors: false,
-+                  }),
++                  // This catalog is built only from the Gateway's loopback tool
++                  // surface. Generated Code Mode controls are never catalog targets.
++                  tool: rewrapToolWithBeforeToolCallHook(
++                    call.tool as McpLoopbackTool,
++                    hookContext,
++                    {
++                      protectNetworkErrors: false,
++                    },
++                  ),
 +                  toolName: call.toolName,
 +                  toolCallId: call.toolCallId,
 +                  toolArgs: call.input,
@@ -2483,7 +2497,7 @@ index 236a1005..24ec980f 100644
            // Discovery may outlive the requesting connection or grant.
            requestAbort.signal.throwIfAborted();
            if (boundClientGrant && !boundClientGrant.isCurrent()) {
-@@ -392,24 +460,7 @@ async function startMcpLoopbackServer(
+@@ -392,24 +467,7 @@ async function startMcpLoopbackServer(
                    tools: scopedTools.tools,
                    toolSchema: scopedTools.toolSchema,
                    ...(serverInstructions ? { serverInstructions } : {}),

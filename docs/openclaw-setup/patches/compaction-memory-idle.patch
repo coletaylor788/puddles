@@ -6796,10 +6796,10 @@ index b685a299..07d1e0da 100644
    scoped.captureFinalCronCreatorTools?.(new Set(toolSchema.map((tool) => tool.name)));
    return {
 diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
-index 24ec980f..90b037db 100644
+index f82f4d52..476aed3b 100644
 --- a/src/gateway/mcp-http.ts
 +++ b/src/gateway/mcp-http.ts
-@@ -303,6 +303,8 @@ async function startMcpLoopbackServer(
+@@ -304,6 +304,8 @@ async function startMcpLoopbackServer(
                    admittedRunContext: boundClientGrant?.admittedRunContext,
                    sessionEventSourcePolicy: boundClientGrant?.sessionEventSourcePolicy,
                    messageActionTurnCapability: boundClientGrant?.messageActionTurnCapability,
