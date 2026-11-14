@@ -20,7 +20,7 @@ index 5edd8707..b53b1bbd 100644
      requestApproval: async () => undefined,
      waitForApproval: async () => undefined,
 diff --git a/extensions/copilot/src/tool-bridge.test.ts b/extensions/copilot/src/tool-bridge.test.ts
-index a3b75bf3..8dbe3dcc 100644
+index a3b75bf3..7713ef5a 100644
 --- a/extensions/copilot/src/tool-bridge.test.ts
 +++ b/extensions/copilot/src/tool-bridge.test.ts
 @@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
@@ -39,7 +39,7 @@ index a3b75bf3..8dbe3dcc 100644
  import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
  import { readMemoryArtifactProvenance } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
  import { withTempDir } from "openclaw/plugin-sdk/test-env";
-@@ -409,6 +411,238 @@ describe("createCopilotToolBridge", () => {
+@@ -409,6 +411,239 @@ describe("createCopilotToolBridge", () => {
    });
  
    describe("tool-surface gating (PR #86155 [P1] round-6)", () => {
@@ -79,6 +79,7 @@ index a3b75bf3..8dbe3dcc 100644
 +      const nestedGate = createDeferred<void>();
 +      const first = makeTool({
 +        name: "first",
++        catalogMode: "direct-only",
 +        executionMode: "sequential",
 +        execute: vi.fn(async () => {
 +          events.push("first:start");
@@ -145,7 +146,7 @@ index a3b75bf3..8dbe3dcc 100644
 +        firstGate.resolve();
 +        nestedGate.resolve();
 +        await Promise.allSettled([direct, final]);
-+        bridge.cleanup?.();
++        await bridge.cleanup?.();
 +      }
 +    });
 +
@@ -278,31 +279,153 @@ index a3b75bf3..8dbe3dcc 100644
      it("submits the exact conversation-policy-filtered catalog to the SDK", async () => {
        await withTempDir("openclaw-copilot-policy-", async (workspaceDir) => {
          const result = await createCopilotToolBridge({
+@@ -694,6 +929,52 @@ describe("createCopilotToolBridge tool conversion", () => {
+     });
+   });
+ 
++  it.each(["exec", "code_exec", "code_wait"])(
++    "keeps an unmarked %s tool behind an earlier exclusive call",
++    async (name) => {
++      const release = createDeferred<void>();
++      const events: string[] = [];
++      const ordinary = makeTool({
++        name,
++        execute: vi.fn(async () => {
++          events.push("ordinary");
++          return textToolResult("ordinary result");
++        }),
++      });
++      const exclusive = makeTool({
++        name: "exclusive",
++        executionMode: "sequential",
++        execute: vi.fn(async () => {
++          events.push("exclusive:start");
++          await release.promise;
++          events.push("exclusive:done");
++          return textToolResult("exclusive result");
++        }),
++      });
++      const bridge = await createCopilotToolBridge({
++        attemptParams: { config: { tools: { codeMode: false, toolSearch: false } } },
++        createOpenClawCodingTools: () => [exclusive, ordinary],
++      });
++      const first = runSdkTool(sdkToolNamed(bridge, "exclusive"), { value: "first" });
++      const next = runSdkTool(sdkToolNamed(bridge, name), { value: "ordinary" });
++      const settled = Promise.allSettled([first, next]);
++      try {
++        await vi.waitFor(() => expect(exclusive.execute).toHaveBeenCalledOnce(), { timeout: 10_000 });
++        await flushAsync();
++        expect(ordinary.execute).not.toHaveBeenCalled();
++        expect(events).toEqual(["exclusive:start"]);
++        release.resolve();
++        await expect(first).resolves.toMatchObject({ resultType: "success" });
++        await expect(next).resolves.toMatchObject({ resultType: "success" });
++        expect(events).toEqual(["exclusive:start", "exclusive:done", "ordinary"]);
++      } finally {
++        release.resolve();
++        await settled;
++        await bridge.cleanup?.();
++      }
++    },
++  );
++
+   it("drains earlier calls after rejection and resumes parallel work after an exclusive call", async () => {
+     const started = Array.from({ length: 5 }, () => createDeferred<void>());
+     const gates = Array.from({ length: 5 }, () => createDeferred<void>());
+@@ -757,31 +1038,34 @@ describe("createCopilotToolBridge tool conversion", () => {
+     );
+   });
+ 
+-  it("runs SDK-dispatched tools in the attempt's async context, not the pooled connection's", async () => {
+-    const turn = new AsyncLocalStorage<string>();
+-    let seen: string | undefined;
+-    const bridge = await turn.run("turn-2", () =>
+-      createCopilotToolBridge({
+-        attemptParams: { config: { tools: { codeMode: false, toolSearch: false } } },
+-        createOpenClawCodingTools: () => [
+-          makeTool({
+-            name: "probe",
+-            execute: vi.fn(async () => {
+-              seen = turn.getStore();
+-              return { content: [], details: {} };
++  it.each([false, { enabled: true, surface: "additive" }] as const)(
++    "runs SDK-dispatched tools in the attempt's async context with Code Mode %j",
++    async (codeMode) => {
++      const turn = new AsyncLocalStorage<string>();
++      let seen: string | undefined;
++      const bridge = await turn.run("turn-2", () =>
++        createCopilotToolBridge({
++          attemptParams: { config: { tools: { codeMode, toolSearch: false } } },
++          createOpenClawCodingTools: () => [
++            makeTool({
++              name: "probe",
++              execute: vi.fn(async () => {
++                seen = turn.getStore();
++                return { content: [], details: {} };
++              }),
+             }),
+-          }),
+-        ],
+-      }),
+-    );
+-    try {
+-      // The pooled SDK connection was opened during turn 1 and dispatches from there.
+-      await turn.run("turn-1", () => runSdkTool(sdkToolNamed(bridge, "probe"), {}));
+-      expect(seen).toBe("turn-2");
+-    } finally {
+-      bridge.cleanup?.();
+-    }
+-  });
++          ],
++        }),
++      );
++      try {
++        // The pooled SDK connection was opened during turn 1 and dispatches from there.
++        await turn.run("turn-1", () => runSdkTool(sdkToolNamed(bridge, "probe"), {}));
++        expect(seen).toBe("turn-2");
++      } finally {
++        await bridge.cleanup?.();
++      }
++    },
++  );
+ 
+   it("rechecks abort before a queued tool starts without blocking another attempt", async () => {
+     const controller = new AbortController();
 diff --git a/extensions/copilot/src/tool-bridge.ts b/extensions/copilot/src/tool-bridge.ts
-index 4f2925cd..60856a29 100644
+index 4f2925cd..bb135cdf 100644
 --- a/extensions/copilot/src/tool-bridge.ts
 +++ b/extensions/copilot/src/tool-bridge.ts
-@@ -24,6 +24,7 @@ import {
+@@ -24,6 +24,8 @@ import {
  } from "openclaw/plugin-sdk/agent-harness-runtime";
  import {
    createAgentHarnessToolSurfaceRuntimeAsync,
++  isCodeModeControlTool,
 +  resolveScheduledDirectToolSource,
    type AgentHarnessToolSurfaceRuntime,
  } from "openclaw/plugin-sdk/agent-harness-tool-runtime";
  import { toStringifiedError as toCopilotToolError } from "openclaw/plugin-sdk/error-runtime";
-@@ -181,6 +182,7 @@ export async function createCopilotToolBridge(
+@@ -38,7 +40,7 @@ type CatalogExecuteParams = Parameters<
+   NonNullable<AgentHarnessToolSurfaceRuntime["toolSearchCatalogExecutor"]>
+ >[0];
+ type ScheduleToolExecution = (
+-  executionMode: AnyAgentTool["executionMode"],
++  sourceTool: AnyAgentTool,
+   execute: () => Promise<ToolResultObject>,
+ ) => Promise<ToolResultObject>;
+ 
+@@ -181,6 +183,7 @@ export async function createCopilotToolBridge(
      throw new Error("Copilot tool construction requires a current host capability");
    }
    const sourceTools = await createToolSurfaceAsync(toolOptions, bindingOptions);
-+    const codeModeSkills = hostCapabilities.prepareInstalledSkills?.(toolOptions) ?? [];
++  const codeModeSkills = hostCapabilities.prepareInstalledSkills?.(toolOptions) ?? [];
    const boundSourceTools = new Set(sourceTools);
  
    const allowedSourceTools = applyEmbeddedAttemptToolsAllow(
-@@ -190,11 +192,14 @@ export async function createCopilotToolBridge(
+@@ -190,11 +193,14 @@ export async function createCopilotToolBridge(
    );
    const compactedTools = toolSurfaceRuntime.compactTools(allowedSourceTools, {
      localModelLeanApplied: true,
-+      codeModeSkills,
++    codeModeSkills,
    });
    // The constructor output is bound before catalog compaction so hidden tools
    // cannot outlive the attempt. Bind only controls created by compaction here;
@@ -314,6 +437,33 @@ index 4f2925cd..60856a29 100644
    const boundNewlyConstructedTools =
      newlyConstructedTools.length > 0
        ? hostCapabilities.bindToolSurface(newlyConstructedTools, bindingOptions)
+@@ -221,7 +227,16 @@ export async function createCopilotToolBridge(
+   const runInAttemptContext = AsyncLocalStorage.snapshot();
+   let sequentialBarrier = Promise.resolve();
+   const pendingCalls = new Set<Promise<void>>();
+-  const scheduleToolExecution: ScheduleToolExecution = (executionMode, execute) => {
++  const scheduleToolExecution: ScheduleToolExecution = (sourceTool, execute) => {
++    // Native controls must enter before pending direct calls settle so they can
++    // yield. Native direct projections already share the catalog scheduler.
++    if (
++      isCodeModeControlTool(sourceTool) ||
++      resolveScheduledDirectToolSource(sourceTool) !== sourceTool
++    ) {
++      return runInAttemptContext(execute);
++    }
++    const executionMode = sourceTool.executionMode;
+     // SDK handlers arrive independently. An exclusive call waits for earlier
+     // work across the attempt and blocks later calls, regardless of tool name.
+     const ready = executionMode === "sequential" ? Promise.all(pendingCalls) : sequentialBarrier;
+@@ -527,7 +542,7 @@ function convertOpenClawToolToSdkTool(
+     description: sourceTool.description,
+     defer: sourceTool.catalogMode === "direct-only" ? "never" : undefined,
+     handler: (args, invocation) =>
+-      scheduleToolExecution(sourceTool.executionMode, () => executeOnce(args, invocation)),
++      scheduleToolExecution(sourceTool, () => executeOnce(args, invocation)),
+     name: sourceTool.name,
+     // Copilot built-ins share coding-tool names. Explicit overrides keep calls
+     // on OpenClaw's host-bound tools instead of rejecting registration.
 diff --git a/packages/gateway-protocol/src/schema/worker-gateway-tool.ts b/packages/gateway-protocol/src/schema/worker-gateway-tool.ts
 index 6de98ba1..a0749b00 100644
 --- a/packages/gateway-protocol/src/schema/worker-gateway-tool.ts
@@ -1122,7 +1272,7 @@ index 96b72027..14f0bb45 100644
  };
  
 diff --git a/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts b/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts
-index 8b2ebd21..dc5e8319 100644
+index 8b2ebd21..88ae2f6d 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts
 @@ -93,6 +93,7 @@ function seedCatalog(mode: "code-mode" | "tool-search", config: OpenClawConfig)
@@ -1155,7 +1305,7 @@ index 8b2ebd21..dc5e8319 100644
        attemptConfig: config,
        // Deliberately catalog-disabled: the code-mode branch must not read this.
        toolSearchRuntimeConfig: CATALOGS_DISABLED_CONFIG,
-@@ -456,6 +459,74 @@ describe("prepareEmbeddedAttemptClientTools", () => {
+@@ -456,6 +459,77 @@ describe("prepareEmbeddedAttemptClientTools", () => {
      expect(result.allCustomTools).toEqual([]);
    });
  
@@ -1171,10 +1321,13 @@ index 8b2ebd21..dc5e8319 100644
 +
 +    expect(result.clientToolDefs.map((tool) => tool.name)).toEqual(["client_probe"]);
 +    expect(result.allCustomTools.map((tool) => tool.name)).toEqual(["client_probe"]);
-+    expect(catalogRef.current?.entries).toEqual([
-+      expect.objectContaining({ name: "seeded_target" }),
-+      expect.objectContaining({ name: "client_probe", directVisible: true }),
-+    ]);
++    expect(catalogRef.current?.entries).toHaveLength(2);
++    expect(catalogRef.current?.entries).toEqual(
++      expect.arrayContaining([
++        expect.objectContaining({ name: "seeded_target" }),
++        expect.objectContaining({ name: "client_probe", directVisible: true }),
++      ]),
++    );
 +    const direct = expectDefined(result.clientToolDefs[0], "direct client tool");
 +    const catalog = expectDefined(
 +      catalogRef.current?.entries.find((entry) => entry.name === "client_probe")?.tool,
@@ -1277,10 +1430,10 @@ index 6db1968c..2af09f0a 100644
    const filterTools = <T extends NamedTool>(tools: T[]) =>
      createAgentHarnessPromptToolPolicy({ tools, codeModeControlsEnabled: false }).apply(policyInput)
 diff --git a/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts b/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts
-index 6b0ca058..82d28971 100644
+index 6b0ca058..d808ce02 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts
-@@ -42,6 +42,40 @@ function createBaseline(activeToolNames: string[], catalogRef?: ToolSearchCatalo
+@@ -42,6 +42,42 @@ function createBaseline(activeToolNames: string[], catalogRef?: ToolSearchCatalo
  }
  
  describe("applyPromptBuildToolsAllow", () => {
@@ -1310,11 +1463,13 @@ index 6b0ca058..82d28971 100644
 +
 +    policy.apply(["read"]);
 +
-+    expect(policy.current.tools.map((tool) => tool.name)).toEqual([
++    expect(policy.current.effectiveTools.map((tool) => tool.name)).toEqual([
 +      "code_exec",
 +      "code_wait",
 +      "read",
 +    ]);
++    expect(policy.current.tools.map((tool) => tool.name)).toEqual(["read"]);
++    expect(policy.current.activeToolNames).toEqual(["code_exec", "code_wait", "read"]);
 +    expect(catalogRef.current?.entries.map((entry) => entry.name)).toEqual(["read"]);
 +  });
 +
@@ -1683,10 +1838,10 @@ index 512ea2af..9bb9cd08 100644
                    { ...params.catalogPrompt, catalogRef: catalog.ref },
                    catalog.ref.current?.entries ?? [],
 diff --git a/src/agents/harness/tool-surface-bridge.test.ts b/src/agents/harness/tool-surface-bridge.test.ts
-index f3979935..9efa08e5 100644
+index f3979935..5120ae69 100644
 --- a/src/agents/harness/tool-surface-bridge.test.ts
 +++ b/src/agents/harness/tool-surface-bridge.test.ts
-@@ -51,6 +51,69 @@ afterEach(() => {
+@@ -51,6 +51,71 @@ afterEach(() => {
  });
  
  describe("createAgentHarnessToolSurfaceRuntime", () => {
@@ -1741,7 +1896,9 @@ index f3979935..9efa08e5 100644
 +    "does not add scripting to an empty surface with tools enabled %s",
 +    (modelToolsEnabled) => {
 +      const runtime = createAgentHarnessToolSurfaceRuntime({
-+        config: { tools: { codeMode: { enabled: true, surface: "additive" } } },
++        config: {
++          tools: { codeMode: { enabled: true, surface: "additive" }, toolSearch: false },
++        },
 +        modelToolsEnabled,
 +        executeTool: async () => ({ content: [], details: {} }),
 +      });
@@ -2419,17 +2576,37 @@ index 00000000..1af75d03
 +  });
 +});
 diff --git a/src/plugin-sdk/agent-harness-tool-runtime.ts b/src/plugin-sdk/agent-harness-tool-runtime.ts
-index a62cf1bc..55a4b887 100644
+index a62cf1bc..68808dc5 100644
 --- a/src/plugin-sdk/agent-harness-tool-runtime.ts
 +++ b/src/plugin-sdk/agent-harness-tool-runtime.ts
-@@ -23,6 +23,7 @@ export {
+@@ -23,6 +23,8 @@ export {
  } from "../agents/harness/messaging-media.js";
  export { getCoreTtsToolResultMediaUrls } from "../agents/tools/tts-tool-result-provenance.js";
  export { consumeTrustedToolNoStartError } from "../agents/tool-result-error.js";
++export { isCodeModeControlTool } from "../agents/code-mode-control-tools.js";
 +export { resolveScheduledDirectToolSource } from "../agents/tool-search-scheduling.js";
  export {
    recordAgentHarnessMessagingDelivery,
    recordAgentHarnessToolResultTelemetry,
+@@ -118,15 +120,17 @@ function projectToolSurfaceRuntime(
+       {
+         hookContext,
+         localModelLeanApplied,
++        codeModeSkills,
+       }: Pick<
+         NonNullable<Parameters<CoreCompactTools>[1]>,
+-        "hookContext" | "localModelLeanApplied"
++        "hookContext" | "localModelLeanApplied" | "codeModeSkills"
+       > = {},
+     ) => {
+       const { tools: compacted, promptToolPolicy } = withCapabilityRead(() =>
+         runtime.compactTools(tools, {
+           hookContext,
+           localModelLeanApplied,
++          codeModeSkills,
+         }),
+       );
+       return { tools: compacted, promptToolPolicy };
 diff --git a/src/plugins/code-mode-executor.test.ts b/src/plugins/code-mode-executor.test.ts
 index 6c02f246..7a995b5c 100644
 --- a/src/plugins/code-mode-executor.test.ts

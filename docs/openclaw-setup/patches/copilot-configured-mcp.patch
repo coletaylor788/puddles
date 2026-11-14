@@ -1,5 +1,5 @@
 diff --git a/extensions/copilot/src/attempt-cleanup.ts b/extensions/copilot/src/attempt-cleanup.ts
-index 1d97d2c8efa70b85962b1f2f8b8bd2ad737c7939..43ed02a62981e8864406cc5a0c6a27461b038aaf 100644
+index 1d97d2c8..43ed02a6 100644
 --- a/extensions/copilot/src/attempt-cleanup.ts
 +++ b/extensions/copilot/src/attempt-cleanup.ts
 @@ -54,7 +54,7 @@ export async function deferBackgroundCompactionCleanup(params: {
@@ -39,7 +39,7 @@ index 1d97d2c8efa70b85962b1f2f8b8bd2ad737c7939..43ed02a62981e8864406cc5a0c6a2746
    return outcome;
  }
 diff --git a/extensions/copilot/src/attempt-execution.ts b/extensions/copilot/src/attempt-execution.ts
-index c40758dd5bd2ef8c55bc695cf65341fc9b946635..66fc737f003ca50d826d0345fdc7461ed1b5770e 100644
+index c40758dd..66fc737f 100644
 --- a/extensions/copilot/src/attempt-execution.ts
 +++ b/extensions/copilot/src/attempt-execution.ts
 @@ -111,7 +111,7 @@ export async function runCopilotExecution(context: {
@@ -70,7 +70,7 @@ index c40758dd5bd2ef8c55bc695cf65341fc9b946635..66fc737f003ca50d826d0345fdc7461e
        if (session) {
          try {
 diff --git a/extensions/copilot/src/attempt.test.ts b/extensions/copilot/src/attempt.test.ts
-index bdc1060177ad794b17fc093c95bd13d46a1ebe2c..ae19e6f198602d6fef19780b5aed9f5c25117232 100644
+index db6517bd..27d41e4d 100644
 --- a/extensions/copilot/src/attempt.test.ts
 +++ b/extensions/copilot/src/attempt.test.ts
 @@ -175,7 +175,7 @@ function makeSdkTool(name: string): SdkTool {
@@ -82,7 +82,7 @@ index bdc1060177ad794b17fc093c95bd13d46a1ebe2c..ae19e6f198602d6fef19780b5aed9f5c
  ) {
    return {
      ...extras,
-@@ -2725,6 +2725,25 @@ describe("runCopilotAttempt", () => {
+@@ -2726,6 +2726,25 @@ describe("runCopilotAttempt", () => {
      );
      expect(requireCreateSessionConfig(sdk).availableTools).toEqual(expected);
    });
@@ -109,7 +109,7 @@ index bdc1060177ad794b17fc093c95bd13d46a1ebe2c..ae19e6f198602d6fef19780b5aed9f5c
  
  /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
 diff --git a/extensions/copilot/src/tool-bridge.host-surface.test.ts b/extensions/copilot/src/tool-bridge.host-surface.test.ts
-index 9dce6d8e0bcf2688a0ce0950744b7db940dfa2f3..eac8143a3f4147bbd08220139b2c2ee9cc61d55f 100644
+index 9dce6d8e..eac8143a 100644
 --- a/extensions/copilot/src/tool-bridge.host-surface.test.ts
 +++ b/extensions/copilot/src/tool-bridge.host-surface.test.ts
 @@ -1,4 +1,5 @@
@@ -252,18 +252,18 @@ index 9dce6d8e0bcf2688a0ce0950744b7db940dfa2f3..eac8143a3f4147bbd08220139b2c2ee9
 +  });
 +});
 diff --git a/extensions/copilot/src/tool-bridge.ts b/extensions/copilot/src/tool-bridge.ts
-index 60856a2921b21427e3b52d16f3153df176e43527..488cfe57e549046a016af807e1d629be7833e097 100644
+index bb135cdf..7d1caeeb 100644
 --- a/extensions/copilot/src/tool-bridge.ts
 +++ b/extensions/copilot/src/tool-bridge.ts
-@@ -24,6 +24,7 @@ import {
- } from "openclaw/plugin-sdk/agent-harness-runtime";
+@@ -25,6 +25,7 @@ import {
  import {
    createAgentHarnessToolSurfaceRuntimeAsync,
+   isCodeModeControlTool,
 +  materializeConfiguredMcpToolsForHarnessRun,
    resolveScheduledDirectToolSource,
    type AgentHarnessToolSurfaceRuntime,
  } from "openclaw/plugin-sdk/agent-harness-tool-runtime";
-@@ -92,7 +93,7 @@ interface CopilotToolBridgeInput {
+@@ -93,7 +94,7 @@ interface CopilotToolBridgeInput {
  }
  
  interface CopilotToolBridge {
@@ -272,58 +272,14 @@ index 60856a2921b21427e3b52d16f3153df176e43527..488cfe57e549046a016af807e1d629be
    codeModeEngaged?: boolean;
    promptToolPolicy: {
      requireExplicitMessageTarget?: boolean;
-@@ -181,95 +182,148 @@ export async function createCopilotToolBridge(
+@@ -182,104 +183,157 @@ export async function createCopilotToolBridge(
    if (!createToolSurfaceAsync) {
      throw new Error("Copilot tool construction requires a current host capability");
    }
 -  const sourceTools = await createToolSurfaceAsync(toolOptions, bindingOptions);
-+  let configuredMcp:
-+    | Awaited<ReturnType<typeof materializeConfiguredMcpToolsForHarnessRun>>
-+    | undefined;
-+  let cleaned = false;
-+  const cleanup = async () => {
-+    if (cleaned) return;
-+    cleaned = true;
-+    try {
-+      await toolSurfaceRuntime.cleanup();
-+    } finally {
-+      await configuredMcp?.dispose();
-+    }
-+  };
-+  try {
-+    const sourceTools = await createToolSurfaceAsync(toolOptions, bindingOptions);
-     const codeModeSkills = hostCapabilities.prepareInstalledSkills?.(toolOptions) ?? [];
+-  const codeModeSkills = hostCapabilities.prepareInstalledSkills?.(toolOptions) ?? [];
 -  const boundSourceTools = new Set(sourceTools);
-+    if (
-+      !attemptParams.forceRestartSafeTools &&
-+      Object.keys(attemptParams.config?.mcp?.servers ?? {}).length
-+    ) {
-+      const workspaceDir = toolOptions.workspaceDir ?? input.workspaceDir ?? bindingCwd;
-+      if (!workspaceDir) throw new Error("Configured MCP requires an explicit workspace");
-+      configuredMcp = await materializeConfiguredMcpToolsForHarnessRun({
-+        sessionId: input.sessionId,
-+        sessionKey: attemptParams.sandboxSessionKey ?? attemptParams.sessionKey,
-+        agentId: attemptParams.sandboxAgentId ?? input.agentId,
-+        workspaceDir,
-+        agentDir: input.agentDir,
-+        cfg: attemptParams.config,
-+        toolOverrides: attemptParams.toolOverrides,
-+        toolsAllow: toolSurfaceRuntime.runtimeToolAllowlist,
-+        reservedToolNames: sourceTools.map((tool) => tool.name),
-+        policyContext: {
-+          ...toolOptions,
-+          config: attemptParams.config,
-+          agentId: attemptParams.sandboxAgentId ?? input.agentId,
-+          workspaceDir,
-+          sandboxToolPolicy: input.sandbox?.tools,
-+          modelProvider: input.modelProvider,
-+          modelId: input.modelId,
-+        },
-+      });
-+      sourceTools.push(...hostCapabilities.bindToolSurface(configuredMcp.tools, bindingOptions));
-+    }
-+    const boundSourceTools = new Set(sourceTools);
- 
+-
 -  const allowedSourceTools = applyEmbeddedAttemptToolsAllow(
 -    sourceTools,
 -    toolSurfaceRuntime.runtimeToolAllowlist,
@@ -331,14 +287,7 @@ index 60856a2921b21427e3b52d16f3153df176e43527..488cfe57e549046a016af807e1d629be
 -  );
 -  const compactedTools = toolSurfaceRuntime.compactTools(allowedSourceTools, {
 -    localModelLeanApplied: true,
-+    const allowedSourceTools = applyEmbeddedAttemptToolsAllow(
-+      sourceTools,
-+      toolSurfaceRuntime.runtimeToolAllowlist,
-+      { toolMeta: getPluginToolMeta },
-+    );
-+    const compactedTools = toolSurfaceRuntime.compactTools(allowedSourceTools, {
-+      localModelLeanApplied: true,
-       codeModeSkills,
+-    codeModeSkills,
 -  });
 -  // The constructor output is bound before catalog compaction so hidden tools
 -  // cannot outlive the attempt. Bind only controls created by compaction here;
@@ -372,7 +321,57 @@ index 60856a2921b21427e3b52d16f3153df176e43527..488cfe57e549046a016af807e1d629be
 -  const runInAttemptContext = AsyncLocalStorage.snapshot();
 -  let sequentialBarrier = Promise.resolve();
 -  const pendingCalls = new Set<Promise<void>>();
--  const scheduleToolExecution: ScheduleToolExecution = (executionMode, execute) => {
+-  const scheduleToolExecution: ScheduleToolExecution = (sourceTool, execute) => {
+-    // Native controls must enter before pending direct calls settle so they can
+-    // yield. Native direct projections already share the catalog scheduler.
++  let configuredMcp:
++    | Awaited<ReturnType<typeof materializeConfiguredMcpToolsForHarnessRun>>
++    | undefined;
++  let cleaned = false;
++  const cleanup = async () => {
++    if (cleaned) return;
++    cleaned = true;
++    try {
++      await toolSurfaceRuntime.cleanup();
++    } finally {
++      await configuredMcp?.dispose();
++    }
++  };
++  try {
++    const sourceTools = await createToolSurfaceAsync(toolOptions, bindingOptions);
++    const codeModeSkills = hostCapabilities.prepareInstalledSkills?.(toolOptions) ?? [];
+     if (
+-      isCodeModeControlTool(sourceTool) ||
+-      resolveScheduledDirectToolSource(sourceTool) !== sourceTool
++      !attemptParams.forceRestartSafeTools &&
++      Object.keys(attemptParams.config?.mcp?.servers ?? {}).length
+     ) {
+-      return runInAttemptContext(execute);
++      const workspaceDir = toolOptions.workspaceDir ?? input.workspaceDir ?? bindingCwd;
++      if (!workspaceDir) throw new Error("Configured MCP requires an explicit workspace");
++      configuredMcp = await materializeConfiguredMcpToolsForHarnessRun({
++        sessionId: input.sessionId,
++        sessionKey: attemptParams.sandboxSessionKey ?? attemptParams.sessionKey,
++        agentId: attemptParams.sandboxAgentId ?? input.agentId,
++        workspaceDir,
++        agentDir: input.agentDir,
++        cfg: attemptParams.config,
++        toolOverrides: attemptParams.toolOverrides,
++        toolsAllow: toolSurfaceRuntime.runtimeToolAllowlist,
++        reservedToolNames: sourceTools.map((tool) => tool.name),
++        policyContext: {
++          ...toolOptions,
++          config: attemptParams.config,
++          agentId: attemptParams.sandboxAgentId ?? input.agentId,
++          workspaceDir,
++          sandboxToolPolicy: input.sandbox?.tools,
++          modelProvider: input.modelProvider,
++          modelId: input.modelId,
++        },
++      });
++      sourceTools.push(...hostCapabilities.bindToolSurface(configuredMcp.tools, bindingOptions));
+     }
+-    const executionMode = sourceTool.executionMode;
 -    // SDK handlers arrive independently. An exclusive call waits for earlier
 -    // work across the attempt and blocks later calls, regardless of tool name.
 -    const ready = executionMode === "sequential" ? Promise.all(pendingCalls) : sequentialBarrier;
@@ -380,17 +379,27 @@ index 60856a2921b21427e3b52d16f3153df176e43527..488cfe57e549046a016af807e1d629be
 -    const settled = run.then(
 -      () => undefined,
 -      () => undefined,
++    const boundSourceTools = new Set(sourceTools);
++
++    const allowedSourceTools = applyEmbeddedAttemptToolsAllow(
++      sourceTools,
++      toolSurfaceRuntime.runtimeToolAllowlist,
++      { toolMeta: getPluginToolMeta },
+     );
+-    pendingCalls.add(settled);
+-    void settled.then(() => pendingCalls.delete(settled));
+-    if (executionMode === "sequential") {
+-      sequentialBarrier = settled;
++    const compactedTools = toolSurfaceRuntime.compactTools(allowedSourceTools, {
++      localModelLeanApplied: true,
++      codeModeSkills,
 +    });
 +    // The constructor output is bound before catalog compaction so hidden tools
 +    // cannot outlive the attempt. Bind only controls created by compaction here;
 +    // rebinding retained tools would stack the before-tool hook.
 +    const newlyConstructedTools = compactedTools.tools.filter(
 +      (tool) => !boundSourceTools.has(resolveScheduledDirectToolSource(tool) as AnyAgentTool),
-     );
--    pendingCalls.add(settled);
--    void settled.then(() => pendingCalls.delete(settled));
--    if (executionMode === "sequential") {
--      sequentialBarrier = settled;
++    );
 +    const boundNewlyConstructedTools =
 +      newlyConstructedTools.length > 0
 +        ? hostCapabilities.bindToolSurface(newlyConstructedTools, bindingOptions)
@@ -443,7 +452,16 @@ index 60856a2921b21427e3b52d16f3153df176e43527..488cfe57e549046a016af807e1d629be
 +    const runInAttemptContext = AsyncLocalStorage.snapshot();
 +    let sequentialBarrier = Promise.resolve();
 +    const pendingCalls = new Set<Promise<void>>();
-+    const scheduleToolExecution: ScheduleToolExecution = (executionMode, execute) => {
++    const scheduleToolExecution: ScheduleToolExecution = (sourceTool, execute) => {
++      // Native controls must enter before pending direct calls settle so they can
++      // yield. Native direct projections already share the catalog scheduler.
++      if (
++        isCodeModeControlTool(sourceTool) ||
++        resolveScheduledDirectToolSource(sourceTool) !== sourceTool
++      ) {
++        return runInAttemptContext(execute);
++      }
++      const executionMode = sourceTool.executionMode;
 +      // SDK handlers arrive independently. An exclusive call waits for earlier
 +      // work across the attempt and blocks later calls, regardless of tool name.
 +      const ready = executionMode === "sequential" ? Promise.all(pendingCalls) : sequentialBarrier;
@@ -505,7 +523,7 @@ index 60856a2921b21427e3b52d16f3153df176e43527..488cfe57e549046a016af807e1d629be
  
  /**
 diff --git a/src/agents/agent-bundle-mcp-harness.test.ts b/src/agents/agent-bundle-mcp-harness.test.ts
-index c27441edf39feb722b16c4f0d289848afc9b6b0e..99603e45390b81dd33804786306cd0a33cf06354 100644
+index c27441ed..99603e45 100644
 --- a/src/agents/agent-bundle-mcp-harness.test.ts
 +++ b/src/agents/agent-bundle-mcp-harness.test.ts
 @@ -96,6 +96,7 @@ vi.mock("./mcp-oauth.js", async (importOriginal) => {
@@ -580,7 +598,7 @@ index c27441edf39feb722b16c4f0d289848afc9b6b0e..99603e45390b81dd33804786306cd0a3
 +  });
 +});
 diff --git a/src/agents/agent-bundle-mcp-harness.ts b/src/agents/agent-bundle-mcp-harness.ts
-index 909c303c11f3903add277ecc4afde3865f417b28..9abbef553a7a8c8f44cd30aebe62211f14a9e3e2 100644
+index 909c303c..9abbef55 100644
 --- a/src/agents/agent-bundle-mcp-harness.ts
 +++ b/src/agents/agent-bundle-mcp-harness.ts
 @@ -241,6 +241,50 @@ function applyHarnessToolPolicy(
@@ -635,10 +653,10 @@ index 909c303c11f3903add277ecc4afde3865f417b28..9abbef553a7a8c8f44cd30aebe62211f
   * Materialize static configured MCP for a Codex harness turn.
   * No requester identity is accepted here, so requester resolvers stay unreachable.
 diff --git a/src/plugin-sdk/agent-harness-tool-runtime.ts b/src/plugin-sdk/agent-harness-tool-runtime.ts
-index 55a4b8875fbea6d54e3fa852fcb188909236b300..09b65ebaa4e5e5441845c3a3643b35bc8656d047 100644
+index 68808dc5..7d503ec3 100644
 --- a/src/plugin-sdk/agent-harness-tool-runtime.ts
 +++ b/src/plugin-sdk/agent-harness-tool-runtime.ts
-@@ -134,3 +134,14 @@ function projectToolSurfaceRuntime(
+@@ -137,3 +137,14 @@ function projectToolSurfaceRuntime(
      },
    };
  }

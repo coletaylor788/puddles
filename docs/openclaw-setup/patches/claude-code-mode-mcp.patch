@@ -179,7 +179,7 @@ index d00197c2..f04f02d6 100644
        Boolean(projectNativeToolAuthority),
        run,
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 6084207f..7f5e5e9a 100644
+index 6084207f..3ec204fc 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
 @@ -121,6 +121,7 @@ import {
@@ -202,8 +202,8 @@ index 6084207f..7f5e5e9a 100644
 +          readPath: materializedSkillPath,
 +        },
 +      ],
-     });
- 
++    });
++
 +    const mintMcpLoopbackClientGrant = vi.fn(createTestMcpLoopbackClientGrant);
 +    const projectSkillReader = vi.fn(() => ({
 +      agentId: "main",
@@ -222,9 +222,9 @@ index 6084207f..7f5e5e9a 100644
 +      mintMcpLoopbackClientGrant,
 +      resolveMcpLoopbackPolicyTools: projectSkillReader,
 +      resolveMcpLoopbackScopedTools: projectSkillReader,
-+    });
+     });
 +    setRawCliBackendForPrepareTest(buildDefaultTestCliBackend({ bundleMcp: true }));
-+
+ 
      const config: OpenClawConfig = {
        agents: { ownership: "explicit", entries: { main: {}, worker: {} } },
 +      tools: { codeMode: { enabled: true, surface: "additive", executor: "quickjs" } },
@@ -239,7 +239,7 @@ index 6084207f..7f5e5e9a 100644
      });
  
      expect(ensureSandboxWorkspaceForSessionMock).toHaveBeenCalledWith({
-@@ -4187,6 +4219,12 @@ describe("prepareCliRunContext", () => {
+@@ -4187,6 +4219,10 @@ describe("prepareCliRunContext", () => {
      expect(context.systemPromptReport.skills.entries).toEqual([
        { name: "gog", blockChars: expect.any(Number) },
      ]);
@@ -247,13 +247,86 @@ index 6084207f..7f5e5e9a 100644
 +    expect(skills).toHaveLength(1);
 +    expect(skills?.[0]?.location).toBe("/workspace/.openclaw/sandbox-skills/skills/gog/SKILL.md");
 +    await expect(readCodeModeSkill(skills![0]!)).resolves.toContain("Use the Gmail tools");
-+    await fixture.cleanup();
-+    await expect(readCodeModeSkill(skills![0]!)).rejects.toThrow(/authority|current|closed/i);
    });
  
    it("lazily rebuilds an unsafe modern skills snapshot for a non-sandbox CLI run", async () => {
+@@ -4231,6 +4267,7 @@ describe("prepareCliRunContext", () => {
+     const skill = createWeatherSkillFixture(dir, true);
+     const preparedExecutionCleanup = vi.fn(async () => undefined);
+     const revokeMintedMcpLoopbackClientGrant = vi.fn(() => true);
++    const mintMcpLoopbackClientGrant = vi.fn(createTestMcpLoopbackClientGrant);
+     setCliBackendForPrepareTest({
+       id: "claude-cli",
+       pluginId: "anthropic",
+@@ -4240,6 +4277,7 @@ describe("prepareCliRunContext", () => {
+     setCliRunnerPrepareTestDeps({
+       prepareClaudeCliSkillsPlugin,
+       getActiveMcpLoopbackRuntime: vi.fn(createLoopbackRuntime),
++      mintMcpLoopbackClientGrant,
+       revokeMintedMcpLoopbackClientGrant,
+     });
+ 
+@@ -4260,6 +4298,12 @@ describe("prepareCliRunContext", () => {
+     expect(manifest).toMatchObject({ name: "openclaw-skills", skills: "./skills" });
+     const skillPath = path.join(pluginDir, "skills", "weather", "SKILL.md");
+     expect(fs.readFileSync(skillPath, "utf8")).toContain("Read forecast data before replying.");
++    expect(context.systemPrompt).not.toContain("Read forecast data before replying.");
++    const codeModeSkills = mintMcpLoopbackClientGrant.mock.calls[0]?.[0]?.codeModeSkills;
++    expect(codeModeSkills).toHaveLength(1);
++    await expect(readCodeModeSkill(codeModeSkills![0]!)).resolves.toContain(
++      "Read forecast data before replying.",
++    );
+ 
+     const releaseSkills = context.preparedBackend.claimLiveSessionResources?.();
+     expect(releaseSkills).toEqual(expect.any(Function));
+@@ -4295,6 +4339,45 @@ describe("prepareCliRunContext", () => {
+     expect(fs.existsSync(pluginDir)).toBe(false);
+   });
+ 
++  it("retains the host skill prompt when native plugin delivery produces no links", async () => {
++    const { dir } = fixture.session;
++    const skill = createWeatherSkillFixture(dir, true);
++    const cleanup = vi.fn(async () => undefined);
++    const prepareSkillsPlugin = vi.fn(async () => ({ args: [], cleanup }));
++    const mintMcpLoopbackClientGrant = vi.fn(createTestMcpLoopbackClientGrant);
++    setCliBackendForPrepareTest({
++      id: "claude-cli",
++      pluginId: "anthropic",
++      bundleMcp: true,
++      prepareExecution: async () => undefined,
++    });
++    setCliRunnerPrepareTestDeps({
++      prepareClaudeCliSkillsPlugin: prepareSkillsPlugin,
++      getActiveMcpLoopbackRuntime: vi.fn(createLoopbackRuntime),
++      mintMcpLoopbackClientGrant,
++    });
++
++    const context = await fixture.prepare({
++      provider: "claude-cli",
++      model: "opus",
++      skillsSnapshot: skill.snapshot,
++      sessionKey: "agent:main:plugin-delivery-failed",
++      runId: "native-skill-plugin-delivery-failed",
++    });
++
++    expect(prepareSkillsPlugin).toHaveBeenCalledOnce();
++    expect(context.claudeSkillsPluginArgs).toEqual([]);
++    expect(context.systemPrompt).toContain("Read forecast data before replying.");
++    const codeModeSkills = mintMcpLoopbackClientGrant.mock.calls[0]?.[0]?.codeModeSkills;
++    expect(codeModeSkills).toHaveLength(1);
++    await expect(readCodeModeSkill(codeModeSkills![0]!)).resolves.toContain(
++      "Read forecast data before replying.",
++    );
++
++    await context.preparedBackend.cleanup?.();
++    expect(cleanup).toHaveBeenCalledOnce();
++  });
++
+   it.for(["empty", "raw", "compacted", "blocked", "cancelled", "foreign-maintenance"] as const)(
+     "isolates %s caller memory through outer normalization and real CLI execution",
+     (scenario, { signal }) =>
 diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index 7ea677ac..3216691b 100644
+index 7ea677ac..f13b35b5 100644
 --- a/src/agents/cli-runner/prepare.ts
 +++ b/src/agents/cli-runner/prepare.ts
 @@ -23,6 +23,7 @@ import {
@@ -281,7 +354,7 @@ index 7ea677ac..3216691b 100644
  import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
  import {
    DEFAULT_BOOTSTRAP_FILENAME,
-@@ -690,6 +694,38 @@ async function prepareCliRunContextWithinReadFence(
+@@ -690,6 +694,41 @@ async function prepareCliRunContextWithinReadFence(
          store: authStore ?? (await loadScopedAuthStore()),
        }
      : undefined;
@@ -297,9 +370,12 @@ index 7ea677ac..3216691b 100644
 +        skillPreparationParams.abortSignal?.throwIfAborted();
 +        skillPreparationParams.preparedRunAdmission?.assertSourceCurrent();
 +      };
-+  const preparedSkills =
-+    skipsTurnPreparation || nodeClaudePlacement || claudeSkillsPlugin.args.length > 0
-+      ? { prompt: "", codeModeSkills: [] as CodeModeSkill[] }
++  // Prepare the admitted catalog before MCP projection. Native Claude plugin
++  // delivery is selected later; when it succeeds, only its duplicate prompt is
++  // suppressed while additive Code Mode keeps the same selected catalog.
++  const preparedSkillCatalog =
++    skipsTurnPreparation || nodeClaudePlacement
++      ? { prompt: "", usagePaths: undefined, codeModeSkills: [] as CodeModeSkill[] }
 +      : await resolveCliSkillsPrompt({
 +          assertCurrent: assertSkillsCurrent,
 +          run: params,
@@ -310,7 +386,7 @@ index 7ea677ac..3216691b 100644
 +          sessionKey: params.sessionKey?.trim() || params.sessionId,
 +        });
 +  assertSkillsCurrent();
-+  const codeModeSkills = preparedSkills.codeModeSkills ?? [];
++  const codeModeSkills = preparedSkillCatalog.codeModeSkills ?? [];
 +  const resolvedCodeMode = resolveCodeModeConfig(runConfig, policyAgentId);
 +  const additiveMcpCodeMode =
 +    bundleMcpEnabled &&
@@ -320,7 +396,7 @@ index 7ea677ac..3216691b 100644
    params.assertCurrent?.();
    // Exclusive runs cannot hand configured MCP servers to the CLI. Serve them
    // through the loopback bridge so every turn lists the same tools.
-@@ -720,6 +756,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -720,6 +759,7 @@ async function prepareCliRunContextWithinReadFence(
          })
        : undefined;
    params.assertCurrent?.();
@@ -328,7 +404,7 @@ index 7ea677ac..3216691b 100644
    const mcpProjection = mcpContextBase
      ? await mcp.prepareCliMcpToolProjection(params, {
          agentId: workspaceResolution.agentId,
-@@ -729,14 +766,14 @@ async function prepareCliRunContextWithinReadFence(
+@@ -729,14 +769,14 @@ async function prepareCliRunContextWithinReadFence(
          scope: {
            cfg: runConfig,
            ...(skillLibraryAuthoring ? { skillLibraryAuthoring } : {}),
@@ -345,7 +421,7 @@ index 7ea677ac..3216691b 100644
    params = mcpProjection.params;
    params.assertCurrent?.();
    const hookFilteredProjectedTools = applyEmbeddedAttemptToolsAllow(
-@@ -779,6 +816,35 @@ async function prepareCliRunContextWithinReadFence(
+@@ -779,6 +819,35 @@ async function prepareCliRunContextWithinReadFence(
      hookFilteredProjectedTools,
      params.cliToolAvailability?.openClaw,
    );
@@ -381,7 +457,7 @@ index 7ea677ac..3216691b 100644
    // Mirror the embedded runner's bootstrap routing for backends that transport
    // OpenClaw's system prompt, using the final native or mediated file access.
    const canonicalWorkspace = resolveUserPath(
-@@ -836,7 +902,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -836,7 +905,7 @@ async function prepareCliRunContextWithinReadFence(
      ? projectedTools.find((tool) => tool.name === "skill_workshop")
      : undefined;
    const promptTools = bundleMcpEnabled
@@ -390,7 +466,7 @@ index 7ea677ac..3216691b 100644
      : nodeSkillWorkshop
        ? [nodeSkillWorkshop]
        : [];
-@@ -888,6 +954,9 @@ async function prepareCliRunContextWithinReadFence(
+@@ -888,6 +957,9 @@ async function prepareCliRunContextWithinReadFence(
    const { mcpGrant, projectNativeToolAuthority, exclusiveTools } = mcp.prepareCliMcpGrant(params, {
      context: mcpContextBase,
      tools: projectedTools,
@@ -400,7 +476,7 @@ index 7ea677ac..3216691b 100644
      promptBuildRestrictsTools,
      hostOwnedTools,
      nativeAuthorityAllowed: !skipsTurnPreparation && !nodeClaudePlacement,
-@@ -915,12 +984,13 @@ async function prepareCliRunContextWithinReadFence(
+@@ -915,12 +987,13 @@ async function prepareCliRunContextWithinReadFence(
        mcpLoopbackRuntime && mcpGrant
          ? mintMcpLoopbackClientGrant({
              ...mcpGrant,
@@ -415,7 +491,18 @@ index 7ea677ac..3216691b 100644
              ...(mcpToolAuth ? { toolAuth: mcpToolAuth } : {}),
            })
          : undefined;
-@@ -1302,11 +1372,15 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1204,6 +1277,10 @@ async function prepareCliRunContextWithinReadFence(
+             backendId: backendResolved.id,
+             skillsSnapshot: params.skillsSnapshot,
+           });
++    const preparedSkills =
++      claudeSkillsPlugin.args.length > 0
++        ? { prompt: "", usagePaths: preparedSkillCatalog.usagePaths }
++        : preparedSkillCatalog;
+     let claudeSkillsPluginClaimed = false;
+     const claimLiveSessionResources =
+       claudeSkillsPlugin.args.length > 0
+@@ -1302,11 +1379,15 @@ async function prepareCliRunContextWithinReadFence(
        !nodeClaudePlacement &&
        candidateClaudeCliSessionId !== undefined &&
        isClaudeCliBackendId(params.provider);
@@ -431,7 +518,7 @@ index 7ea677ac..3216691b 100644
        }));
      const managedClaudeLiveSessionGeneration =
        claudeCliTranscriptMissing &&
-@@ -1328,6 +1402,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1328,6 +1409,7 @@ async function prepareCliRunContextWithinReadFence(
        (await claudeCliSessionTranscriptHasOrphanedToolUse({
          sessionId: candidateClaudeCliSessionId,
          workspaceDir: cwd,
@@ -439,7 +526,7 @@ index 7ea677ac..3216691b 100644
        }));
      const claudeCliInvalidatedReason: "missing-transcript" | "orphaned-tool-use" | undefined =
        claudeCliTranscriptMissing && !hasManagedClaudeLiveSession
-@@ -1356,30 +1431,6 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1356,30 +1438,6 @@ async function prepareCliRunContextWithinReadFence(
            cwd,
            moduleUrl: import.meta.url,
          });
@@ -858,10 +945,10 @@ index bf2d4ca6..c492f8ff 100644
      isCurrent,
 diff --git a/src/gateway/mcp-http.code-mode.test.ts b/src/gateway/mcp-http.code-mode.test.ts
 new file mode 100644
-index 00000000..9f46a26a
+index 00000000..6eb13f02
 --- /dev/null
 +++ b/src/gateway/mcp-http.code-mode.test.ts
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,150 @@
 +import { afterEach, describe, expect, it } from "vitest";
 +import {
 +  fakeTool,
@@ -870,6 +957,10 @@ index 00000000..9f46a26a
 +  testing,
 +} from "../agents/code-mode.test-support.js";
 +import { createInstalledSkillTools } from "../agents/tools/installed-skill-tools.js";
++import {
++  clearRuntimeConfigSnapshot,
++  setAppliedRuntimeConfigSnapshot,
++} from "../config/runtime-snapshot.js";
 +import type { OpenClawConfig } from "../config/types.openclaw.js";
 +import { createMcpCodeModeToolSurface } from "./mcp-http.code-mode.js";
 +import { resolveMcpLoopbackScopedTools } from "./mcp-http.runtime.js";
@@ -877,6 +968,7 @@ index 00000000..9f46a26a
 +const surfaces: ReturnType<typeof createMcpCodeModeToolSurface>[] = [];
 +afterEach(async () => {
 +  for (const surface of surfaces.splice(0)) surface.cleanup();
++  clearRuntimeConfigSnapshot();
 +  await resetCodeModeTestState();
 +});
 +
@@ -942,6 +1034,7 @@ index 00000000..9f46a26a
 +      toolsAllow: ["skills_search", "skills_read"],
 +      codeMode: true,
 +    };
++    await setAppliedRuntimeConfigSnapshot(config, config);
 +    const scoped = await resolveMcpLoopbackScopedTools({
 +      cfg: config,
 +      context,
@@ -1068,10 +1161,10 @@ index 00000000..20ed1b49
 +  };
 +}
 diff --git a/src/gateway/mcp-http.handlers.ts b/src/gateway/mcp-http.handlers.ts
-index 2c9de998..6df7a1b7 100644
+index 2c9de998..b8ef7808 100644
 --- a/src/gateway/mcp-http.handlers.ts
 +++ b/src/gateway/mcp-http.handlers.ts
-@@ -4,9 +4,23 @@ import crypto from "node:crypto";
+@@ -4,10 +4,28 @@ import crypto from "node:crypto";
  import { ContentBlockSchema, type ContentBlock } from "@modelcontextprotocol/sdk/types.js";
  import { isRecord } from "@openclaw/normalization-core/record-coerce";
  import { runWithSessionMcpToolCallAuthority } from "../agents/agent-bundle-mcp-request-context.js";
@@ -1086,17 +1179,23 @@ index 2c9de998..6df7a1b7 100644
 +  prepareBeforeToolCallExecutionParams,
 +} from "../agents/agent-tools.before-tool-call.wrapper.js";
 +import { validateToolExecutionParams } from "../agents/agent-tools.execution-validation.js";
++import { isToolWrappedWithBeforeToolCallHook } from "../agents/before-tool-call-metadata.js";
 +import {
 +  getCodeModeExecBeforeHookMetadata,
 +  normalizeCodeModeExecBeforeHookParams,
 +} from "../agents/code-mode-control-tools.js";
  import { extractToolErrorMessage } from "../agents/embedded-agent-tool-results.js";
  import { runAgentHarnessAfterToolCallHook } from "../agents/harness/hook-helpers.js";
+-import { copyInternalToolResultState } from "../agents/runtime/internal-hooks.js";
 +import type { AgentToolResult, AgentToolUpdateCallback } from "../agents/runtime/index.js";
- import { copyInternalToolResultState } from "../agents/runtime/internal-hooks.js";
++import {
++  copyInternalToolResultState,
++  getInternalToolExecutionPreparer,
++} from "../agents/runtime/internal-hooks.js";
  import {
    formatToolExecutionErrorMessage,
-@@ -61,6 +75,184 @@ function normalizeToolCallContent(result: unknown): ContentBlock[] {
+   protectNetworkToolExecutionError,
+@@ -61,6 +79,267 @@ function normalizeToolCallContent(result: unknown): ContentBlock[] {
    ];
  }
  
@@ -1112,6 +1211,8 @@ index 2c9de998..6df7a1b7 100644
 +    } & McpLoopbackToolCallOutcome,
 +  ) => void;
 +  onToolCallPrepared?: (call: { toolName: string; args: Record<string, unknown> }) => void;
++  /** The caller rebound this exact tool to the Gateway hook context. */
++  nativeBeforeToolCallOwner?: boolean;
 +};
 +
 +/** Shared execution boundary for direct MCP calls and contained nested calls. */
@@ -1157,6 +1258,87 @@ index 2c9de998..6df7a1b7 100644
 +    }
 +  };
 +  try {
++    const executionPreparer =
++      params.nativeBeforeToolCallOwner && isToolWrappedWithBeforeToolCallHook(tool)
++        ? getInternalToolExecutionPreparer(tool)
++        : undefined;
++    if (executionPreparer) {
++      const prepared = await executionPreparer({
++        toolCallId,
++        args: toolArgs,
++        signal: params.signal,
++        onUpdate: params.onUpdate,
++      });
++      if (prepared.kind === "immediate") {
++        if (prepared.outcome.kind === "error") {
++          throw prepared.outcome.error;
++        }
++        const result = prepared.outcome.result;
++        const failureKind = resolveToolResultFailureKind(result);
++        reportToolCallResult(
++          failureKind === "blocked"
++            ? { outcome: "blocked", deniedReason: "tool_result_blocked" }
++            : { outcome: failureKind ?? "completed", result },
++          result,
++          failureKind ? (extractToolErrorMessage(result) ?? "Tool execution failed") : undefined,
++        );
++        return result;
++      }
++      let launched = false;
++      try {
++        executedToolArgs = prepared.args as Record<string, unknown>;
++        try {
++          params.onToolCallPrepared?.({ toolName, args: executedToolArgs });
++        } catch {
++          // Observability callbacks must never alter the tool result returned to the MCP client.
++        }
++        if (params.authorizeToolCall && !params.authorizeToolCall()) {
++          reportToolCallResult(
++            { outcome: "blocked", deniedReason: "client-grant-revoked" },
++            undefined,
++            "Tool call authorization expired",
++          );
++          return buildBlockedToolResult({
++            reason: "Tool call authorization expired",
++            deniedReason: "plugin-before-tool-call",
++            toolCallId,
++            runId: params.hookContext?.runId,
++          });
++        }
++        params.signal?.throwIfAborted();
++        let result: Awaited<ReturnType<typeof tool.execute>>;
++        try {
++          const { authorizeToolCall } = params;
++          result = await runWithSessionMcpToolCallAuthority(
++            authorizeToolCall &&
++              (() => {
++                if (!authorizeToolCall()) {
++                  throw new Error("Tool call authorization expired");
++                }
++              }),
++            () => {
++              launched = true;
++              return prepared.execute();
++            },
++          );
++        } catch (error) {
++          throw tool.resultContentSource === "network"
++            ? protectNetworkToolExecutionError(error, "tool execution failed", params.signal)
++            : error;
++        }
++        const failureKind = resolveToolResultFailureKind(result);
++        reportToolCallResult(
++          failureKind === "blocked"
++            ? { outcome: "blocked", deniedReason: "tool_result_blocked" }
++            : { outcome: failureKind ?? "completed", result },
++          result,
++          failureKind ? (extractToolErrorMessage(result) ?? "Tool execution failed") : undefined,
++        );
++        return result;
++      } finally {
++        if (!launched) prepared.dispose();
++      }
++    }
 +    const preparedToolArgs = await prepareBeforeToolCallExecutionParams({
 +      tool,
 +      params: toolArgs,
@@ -1281,7 +1463,7 @@ index 2c9de998..6df7a1b7 100644
  /** Handles one MCP loopback JSON-RPC message and returns a response or notification null. */
  export async function handleMcpJsonRpc(params: {
    message: JsonRpcRequest;
-@@ -131,132 +323,27 @@ export async function handleMcpJsonRpc(params: {
+@@ -131,132 +410,27 @@ export async function handleMcpJsonRpc(params: {
        if (!tool) {
          return toolError(`Tool not available: ${toolName || "unknown"}`);
        }
@@ -1658,7 +1840,7 @@ index fb28074f..b685a299 100644
      this.#grantConfigScopes.clear();
    }
 diff --git a/src/gateway/mcp-http.test.ts b/src/gateway/mcp-http.test.ts
-index c9e7155e..ab9f09a6 100644
+index c9e7155e..e2147192 100644
 --- a/src/gateway/mcp-http.test.ts
 +++ b/src/gateway/mcp-http.test.ts
 @@ -32,6 +32,7 @@ import { createProcessSessionFixture } from "../agents/bash-process-registry.tes
@@ -1769,7 +1951,7 @@ index c9e7155e..ab9f09a6 100644
    it("closes a pending startup once for concurrent shutdown callers", async () => {
      const starting = ensureMcpLoopbackServer();
      const closing = Promise.allSettled([closeMcpLoopbackServer(), closeMcpLoopbackServer()]);
-@@ -2536,3 +2583,418 @@ describe("createMcpLoopbackServerConfig", () => {
+@@ -2536,3 +2583,436 @@ describe("createMcpLoopbackServerConfig", () => {
    });
  });
  /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
@@ -2182,6 +2364,24 @@ index c9e7155e..ab9f09a6 100644
 +    revokeMcpLoopbackClientGrant(otherGrant.token);
 +    revokeMcpLoopbackClientGrant(grant.token);
 +    expect(
++      (
++        await sendLoopbackToolCall({
++          ...warmScope,
++          name: "skills_read",
++          args: { name: "manual" },
++        })
++      ).status,
++    ).toBe(401);
++    expect(
++      (
++        await sendLoopbackToolCall({
++          ...warmScope,
++          name: "code_exec",
++          args: { code: 'return await skills.read("manual");' },
++        })
++      ).status,
++    ).toBe(401);
++    expect(
 +      (await sendLoopbackToolCall({ ...scope, name: "code_wait", args: { runId: parkedId } }))
 +        .status,
 +    ).toBe(401);
@@ -2189,10 +2389,18 @@ index c9e7155e..ab9f09a6 100644
 +  });
 +});
 diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
-index 236a1005..bac33203 100644
+index 236a1005..24ec980f 100644
 --- a/src/gateway/mcp-http.ts
 +++ b/src/gateway/mcp-http.ts
-@@ -143,7 +143,7 @@ async function startMcpLoopbackServer(
+@@ -2,6 +2,7 @@ import crypto from "node:crypto";
+ import { createServer as createHttpServer, type ServerResponse } from "node:http";
+ import { isRecord } from "@openclaw/normalization-core/record-coerce";
+ import { resolveBundleMcpServerInstructions } from "../agents/agent-bundle-mcp-instructions.js";
++import { rewrapToolWithBeforeToolCallHook } from "../agents/agent-tools.before-tool-call.js";
+ import { withAgentQuestionAnswerAuthority } from "../agents/harness/host-private-capabilities.js";
+ import { acknowledgeInternalToolResult } from "../agents/runtime/internal-hooks.js";
+ import { withPreparedSessionCapabilityRead } from "../agents/subagents/spawn/subagent-session-store.js";
+@@ -143,7 +144,7 @@ async function startMcpLoopbackServer(
  ): Promise<() => Promise<void>> {
    // Shutdown preloads this module even when no MCP listener is needed.
    const [
@@ -2201,7 +2409,7 @@ index 236a1005..bac33203 100644
      { McpLoopbackToolCache },
      { assertCompletionGrantLineage, createCompletionGrantLineageAdmission },
    ] = await Promise.all([
-@@ -331,6 +331,74 @@ async function startMcpLoopbackServer(
+@@ -331,6 +332,73 @@ async function startMcpLoopbackServer(
              throw error;
            }
  
@@ -2246,17 +2454,16 @@ index 236a1005..bac33203 100644
 +              });
 +              try {
 +                const nestedResult = await executeMcpToolCall({
-+                  tool: {
-+                    ...call.tool,
-+                    execute: (id, args, signal, onUpdate) =>
-+                      call.tool.execute(id, args, signal, onUpdate, undefined as never),
-+                  },
++                  tool: rewrapToolWithBeforeToolCallHook(call.tool, hookContext, {
++                    protectNetworkErrors: false,
++                  }),
 +                  toolName: call.toolName,
 +                  toolCallId: call.toolCallId,
 +                  toolArgs: call.input,
 +                  signal: call.signal,
 +                  onUpdate: call.onUpdate,
 +                  hookContext,
++                  nativeBeforeToolCallOwner: true,
 +                  authorizeToolCall,
 +                  onToolCallPrepared: capture
 +                    ? (prepared) => updateMcpLoopbackToolCallCapture(capture, prepared)
