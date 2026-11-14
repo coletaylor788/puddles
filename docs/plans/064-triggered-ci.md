@@ -114,6 +114,13 @@ after PROD success, source freshness before queueing and at dequeue, and the
 trusted application account on the target. This single-owner process requires
 neither branch protection nor a second GitHub account.
 
+The 2026-11-14 stable-upgrade DEV submission closed before dispatch because the
+GitHub comparison response exceeded Node's default child-process buffer. The
+approved lifecycle and the safe-feature routine CI-repair path cover a narrow
+tooling correction. The GitHub CLI now projects the existing merge-base and
+behind-count inputs before Node buffers its output. No source, ancestry, check,
+merge, queue, deployment, or rollback gate changes.
+
 The neutral dummy passed DEV, the full application suite, TEST, backup
 replacement, PROD acceptance including the installed sandbox gate, exact source
 merge, intake reopening and run cleanup. Actual lifecycle events resumed the
@@ -128,6 +135,9 @@ requester receives the final handoff and restarts them.
 
 - The implementation and current repairs cleared retained review and tooling checks.
   Target image preparation and acceptance now use the managed importer.
+- Source preflight now bounds the GitHub comparison response before Node buffers
+  it. Regression coverage keeps the existing ancestry decision and rejects
+  missing, stale, or behind comparison metadata.
 - Final live result: The dummy passed all application and deployment gates, merged,
   reopened intake and closed source/target cleanup. The cleanup-tool correction
   is installed and predecessor retirement passed. All four remaining repair checkouts were removed; Fresh target maintenance and final readiness verification passed.
