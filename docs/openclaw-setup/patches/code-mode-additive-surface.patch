@@ -1,8 +1,37 @@
+diff --git a/extensions/copilot/src/host-capability.test-support.ts b/extensions/copilot/src/host-capability.test-support.ts
+index 5edd8707..b53b1bbd 100644
+--- a/extensions/copilot/src/host-capability.test-support.ts
++++ b/extensions/copilot/src/host-capability.test-support.ts
+@@ -6,6 +6,8 @@ type HostCapabilities = AgentHarnessAttemptParamsV2["hostCapabilities"];
+ export function createCopilotTestHostCapabilities(
+   createToolSurface?: HostCapabilities["createToolSurface"],
+   bindToolSurface: HostCapabilities["bindToolSurface"] = (tools) => tools,
++  prepareInstalledSkills: NonNullable<HostCapabilities["prepareInstalledSkills"]> = (options) =>
++    options.installedSkills ?? [],
+ ): HostCapabilities {
+   const construct: HostCapabilities["createToolSurfaceAsync"] = createToolSurface
+     ? async (options, binding) => bindToolSurface(createToolSurface(options), binding)
+@@ -16,6 +18,7 @@ export function createCopilotTestHostCapabilities(
+     assertActive: () => {},
+     bindToolSurface,
+     ...(construct ? { createToolSurfaceAsync: construct } : {}),
++    prepareInstalledSkills,
+     runBeforeToolCall: async (request) => ({ blocked: false, params: request.params }),
+     requestApproval: async () => undefined,
+     waitForApproval: async () => undefined,
 diff --git a/extensions/copilot/src/tool-bridge.test.ts b/extensions/copilot/src/tool-bridge.test.ts
-index a3b75bf3..141b4392 100644
+index a3b75bf3..8dbe3dcc 100644
 --- a/extensions/copilot/src/tool-bridge.test.ts
 +++ b/extensions/copilot/src/tool-bridge.test.ts
-@@ -14,6 +14,7 @@ import {
+@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
+ import fs from "node:fs/promises";
+ import os from "node:os";
+ import path from "node:path";
++import type { ToolResultObject } from "@github/copilot-sdk";
+ import { expectDefined } from "@openclaw/normalization-core";
+ import { createOpenClawCodingTools as createRealOpenClawCodingTools } from "openclaw/plugin-sdk/agent-harness";
+ import {
+@@ -14,6 +15,7 @@ import {
    createOwnerBackedContractTool,
    textToolResult,
  } from "openclaw/plugin-sdk/agent-runtime-test-contracts";
@@ -10,7 +39,7 @@ index a3b75bf3..141b4392 100644
  import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
  import { readMemoryArtifactProvenance } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
  import { withTempDir } from "openclaw/plugin-sdk/test-env";
-@@ -409,6 +410,215 @@ describe("createCopilotToolBridge", () => {
+@@ -409,6 +411,238 @@ describe("createCopilotToolBridge", () => {
    });
  
    describe("tool-surface gating (PR #86155 [P1] round-6)", () => {
@@ -48,14 +77,11 @@ index a3b75bf3..141b4392 100644
 +      const events: string[] = [];
 +      const firstGate = createDeferred<void>();
 +      const nestedGate = createDeferred<void>();
-+      const firstStarted = createDeferred<void>();
-+      const nestedStarted = createDeferred<void>();
 +      const first = makeTool({
 +        name: "first",
 +        executionMode: "sequential",
 +        execute: vi.fn(async () => {
 +          events.push("first:start");
-+          firstStarted.resolve();
 +          await firstGate.promise;
 +          events.push("first:done");
 +          return textToolResult("first result");
@@ -66,7 +92,6 @@ index a3b75bf3..141b4392 100644
 +        executionMode: "sequential",
 +        execute: vi.fn(async () => {
 +          events.push("nested:start");
-+          nestedStarted.resolve();
 +          await nestedGate.promise;
 +          events.push("nested:done");
 +          return textToolResult("nested result");
@@ -88,26 +113,26 @@ index a3b75bf3..141b4392 100644
 +        } as never,
 +        createOpenClawCodingTools: () => [first, nested, last],
 +      });
-+      const direct = runSdkTool(sdkToolNamed(bridge, "first"), {});
++      const direct = runSdkTool(sdkToolNamed(bridge, "first"), { value: "first" });
 +      let final: ReturnType<typeof runSdkTool> | undefined;
 +      try {
-+        await firstStarted.promise;
-+        const parked = await runSdkTool(sdkToolNamed(bridge, "code_exec"), {
-+          code: "const pending = nested({}); await yield_control(); return await pending;",
-+        });
++        await vi.waitFor(() => expect(first.execute).toHaveBeenCalledOnce(), { timeout: 10_000 });
++        const parked = (await runSdkTool(sdkToolNamed(bridge, "code_exec"), {
++          code: "const pending = nested({ value: 'nested' }); await yield_control(); return await pending;",
++        })) as ToolResultObject;
 +        const details = JSON.parse(parked.textResultForLlm);
 +        expect(details).toMatchObject({ status: "waiting" });
 +        expect(events).toEqual(["first:start"]);
-+        final = runSdkTool(sdkToolNamed(bridge, "last"), {});
++        final = runSdkTool(sdkToolNamed(bridge, "last"), { value: "last" });
 +        firstGate.resolve();
 +        await direct;
-+        await nestedStarted.promise;
++        await vi.waitFor(() => expect(nested.execute).toHaveBeenCalledOnce(), { timeout: 10_000 });
 +        expect(events).toEqual(["first:start", "first:done", "nested:start"]);
 +        nestedGate.resolve();
 +        await final;
-+        const resumed = await runSdkTool(sdkToolNamed(bridge, "code_wait"), {
++        const resumed = (await runSdkTool(sdkToolNamed(bridge, "code_wait"), {
 +          runId: details.runId,
-+        });
++        })) as ToolResultObject;
 +        expect(JSON.parse(resumed.textResultForLlm)).toMatchObject({ status: "completed" });
 +        expect(events).toEqual([
 +          "first:start",
@@ -130,8 +155,12 @@ index a3b75bf3..141b4392 100644
 +        const workspaceDir = `/tmp/copilot-skill-${source}`;
 +        const sourcePath = "/gateway/library/selected/SKILL.md";
 +        const deliveredPath = "/workspace/.openclaw/sandbox-skills/selected/SKILL.md";
-+        const readInstructions = vi.fn(async () => "selected remote instructions");
-+        const readFile = vi.fn(async () => Buffer.from("selected sandbox instructions"));
++        const readInstructions = vi.fn(
++          async (_filePath?: string, _options?: unknown) => "selected remote instructions",
++        );
++        const readFile = vi.fn(async (_params?: unknown) =>
++          Buffer.from("selected sandbox instructions"),
++        );
 +        const release =
 +          source === "remote"
 +            ? registerAgentWorkspaceAccess(workspaceDir, {
@@ -155,6 +184,24 @@ index a3b75bf3..141b4392 100644
 +          ],
 +          librarySelections: [{ name: "selected" }],
 +        };
++        const installedSkills = [
++          {
++            name: "selected",
++            promptListed: true,
++            description: "Selected fixture",
++            location: deliveredPath,
++            source: { filePath: sourcePath },
++            reader: async () =>
++              source === "sandbox"
++                ? (
++                    await readFile({
++                      filePath: deliveredPath,
++                      cwd: "/workspace",
++                    })
++                  ).toString("utf8")
++                : await readInstructions(sourcePath, {}),
++          },
++        ];
 +        const bridge = await createCopilotToolBridge({
 +          workspaceDir,
 +          sandbox:
@@ -184,6 +231,11 @@ index a3b75bf3..141b4392 100644
 +              : null,
 +          attemptParams: {
 +            config: { tools: { codeMode: { enabled: true, surface: "additive" } } },
++            hostCapabilities: createCopilotTestHostCapabilities(
++              () => [makeTool({ name: "read" })],
++              undefined,
++              () => installedSkills,
++            ),
 +            skillsSnapshot: snapshot as never,
 +            runId: `copilot-skill-${source}`,
 +            sessionKey: `agent:agent-1:skill-${source}`,
@@ -191,7 +243,7 @@ index a3b75bf3..141b4392 100644
 +          createOpenClawCodingTools: () => [makeTool({ name: "read" })],
 +        });
 +        try {
-+          const result = await runSdkTool(sdkToolNamed(bridge, "code_exec"), {
++          const result = (await runSdkTool(sdkToolNamed(bridge, "code_exec"), {
 +            code: `
 +              const listed = await skills.list();
 +              const content = await skills.read("selected");
@@ -199,7 +251,7 @@ index a3b75bf3..141b4392 100644
 +              try { await skills.read("hidden"); } catch { hiddenDenied = true; }
 +              return { listed, content, hiddenDenied };
 +            `,
-+          });
++          })) as ToolResultObject;
 +          expect(result.resultType, JSON.stringify(result)).toBe("success");
 +          expect(JSON.parse(result.textResultForLlm)).toMatchObject({
 +            status: "completed",
@@ -227,7 +279,7 @@ index a3b75bf3..141b4392 100644
        await withTempDir("openclaw-copilot-policy-", async (workspaceDir) => {
          const result = await createCopilotToolBridge({
 diff --git a/extensions/copilot/src/tool-bridge.ts b/extensions/copilot/src/tool-bridge.ts
-index 4f2925cd..91387c14 100644
+index 4f2925cd..60856a29 100644
 --- a/extensions/copilot/src/tool-bridge.ts
 +++ b/extensions/copilot/src/tool-bridge.ts
 @@ -24,6 +24,7 @@ import {
@@ -238,7 +290,20 @@ index 4f2925cd..91387c14 100644
    type AgentHarnessToolSurfaceRuntime,
  } from "openclaw/plugin-sdk/agent-harness-tool-runtime";
  import { toStringifiedError as toCopilotToolError } from "openclaw/plugin-sdk/error-runtime";
-@@ -194,7 +195,9 @@ export async function createCopilotToolBridge(
+@@ -181,6 +182,7 @@ export async function createCopilotToolBridge(
+     throw new Error("Copilot tool construction requires a current host capability");
+   }
+   const sourceTools = await createToolSurfaceAsync(toolOptions, bindingOptions);
++    const codeModeSkills = hostCapabilities.prepareInstalledSkills?.(toolOptions) ?? [];
+   const boundSourceTools = new Set(sourceTools);
+ 
+   const allowedSourceTools = applyEmbeddedAttemptToolsAllow(
+@@ -190,11 +192,14 @@ export async function createCopilotToolBridge(
+   );
+   const compactedTools = toolSurfaceRuntime.compactTools(allowedSourceTools, {
+     localModelLeanApplied: true,
++      codeModeSkills,
+   });
    // The constructor output is bound before catalog compaction so hidden tools
    // cannot outlive the attempt. Bind only controls created by compaction here;
    // rebinding retained tools would stack the before-tool hook.
@@ -1056,6 +1121,241 @@ index 96b72027..14f0bb45 100644
    code: "UNKNOWN_TOOL_ID";
  };
  
+diff --git a/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts b/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts
+index 8b2ebd21..dc5e8319 100644
+--- a/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts
+@@ -93,6 +93,7 @@ function seedCatalog(mode: "code-mode" | "tool-search", config: OpenClawConfig)
+ 
+ function prepare(input: {
+   codeModeControlsEnabledForRun: boolean;
++  codeModeSurface?: "additive" | "compact";
+   attemptConfig: OpenClawConfig;
+   toolSearchRuntimeConfig: OpenClawConfig;
+   catalogRef: ReturnType<typeof createToolSearchCatalogRef>;
+@@ -110,6 +111,7 @@ function prepare(input: {
+     },
+     catalogToolHookContext: undefined,
+     codeModeControlsEnabledForRun: input.codeModeControlsEnabledForRun,
++    codeModeSurface: input.codeModeSurface,
+     deferredDirectoryToolsCallable: false,
+     effectiveTools: input.effectiveTools ?? [],
+     replaySafetyOptions: { declaredReplaySafe: () => undefined },
+@@ -441,11 +443,12 @@ describe("prepareEmbeddedAttemptClientTools", () => {
+     expect(await run("gateway")).toEqual({ generation: "gated" });
+   });
+ 
+-  it.each([CODE_MODE_CONFIG])("hides client tools when the attempt engages code mode", (config) => {
++  it.each([CODE_MODE_CONFIG])("hides client tools when compact code mode is engaged", (config) => {
+     const catalogRef = seedCatalog("code-mode", config);
+ 
+     const result = prepare({
+       codeModeControlsEnabledForRun: true,
++      codeModeSurface: "compact",
+       attemptConfig: config,
+       // Deliberately catalog-disabled: the code-mode branch must not read this.
+       toolSearchRuntimeConfig: CATALOGS_DISABLED_CONFIG,
+@@ -456,6 +459,74 @@ describe("prepareEmbeddedAttemptClientTools", () => {
+     expect(result.allCustomTools).toEqual([]);
+   });
+ 
++  it("keeps the same client wrapper direct and catalog-callable in additive code mode", async () => {
++    const catalogRef = seedCatalog("code-mode", CODE_MODE_CONFIG);
++    const result = prepare({
++      codeModeControlsEnabledForRun: true,
++      codeModeSurface: "additive",
++      attemptConfig: CODE_MODE_CONFIG,
++      toolSearchRuntimeConfig: CATALOGS_DISABLED_CONFIG,
++      catalogRef,
++    });
++
++    expect(result.clientToolDefs.map((tool) => tool.name)).toEqual(["client_probe"]);
++    expect(result.allCustomTools.map((tool) => tool.name)).toEqual(["client_probe"]);
++    expect(catalogRef.current?.entries).toEqual([
++      expect.objectContaining({ name: "seeded_target" }),
++      expect.objectContaining({ name: "client_probe", directVisible: true }),
++    ]);
++    const direct = expectDefined(result.clientToolDefs[0], "direct client tool");
++    const catalog = expectDefined(
++      catalogRef.current?.entries.find((entry) => entry.name === "client_probe")?.tool,
++      "catalog client tool",
++    );
++    expect(catalog).toBe(direct);
++    for (const [toolCallId, definition] of [
++      ["direct-call", direct],
++      ["catalog-call", catalog],
++    ] as const) {
++      const toolCall = {
++        type: "toolCall" as const,
++        id: toolCallId,
++        name: "client_probe",
++        arguments: { path: toolCallId },
++      };
++      await runWithAgentToolExecutionContext(
++        {
++          assistantMessage: makeAgentAssistantMessage({
++            content: [toolCall],
++            turnId: `turn-${toolCallId}`,
++            stopReason: "toolUse",
++          }),
++          toolCall,
++        },
++        () => wrapToolDefinition(definition).execute(toolCallId, toolCall.arguments),
++      );
++    }
++    expect(result.clientToolCallSlots).toEqual([
++      {
++        toolCallId: "direct-call",
++        name: "client_probe",
++        completed: true,
++        params: { path: "direct-call" },
++      },
++      {
++        toolCallId: "catalog-call",
++        name: "client_probe",
++        completed: true,
++        params: { path: "catalog-call" },
++      },
++    ]);
++
++    const restricted = createAgentHarnessPromptToolPolicy({
++      tools: result.allCustomTools,
++      catalogRef,
++      codeModeControlsEnabled: true,
++    }).apply({ toolsAllow: [] });
++    expect(restricted.tools.some((tool) => tool.name === "client_probe")).toBe(false);
++    expect(catalogRef.current?.entries.some((entry) => entry.name === "client_probe")).toBe(false);
++  });
++
+   it("advertises and invokes final callable owners after a normalized client collision", async () => {
+     const catalogRef = createToolSearchCatalogRef();
+     const codeModeSkills = [
+diff --git a/src/agents/embedded-agent-runner/run/attempt-client-tools.ts b/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
+index 62256910..0159b7bc 100644
+--- a/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
+@@ -56,6 +56,7 @@ export function prepareEmbeddedAttemptClientTools(params: {
+   attempt: EmbeddedRunAttemptParams;
+   catalogToolHookContext: Parameters<typeof toToolDefinitions>[1];
+   codeModeControlsEnabledForRun: boolean;
++  codeModeSurface?: "additive" | "compact";
+   deferredDirectoryToolsCallable: boolean;
+   effectiveTools: AgentTool[];
+   /** Applies the session tool pin each time the surface is built, including permission refreshes. */
+@@ -191,10 +192,13 @@ export function prepareEmbeddedAttemptClientTools(params: {
+       },
+     );
+     const search = resolveToolSearchConfig(params.toolSearchRuntimeConfig);
++    const additiveCodeMode =
++      params.codeModeControlsEnabledForRun && params.codeModeSurface === "additive";
+     const clientToolSearch = addClientToolsToToolCatalog({
+       tools: clientToolDefs,
+       enabled:
+         params.codeModeControlsEnabledForRun || (search.enabled && search.mode !== "directory"),
++      directVisible: additiveCodeMode,
+       catalogRef: params.toolSearchCatalogRef,
+     });
+     clientToolDefs = clientToolSearch.tools;
+diff --git a/src/agents/embedded-agent-runner/run/attempt-prompt-support.ts b/src/agents/embedded-agent-runner/run/attempt-prompt-support.ts
+index 6db1968c..2af09f0a 100644
+--- a/src/agents/embedded-agent-runner/run/attempt-prompt-support.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-prompt-support.ts
+@@ -153,6 +153,7 @@ export function applyPromptBuildToolsAllow<
+   tools: TTool[];
+   catalogRef?: ToolSearchCatalogRef;
+   codeModeControlsEnabled: boolean;
++  codeModeControlNames?: readonly string[];
+   forceToolNames?: readonly string[];
+ }) {
+   const policyInput = {
+@@ -164,6 +165,7 @@ export function applyPromptBuildToolsAllow<
+     catalogRef: params.catalogRef,
+     catalogEntries: params.baseline.catalogEntries,
+     codeModeControlsEnabled: params.codeModeControlsEnabled,
++    codeModeControlNames: params.codeModeControlNames,
+   }).apply(policyInput);
+   const filterTools = <T extends NamedTool>(tools: T[]) =>
+     createAgentHarnessPromptToolPolicy({ tools, codeModeControlsEnabled: false }).apply(policyInput)
+diff --git a/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts b/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts
+index 6b0ca058..82d28971 100644
+--- a/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts
+@@ -42,6 +42,40 @@ function createBaseline(activeToolNames: string[], catalogRef?: ToolSearchCatalo
+ }
+ 
+ describe("applyPromptBuildToolsAllow", () => {
++  it("retains additive control names when a prompt hook narrows the direct catalog", () => {
++    const controls = [{ name: "code_exec" }, { name: "code_wait" }];
++    const read = { name: "read" };
++    const write = { name: "write" };
++    const catalogRef: ToolSearchCatalogRef = {
++      current: {
++        entries: [catalogEntry("read", read), catalogEntry("write", write)],
++        counterScope: "additive-prompt-policy",
++        searchCount: 0,
++        describeCount: 0,
++        callCount: 0,
++      },
++    };
++    const fixture = createSession(controls.map((tool) => tool.name));
++    const policy = createPromptBuildToolPolicy({
++      session: fixture.session,
++      effectiveTools: [...controls, read, write],
++      uncompactedEffectiveTools: [read, write],
++      tools: [read, write],
++      catalogRef,
++      codeModeControlsEnabled: true,
++      codeModeControlNames: controls.map((tool) => tool.name),
++    });
++
++    policy.apply(["read"]);
++
++    expect(policy.current.tools.map((tool) => tool.name)).toEqual([
++      "code_exec",
++      "code_wait",
++      "read",
++    ]);
++    expect(catalogRef.current?.entries.map((entry) => entry.name)).toEqual(["read"]);
++  });
++
+   it.each(["before", "after"] as const)(
+     "keeps hook-denied tools fenced when the hook resolves %s a permission change",
+     (hookTiming) => {
+diff --git a/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts b/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
+index 5bb32689..715477de 100644
+--- a/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
+@@ -130,6 +130,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
+     toolSearchCatalogRef,
+     toolSearchRuntimeConfig,
+   } = toolBase;
++  const codeModeSurface = toolBase.toolSurfaceRuntime.plan.codeModeSurface;
+   const { systemPromptReport, systemPromptText } = input.systemPrompt;
+   const effectiveToolCount = effectiveTools.length;
+   const sessionPreparation = {
+@@ -279,6 +280,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
+               catalogToolHookContext,
+               clientTools,
+               codeModeControlsEnabledForRun,
++              codeModeSurface,
+               deferredDirectoryToolsCallable,
+               effectiveTools,
+               pinTools,
+diff --git a/src/agents/embedded-agent-runner/run/attempt-tool-catalog.ts b/src/agents/embedded-agent-runner/run/attempt-tool-catalog.ts
+index 94208a4a..be7fd6bf 100644
+--- a/src/agents/embedded-agent-runner/run/attempt-tool-catalog.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-tool-catalog.ts
+@@ -154,7 +154,9 @@ export async function prepareEmbeddedAttemptToolCatalog(input: {
+       clientTools,
+       clientToolsCataloged:
+         toolSearch.catalogRegistered &&
+-        (codeModeControlsEnabledForRun || toolSearchConfig.mode !== "directory"),
++        (codeModeControlsEnabledForRun
++          ? preparedToolBase.toolSurfaceRuntime.plan.codeModeSurface !== "additive"
++          : toolSearchConfig.mode !== "directory"),
+       catalogToolCount: toolSearch.catalogToolCount,
+       controlsEnabled: toolSearchControlsEnabledForRun || codeModeControlsEnabledForRun,
+       deferredToolsCallable: deferredDirectoryToolsCallable,
 diff --git a/src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts b/src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts
 index 2ff22e3f..d5ada285 100644
 --- a/src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts
@@ -1168,6 +1468,20 @@ index 2ff22e3f..d5ada285 100644
    it("carries native catalog capabilities without widening direct execution authority", () => {
      const foreignTool = tool("sessions_yield");
      setPluginToolMeta(foreignTool, { pluginId: "bundle-mcp", optional: false });
+diff --git a/src/agents/embedded-agent-runner/run/attempt.ts b/src/agents/embedded-agent-runner/run/attempt.ts
+index ba68cc8a..71796305 100644
+--- a/src/agents/embedded-agent-runner/run/attempt.ts
++++ b/src/agents/embedded-agent-runner/run/attempt.ts
+@@ -385,6 +385,9 @@ async function runEmbeddedAttemptOwned(
+         tools: preparedBundleTools.tools,
+         catalogRef: preparedToolBase.toolSearchCatalogRef,
+         codeModeControlsEnabled: preparedToolBase.codeModeControlsEnabledForRun,
++        codeModeControlNames: preparedToolBase.codeModeControlsEnabledForRun
++          ? Object.values(preparedToolBase.toolSurfaceRuntime.plan.codeModeControlNames)
++          : [],
+         onApplied: (surface) => {
+           const allowedNames = new Set([
+             ...surface.activeToolNames,
 diff --git a/src/agents/embedded-agent-runner/terminal-tool-failure.ts b/src/agents/embedded-agent-runner/terminal-tool-failure.ts
 index d175fa17..34c77003 100644
 --- a/src/agents/embedded-agent-runner/terminal-tool-failure.ts
@@ -1214,6 +1528,160 @@ index 466d09e6..345666dd 100644
    code: "UNKNOWN_TOOL_ID";
  };
  
+diff --git a/src/agents/harness/host-capability-types.ts b/src/agents/harness/host-capability-types.ts
+index 5cc57f9e..ab9e6918 100644
+--- a/src/agents/harness/host-capability-types.ts
++++ b/src/agents/harness/host-capability-types.ts
+@@ -151,6 +151,10 @@ export type AgentHarnessHostCapabilities = Readonly<{
+     options: AgentHarnessToolSurfaceOptions,
+     bindingOptions?: Readonly<{ cwd?: string }>,
+   ) => Promise<AnyAgentTool[]>;
++  /** Projects the same admitted installed-skill catalog used by native tool construction. */
++  prepareInstalledSkills?: (
++    options: AgentHarnessToolSurfaceOptions,
++  ) => NonNullable<AgentHarnessToolSurfaceOptions["installedSkills"]>;
+   /** Core-owned byte binding for a native command approval, scoped to this admitted run. */
+   prepareMutableFileApproval?: (request: { command: string; cwd?: string }) => Promise<
+     | {
+diff --git a/src/agents/harness/host-capability.ts b/src/agents/harness/host-capability.ts
+index 7d5cfb38..787a849e 100644
+--- a/src/agents/harness/host-capability.ts
++++ b/src/agents/harness/host-capability.ts
+@@ -544,6 +544,8 @@ export function createAgentHarnessHostCapabilities(params: {
+       );
+       return bindCreatedTools(sourceTools, bindingOptions);
+     },
++    prepareInstalledSkills: (options) =>
++      toolConstructionInputs(options, []).options.installedSkills ?? [],
+     prepareMutableFileApproval: async (request) => {
+       assertActive();
+       const prepared = await prepareSystemRunMutableFileApproval(request);
+diff --git a/src/agents/harness/host-skills.test.ts b/src/agents/harness/host-skills.test.ts
+index 30d58377..a7f9dfe5 100644
+--- a/src/agents/harness/host-skills.test.ts
++++ b/src/agents/harness/host-skills.test.ts
+@@ -68,6 +68,17 @@ it("binds skill reads to a late sandbox and refuses reads after host closure", a
+     },
+   });
+   try {
++    const prepareInstalledSkills = expectDefined(
++      host.hostCapabilities.prepareInstalledSkills,
++      "admitted host installed skills",
++    );
++    const preparedSkills = prepareInstalledSkills({
++      workspaceDir: "/host",
++      config: { plugins: { enabled: false } },
++      sandbox,
++    });
++    expect(preparedSkills.map((entry) => entry.name)).toEqual(["guide"]);
++    const preparedGuide = expectDefined(preparedSkills[0], "prepared sandbox guide");
+     const createToolSurface = expectDefined(
+       host.hostCapabilities.createToolSurface,
+       "admitted host tool surface",
+@@ -106,10 +117,14 @@ it("binds skill reads to a late sandbox and refuses reads after host closure", a
+     expect(readFile).toHaveBeenCalledWith(
+       expect.objectContaining({ filePath: runtimePath, maxBytes: 256 * 1024 }),
+     );
++    await expect(readCodeModeSkill(preparedGuide)).resolves.toBe(
++      "Complete sandbox instructions",
++    );
+     host.closeHost();
+     await expect(read.execute("closed", { name: "guide" })).rejects.toThrow();
+     await expect(search.execute("closed-search", { query: "sandbox" })).rejects.toThrow();
+-    expect(readFile).toHaveBeenCalledTimes(2);
++    await expect(readCodeModeSkill(preparedGuide)).rejects.toThrow();
++    expect(readFile).toHaveBeenCalledTimes(3);
+   } finally {
+     host.closeHost();
+     host.closeAdmission();
+@@ -226,6 +241,29 @@ it("keeps the host-owned skill root when plugin options widen placement or repla
+     },
+   });
+   try {
++    const prepareInstalledSkills = expectDefined(
++      host.hostCapabilities.prepareInstalledSkills,
++      "host installed skills",
++    );
++    const preparedSkills = prepareInstalledSkills({
++      workspaceDir: parent,
++      cwd: parent,
++      requireWorkspaceOnly: undefined,
++      sandbox: null,
++      installedSkills: [
++        {
++          name: "outside",
++          description: "Plugin replacement",
++          location: outside,
++          source: { filePath: outside, readContent: "Plugin outside instructions" },
++        },
++      ],
++    });
++    expect(preparedSkills.map((skill) => skill.name)).toEqual(["inside"]);
++    const preparedInside = expectDefined(preparedSkills[0], "prepared inside skill");
++    expect(() =>
++      prepareInstalledSkills({ sessionPermissionPolicy: { root: parent, mode: "full" } }),
++    ).toThrow("escapes the captured required workspace");
+     const createTools = expectDefined(host.hostCapabilities.createToolSurface, "host tools");
+     const tools = createTools({
+       workspaceDir: parent,
+@@ -260,6 +298,8 @@ it("keeps the host-owned skill root when plugin options widen placement or repla
+     expect(() => createTools({ sessionPermissionPolicy: { root: parent, mode: "full" } })).toThrow(
+       "escapes the captured required workspace",
+     );
++    host.closeHost();
++    await expect(readCodeModeSkill(preparedInside)).rejects.toThrow();
+   } finally {
+     host.closeHost();
+     host.closeAdmission();
+diff --git a/src/agents/harness/prompt-tool-policy.ts b/src/agents/harness/prompt-tool-policy.ts
+index 512ea2af..9bb9cd08 100644
+--- a/src/agents/harness/prompt-tool-policy.ts
++++ b/src/agents/harness/prompt-tool-policy.ts
+@@ -39,7 +39,8 @@ export function createAgentHarnessPromptToolPolicy<T extends NamedTool>(params:
+   tools: readonly T[];
+   catalogRef?: ToolSearchCatalogRef;
+   catalogEntries?: readonly ToolSearchCatalogEntry[];
+-  codeModeControlsEnabled: boolean;
++  codeModeControlsEnabled?: boolean;
++  codeModeControlNames?: readonly string[];
+   catalogPrompt?: {
+     config?: OpenClawConfig;
+     agentId?: string;
+@@ -49,6 +50,11 @@ export function createAgentHarnessPromptToolPolicy<T extends NamedTool>(params:
+   };
+ }) {
+   const baselineTools = [...params.tools];
++  const codeModeControlNames =
++    params.codeModeControlNames ??
++    (params.codeModeControlsEnabled
++      ? [CODE_MODE_EXEC_TOOL_NAME, CODE_MODE_WAIT_TOOL_NAME]
++      : []);
+   const currentCatalog = params.catalogRef?.current;
+   const catalog =
+     currentCatalog && params.catalogRef
+@@ -56,9 +62,10 @@ export function createAgentHarnessPromptToolPolicy<T extends NamedTool>(params:
+           ref: params.catalogRef,
+           entries: [...(params.catalogEntries ?? currentCatalog.entries)],
+           directOnlyToolNames: params.catalogRef.baselineDirectOnlyToolNames,
+-          controlNames: params.codeModeControlsEnabled
+-            ? new Set([CODE_MODE_EXEC_TOOL_NAME, CODE_MODE_WAIT_TOOL_NAME])
+-            : TOOL_SEARCH_CONTROL_TOOL_NAMES,
++          controlNames:
++            codeModeControlNames.length > 0
++              ? new Set(codeModeControlNames)
++              : TOOL_SEARCH_CONTROL_TOOL_NAMES,
+         }
+       : undefined;
+   return {
+@@ -100,7 +107,7 @@ export function createAgentHarnessPromptToolPolicy<T extends NamedTool>(params:
+         tools,
+         toolSchemaDirectoryPrompt:
+           catalogReachable && params.catalogPrompt
+-            ? params.codeModeControlsEnabled
++            ? codeModeControlNames.length > 0
+               ? buildCodeModeCatalogPrompt(
+                   { ...params.catalogPrompt, catalogRef: catalog.ref },
+                   catalog.ref.current?.entries ?? [],
 diff --git a/src/agents/harness/tool-surface-bridge.test.ts b/src/agents/harness/tool-surface-bridge.test.ts
 index f3979935..9efa08e5 100644
 --- a/src/agents/harness/tool-surface-bridge.test.ts
@@ -1289,7 +1757,7 @@ index f3979935..9efa08e5 100644
      {
        mode: "automatic Code Mode",
 diff --git a/src/agents/harness/tool-surface-bridge.ts b/src/agents/harness/tool-surface-bridge.ts
-index 163f0638..832836bd 100644
+index 163f0638..57424c3d 100644
 --- a/src/agents/harness/tool-surface-bridge.ts
 +++ b/src/agents/harness/tool-surface-bridge.ts
 @@ -2,11 +2,8 @@ import type { AgentToolSurfacePresentation } from "../../../packages/gateway-pro
@@ -1342,6 +1810,61 @@ index 163f0638..832836bd 100644
      ],
    });
    const toolSearchCatalogExecutor =
+@@ -135,6 +134,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+       hookContext?: HookContext;
+       localModelLeanApplied?: boolean;
+       prepared?: PreparedToolSurface;
++      codeModeSkills?: PreparedToolSurface["codeModeSkills"];
+     } = {},
+   ) => {
+     const prepared = options.prepared;
+@@ -154,8 +154,10 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+     let effectiveTools = prepared
+       ? projectedUncompactedTools
+       : filterRuntimeCompatibleTools(projectedUncompactedTools).tools;
+-    const codeModeSkills = prepared?.codeModeSkills ?? presentation?.skills;
+-    const createControls = codeModeControlsEnabled
++    const codeModeSkills = prepared?.codeModeSkills ?? options.codeModeSkills ?? presentation?.skills;
++    const hasCallableSurface = effectiveTools.length > 0 || (codeModeSkills?.length ?? 0) > 0;
++    const surfaceCodeModeControlsEnabled = codeModeControlsEnabled && hasCallableSurface;
++    const createControls = surfaceCodeModeControlsEnabled
+       ? createCodeModeTools
+       : toolSearchControlsEnabled &&
+           !effectiveTools.some((tool) => TOOL_SEARCH_CONTROL_TOOL_NAMES.has(tool.name))
+@@ -178,7 +180,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+       ...params,
+       tools: [...controls, ...effectiveTools],
+       toolSearchRuntimeConfig,
+-      codeModeControlsEnabled,
++      codeModeControlsEnabled: surfaceCodeModeControlsEnabled,
+       toolSearchConfig,
+       catalogRef: toolSearchCatalogRef,
+       toolHookContext: options.hookContext,
+@@ -209,11 +211,13 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+       promptToolPolicy: createAgentHarnessPromptToolPolicy({
+         tools: effectiveTools,
+         catalogRef: toolSearchCatalogRef,
+-        codeModeControlsEnabled,
++        codeModeControlNames: surfaceCodeModeControlsEnabled
++          ? Object.values(plan.codeModeControlNames)
++          : [],
+         catalogPrompt:
+-          toolSearchControlsEnabled || codeModeControlsEnabled
++          toolSearchControlsEnabled || surfaceCodeModeControlsEnabled
+             ? {
+-                config: codeModeControlsEnabled ? params.config : toolSearchRuntimeConfig,
++                config: surfaceCodeModeControlsEnabled ? params.config : toolSearchRuntimeConfig,
+                 toolSearchDirectoryLean: presentation?.toolSearchDirectoryLean,
+                 agentId: params.agentId,
+                 sessionKey: params.sessionKey,
+@@ -225,6 +229,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+   };
+   return {
+     plan,
++    codeModeControlNames: plan.codeModeControlNames,
+     codeModeControlsEnabled,
+     compactTools,
+     config: toolSearchControlsEnabled ? toolSearchRuntimeConfig : params.config,
 diff --git a/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts b/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts
 index 3352876c..72d7adbe 100644
 --- a/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts
@@ -1578,6 +2101,36 @@ index ab5f6bc1..9696e614 100644
        (!sourceMessageToolOnly || messageToolAvailable) && [
          "## Assistant Output Directives",
          ...(sourceMessageToolOnly
+diff --git a/src/agents/tool-search-catalog.ts b/src/agents/tool-search-catalog.ts
+index f1561fec..08491618 100644
+--- a/src/agents/tool-search-catalog.ts
++++ b/src/agents/tool-search-catalog.ts
+@@ -501,6 +501,7 @@ export function applyToolCatalogCompaction(
+ export function addClientToolsToToolCatalog(params: {
+   tools: ToolDefinition[];
+   enabled: boolean;
++  directVisible?: boolean;
+   catalogRef?: ToolSearchCatalogRef;
+ }): { tools: ToolDefinition[]; compacted: boolean; catalogToolCount: number } {
+   const catalogRef = params.catalogRef;
+@@ -509,8 +510,15 @@ export function addClientToolsToToolCatalog(params: {
+   }
+   registerToolSearchCatalog({
+     catalogRef,
+-    entries: params.tools.map((tool) => toCatalogEntry(tool, "client")),
++    entries: params.tools.map((tool) => ({
++      ...toCatalogEntry(tool, "client"),
++      directVisible: params.directVisible === true,
++    })),
+     append: true,
+   });
+-  return { tools: [], compacted: params.tools.length > 0, catalogToolCount: params.tools.length };
++  return {
++    tools: params.directVisible ? params.tools : [],
++    compacted: params.directVisible !== true && params.tools.length > 0,
++    catalogToolCount: params.tools.length,
++  };
+ }
 diff --git a/src/agents/tool-search-scheduling.ts b/src/agents/tool-search-scheduling.ts
 index 78f4067b..17d73f75 100644
 --- a/src/agents/tool-search-scheduling.ts

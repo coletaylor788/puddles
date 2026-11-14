@@ -57,7 +57,7 @@ index 8d12a8a1d98..ed394186a07 100644
    return { attempt, bridge, journal, recorder, session, target, tempDir };
  }
 diff --git a/extensions/copilot/src/attempt-transcript-journal.test.ts b/extensions/copilot/src/attempt-transcript-journal.test.ts
-index d3dc5a4ecdd..cfbdfbf7428 100644
+index d3dc5a4ecdd1ed3ce43594deaae338ee350cc4ec..29875fa4391d3a77f02deb875f9544d3af9f8d93 100644
 --- a/extensions/copilot/src/attempt-transcript-journal.test.ts
 +++ b/extensions/copilot/src/attempt-transcript-journal.test.ts
 @@ -67,6 +67,27 @@ async function createInitializedFixture() {
@@ -81,7 +81,7 @@ index d3dc5a4ecdd..cfbdfbf7428 100644
 +      expect(snapshot.replayInvalid).toBe(tampered);
 +      const rows = transcriptMessages(await readSessionTranscriptEvents(target));
 +      expect(rows).toHaveLength(1);
-+      expect(rows[0].message).toMatchObject({ role: "user", content: "inspect both files" });
++      expect(rows[0]).toMatchObject({ message: { role: "user", content: "inspect both files" } });
 +    },
 +  );
 +
@@ -112,10 +112,10 @@ index d837c40b86c..d63e87d6948 100644
            replayInvalid = true;
          } else {
 diff --git a/extensions/copilot/src/attempt.test.ts b/extensions/copilot/src/attempt.test.ts
-index 129f8bd2da4..ccf39a1a962 100644
+index 129f8bd2da49076b4d51bb37443c251fe6665f35..9662f2c8f4b5c5c82e65dd65d4cb9b83ac416ddf 100644
 --- a/extensions/copilot/src/attempt.test.ts
 +++ b/extensions/copilot/src/attempt.test.ts
-@@ -1203,6 +1203,40 @@ describe("runCopilotAttempt", () => {
+@@ -1203,6 +1203,39 @@ describe("runCopilotAttempt", () => {
      );
    });
  
@@ -124,7 +124,7 @@ index 129f8bd2da4..ccf39a1a962 100644
 +    async (withHooks) => {
 +      const currentInboundContext = {
 +        text: "A heartbeat delivered: Tuesday or Thursday?",
-+        promptJoiner: "\n",
++        promptJoiner: "\n" as const,
 +      };
 +      const beforePromptBuild = vi.fn(() => ({ appendContext: "Hook suffix" }));
 +      if (withHooks)
@@ -134,13 +134,12 @@ index 129f8bd2da4..ccf39a1a962 100644
 +        pool: makeFakePool(sdk),
 +      });
 +      expect(projectAgentRunAttemptTerminal(result.terminal).promptError).toBeNull();
-+      const prompt = sdk.sessions[0]?.sendAndWait.mock.calls[0]?.[0]?.prompt;
-+      expect(prompt).toBe(
-+        `${currentInboundContext.text}\nhello${withHooks ? "\n\nHook suffix" : ""}`,
-+      );
-+      expect(requireCreateSessionConfig(sdk).systemMessage?.content ?? "").not.toContain(
-+        currentInboundContext.text,
-+      );
++      expect(sdk.sessions[0]?.sendAndWait.mock.calls[0]?.[0]).toMatchObject({
++        prompt: `${currentInboundContext.text}\nhello${withHooks ? "\n\nHook suffix" : ""}`,
++      });
++      expect(requireCreateSessionConfig(sdk)).not.toMatchObject({
++        systemMessage: { content: expect.stringContaining(currentInboundContext.text) },
++      });
 +      if (withHooks)
 +        expect(beforePromptBuild).toHaveBeenCalledWith(
 +          expect.objectContaining({ prompt: `${currentInboundContext.text}\nhello` }),
@@ -156,7 +155,7 @@ index 129f8bd2da4..ccf39a1a962 100644
    it("preserves the required message tool through before_prompt_build toolsAllow", async () => {
      installHooks([
        {
-@@ -1714,7 +1748,13 @@ describe("runCopilotAttempt", () => {
+@@ -1714,7 +1747,13 @@ describe("runCopilotAttempt", () => {
          installHooks([{ hookName: "before_prompt_build", handler: beforePromptBuild }]);
          const sdk = makeFakeSdk();
  
@@ -171,7 +170,7 @@ index 129f8bd2da4..ccf39a1a962 100644
  
          expect(beforePromptBuild).not.toHaveBeenCalled();
          expect(requireCreateSessionConfig(sdk)).not.toHaveProperty("systemMessage");
-@@ -2529,6 +2569,7 @@ describe("runCopilotAttempt", () => {
+@@ -2529,6 +2568,7 @@ describe("runCopilotAttempt", () => {
          makeFinalizationParams({
            disableTools: false,
            extraSystemPrompt: "ambient instructions must not reach finalization",
@@ -179,13 +178,13 @@ index 129f8bd2da4..ccf39a1a962 100644
            hooksConfig: { onPreToolUse: nativeHook },
            infiniteSessionConfig: { enabled: true },
            initialReplayState: { replayInvalid: true, sdkSessionId: "sdk-settled-session" },
-@@ -2546,6 +2587,9 @@ describe("runCopilotAttempt", () => {
+@@ -2546,6 +2586,9 @@ describe("runCopilotAttempt", () => {
  
        expect(projectAgentRunAttemptTerminal(result.terminal).promptError).toBeNull();
        expect(result.assistantTexts).toEqual(["final answer"]);
-+      expect(sdk.sessions[0]?.sendAndWait.mock.calls[0]?.[0]?.prompt).not.toContain(
-+        "Must remain outside settled finalization",
-+      );
++      expect(sdk.sessions[0]?.sendAndWait.mock.calls[0]?.[0]).toMatchObject({
++        prompt: expect.not.stringContaining("Must remain outside settled finalization"),
++      });
        expect(result.currentAttemptCompletedAssistant).toMatchObject({
          content: [{ type: "text", text: "final answer" }],
          stopReason: "stop",

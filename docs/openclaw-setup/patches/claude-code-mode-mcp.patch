@@ -91,6 +91,38 @@ index 00000000..bce80868
 +  }
 +  return skills;
 +}
+diff --git a/src/agents/cli-runner/prepare-mcp.test-support.ts b/src/agents/cli-runner/prepare-mcp.test-support.ts
+index f8a575f0..131ea831 100644
+--- a/src/agents/cli-runner/prepare-mcp.test-support.ts
++++ b/src/agents/cli-runner/prepare-mcp.test-support.ts
+@@ -135,6 +135,9 @@ export function registerCliMcpPreparationTests({
+     });
+     expect(JSON.stringify(context.preparedBackend.env)).not.toContain(messageActionTurnCapability);
+     expect(mintMcpLoopbackClientGrant).toHaveBeenCalledWith({
++      abortSignal: undefined,
++      assertCurrent: undefined,
++      codeModeSkills: [],
+       context: {
+         sessionKey: "agent:main:telegram:group:chat123",
+         runtimePolicySessionKey: "agent:worker:discord:default:direct:canonical-sender",
+@@ -148,6 +151,7 @@ export function registerCliMcpPreparationTests({
+         messageProvider: "telegram",
+         clientCaps: ["tool-events", "inline-widgets"],
+         pinnedWidgetAuthoring: true,
++        conversationToolPolicy: undefined,
+         currentChannelId: "telegram:-100123:topic:42",
+         currentThreadTs: "42",
+         currentMessageId: "reply-message-1",
+@@ -188,6 +192,9 @@ export function registerCliMcpPreparationTests({
+         groupId: "chat123",
+         groupChannel: "ops",
+         groupSpace: "workspace-a",
++        gatewayUiCommandTarget: undefined,
++        modelHasVision: undefined,
++        replyToMode: undefined,
+         spawnedBy: "agent:main:telegram:group:parent",
+       },
+       runtimeOwnerToken: "loopback-owner-token",
 diff --git a/src/agents/cli-runner/prepare-mcp.ts b/src/agents/cli-runner/prepare-mcp.ts
 index d00197c2..f04f02d6 100644
 --- a/src/agents/cli-runner/prepare-mcp.ts
@@ -147,18 +179,18 @@ index d00197c2..f04f02d6 100644
        Boolean(projectNativeToolAuthority),
        run,
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 6084207f..7c816b80 100644
+index 6084207f..7f5e5e9a 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
-@@ -88,6 +88,7 @@ import {
-   prepareAgentRunAdmission,
-   prepareSystemAgentRunAdmission,
- } from "../admitted-run-context.js";
+@@ -121,6 +121,7 @@ import {
+   getCliSessionBinding,
+   hashCliSessionText,
+ } from "../cli-session.js";
 +import { readCodeModeSkill } from "../code-mode-skills.js";
- import {
-   withTestRunAdmission,
-   wrapRunWithTestPreparedAdmission,
-@@ -4130,10 +4131,26 @@ describe("prepareCliRunContext", () => {
+ import { resetContextWindowCacheForTest } from "../context.test-support.js";
+ import { waitForDeferredTurnMaintenanceForSession } from "../embedded-agent-runner/context-engine-maintenance.js";
+ import { createContextEngineLogicalTurnLease } from "../harness/context-engine-logical-turn.js";
+@@ -4130,10 +4131,40 @@ describe("prepareCliRunContext", () => {
        containerWorkdir: "/workspace",
        skillsWorkspaceDir: materializedWorkspace,
        workspaceAccess: "rw",
@@ -170,22 +202,36 @@ index 6084207f..7c816b80 100644
 +          readPath: materializedSkillPath,
 +        },
 +      ],
-+    });
-+
+     });
+ 
 +    const mintMcpLoopbackClientGrant = vi.fn(createTestMcpLoopbackClientGrant);
++    const projectSkillReader = vi.fn(() => ({
++      agentId: "main",
++      tools: [
++        {
++          name: "read",
++          label: "Read",
++          description: "Read a delivered skill file",
++          parameters: { type: "object", properties: {} },
++          execute: vi.fn(),
++        },
++      ],
++    }));
 +    setCliRunnerPrepareTestDeps({
 +      getActiveMcpLoopbackRuntime: vi.fn(createLoopbackRuntime),
 +      mintMcpLoopbackClientGrant,
-     });
++      resolveMcpLoopbackPolicyTools: projectSkillReader,
++      resolveMcpLoopbackScopedTools: projectSkillReader,
++    });
 +    setRawCliBackendForPrepareTest(buildDefaultTestCliBackend({ bundleMcp: true }));
- 
++
      const config: OpenClawConfig = {
        agents: { ownership: "explicit", entries: { main: {}, worker: {} } },
 +      tools: { codeMode: { enabled: true, surface: "additive", executor: "quickjs" } },
      };
      const skillsSnapshot: SkillSnapshot = {
        prompt: [
-@@ -4170,6 +4187,7 @@ describe("prepareCliRunContext", () => {
+@@ -4170,6 +4201,7 @@ describe("prepareCliRunContext", () => {
        agentId: "main",
        prompt: "are there any unread emails",
        skillsSnapshot,
@@ -193,21 +239,21 @@ index 6084207f..7c816b80 100644
      });
  
      expect(ensureSandboxWorkspaceForSessionMock).toHaveBeenCalledWith({
-@@ -4187,6 +4205,12 @@ describe("prepareCliRunContext", () => {
+@@ -4187,6 +4219,12 @@ describe("prepareCliRunContext", () => {
      expect(context.systemPromptReport.skills.entries).toEqual([
        { name: "gog", blockChars: expect.any(Number) },
      ]);
 +    const skills = mintMcpLoopbackClientGrant.mock.calls[0]?.[0]?.codeModeSkills;
 +    expect(skills).toHaveLength(1);
-+    expect(skills?.[0]?.location).toBe(
-+      "/workspace/.openclaw/sandbox-skills/skills/gog/SKILL.md",
-+    );
++    expect(skills?.[0]?.location).toBe("/workspace/.openclaw/sandbox-skills/skills/gog/SKILL.md");
 +    await expect(readCodeModeSkill(skills![0]!)).resolves.toContain("Use the Gmail tools");
++    await fixture.cleanup();
++    await expect(readCodeModeSkill(skills![0]!)).rejects.toThrow(/authority|current|closed/i);
    });
  
    it("lazily rebuilds an unsafe modern skills snapshot for a non-sandbox CLI run", async () => {
 diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index 7ea677ac..a1039b72 100644
+index 7ea677ac..3216691b 100644
 --- a/src/agents/cli-runner/prepare.ts
 +++ b/src/agents/cli-runner/prepare.ts
 @@ -23,6 +23,7 @@ import {
@@ -218,15 +264,79 @@ index 7ea677ac..a1039b72 100644
  import { ensureMcpLoopbackServer } from "../../gateway/mcp-http.js";
  import {
    createMcpLoopbackServerConfig,
-@@ -83,6 +84,7 @@ import {
+@@ -83,6 +84,8 @@ import {
  } from "../cli-auth-epoch.js";
  import { resolveCliBackendConfig } from "../cli-backends.js";
  import { hashCliSessionText, resolveCliSessionReuse } from "../cli-session.js";
++import { resolveCodeModeConfig } from "../code-mode-runtime.js";
 +import type { CodeModeSkill } from "../code-mode-skills.js";
  import {
    claudeCliSessionTranscriptHasContent,
    claudeCliSessionTranscriptHasOrphanedToolUse,
-@@ -736,7 +738,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -107,6 +110,7 @@ import { buildSystemPromptReport } from "../system-prompt-report.js";
+ import { appendModelIdentitySystemPrompt, buildModelIdentityPromptLine } from "../system-prompt.js";
+ import { normalizeToolPolicyName } from "../tool-policy.js";
+ import { assertNativeCronCreatorCapabilities } from "../tools/cron-tool-creator-cap.js";
++import { createInstalledSkillTools } from "../tools/installed-skill-tools.js";
+ import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
+ import {
+   DEFAULT_BOOTSTRAP_FILENAME,
+@@ -690,6 +694,38 @@ async function prepareCliRunContextWithinReadFence(
+         store: authStore ?? (await loadScopedAuthStore()),
+       }
+     : undefined;
++  params = await admitCliRunParams(params, workspaceResolution.agentId);
++  const skillPreparationParams = params;
++  const assertSkillsCurrent = skillPreparationParams.admittedRunContext
++    ? createCliRunCurrentAssertion({
++        ...skillPreparationParams,
++        admittedRunContext: skillPreparationParams.admittedRunContext,
++      })
++    : () => {
++        skillPreparationParams.assertCurrent?.();
++        skillPreparationParams.abortSignal?.throwIfAborted();
++        skillPreparationParams.preparedRunAdmission?.assertSourceCurrent();
++      };
++  const preparedSkills =
++    skipsTurnPreparation || nodeClaudePlacement || claudeSkillsPlugin.args.length > 0
++      ? { prompt: "", codeModeSkills: [] as CodeModeSkill[] }
++      : await resolveCliSkillsPrompt({
++          assertCurrent: assertSkillsCurrent,
++          run: params,
++          workspaceDir,
++          executionWorkspaceDir: cwd,
++          config: params.config,
++          agentId: sessionAgentId,
++          sessionKey: params.sessionKey?.trim() || params.sessionId,
++        });
++  assertSkillsCurrent();
++  const codeModeSkills = preparedSkills.codeModeSkills ?? [];
++  const resolvedCodeMode = resolveCodeModeConfig(runConfig, policyAgentId);
++  const additiveMcpCodeMode =
++    bundleMcpEnabled &&
++    resolvedCodeMode.enabled !== false &&
++    resolvedCodeMode.surface === "additive";
++  const installedSkillTools = additiveMcpCodeMode ? createInstalledSkillTools(codeModeSkills) : [];
+   params.assertCurrent?.();
+   // Exclusive runs cannot hand configured MCP servers to the CLI. Serve them
+   // through the loopback bridge so every turn lists the same tools.
+@@ -720,6 +756,7 @@ async function prepareCliRunContextWithinReadFence(
+         })
+       : undefined;
+   params.assertCurrent?.();
++  const bundledMcpTools = [...(loopbackBundleMcp?.tools ?? []), ...installedSkillTools];
+   const mcpProjection = mcpContextBase
+     ? await mcp.prepareCliMcpToolProjection(params, {
+         agentId: workspaceResolution.agentId,
+@@ -729,14 +766,14 @@ async function prepareCliRunContextWithinReadFence(
+         scope: {
+           cfg: runConfig,
+           ...(skillLibraryAuthoring ? { skillLibraryAuthoring } : {}),
+-          ...(loopbackBundleMcp ? { bundledTools: loopbackBundleMcp.tools } : {}),
++          ...(bundledMcpTools.length > 0 ? { bundledTools: bundledMcpTools } : {}),
+           ...(mcpToolAuth ? { authProfileStore: mcpToolAuth.store } : {}),
+           ...(mcpToolAuth?.agentDir ? { authProfileStoreAgentDir: mcpToolAuth.agentDir } : {}),
+         },
          resolvePolicyTools: resolveMcpLoopbackPolicyTools,
          resolveScopedTools: resolveMcpLoopbackScopedTools,
        })
@@ -235,12 +345,11 @@ index 7ea677ac..a1039b72 100644
    params = mcpProjection.params;
    params.assertCurrent?.();
    const hookFilteredProjectedTools = applyEmbeddedAttemptToolsAllow(
-@@ -779,6 +781,35 @@ async function prepareCliRunContextWithinReadFence(
+@@ -779,6 +816,35 @@ async function prepareCliRunContextWithinReadFence(
      hookFilteredProjectedTools,
      params.cliToolAvailability?.openClaw,
    );
 +  // Preview only. The executable Code Mode runtime belongs to the minted MCP grant.
-+  const codeModeSkills: CodeModeSkill[] = [];
 +  const codeModePreview =
 +    bundleMcpEnabled && mcpContextBase
 +      ? createMcpCodeModeToolSurface({
@@ -251,6 +360,7 @@ index 7ea677ac..a1039b72 100644
 +            toolsAllow: projectedTools.map((tool) => tool.name),
 +          },
 +          tools: projectedTools,
++          skills: codeModeSkills,
 +          executeTool: async () => {
 +            throw new Error("CLI tool preview cannot execute tools");
 +          },
@@ -271,7 +381,7 @@ index 7ea677ac..a1039b72 100644
    // Mirror the embedded runner's bootstrap routing for backends that transport
    // OpenClaw's system prompt, using the final native or mediated file access.
    const canonicalWorkspace = resolveUserPath(
-@@ -836,7 +867,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -836,7 +902,7 @@ async function prepareCliRunContextWithinReadFence(
      ? projectedTools.find((tool) => tool.name === "skill_workshop")
      : undefined;
    const promptTools = bundleMcpEnabled
@@ -280,7 +390,7 @@ index 7ea677ac..a1039b72 100644
      : nodeSkillWorkshop
        ? [nodeSkillWorkshop]
        : [];
-@@ -888,6 +919,9 @@ async function prepareCliRunContextWithinReadFence(
+@@ -888,6 +954,9 @@ async function prepareCliRunContextWithinReadFence(
    const { mcpGrant, projectNativeToolAuthority, exclusiveTools } = mcp.prepareCliMcpGrant(params, {
      context: mcpContextBase,
      tools: projectedTools,
@@ -290,7 +400,7 @@ index 7ea677ac..a1039b72 100644
      promptBuildRestrictsTools,
      hostOwnedTools,
      nativeAuthorityAllowed: !skipsTurnPreparation && !nodeClaudePlacement,
-@@ -915,6 +949,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -915,12 +984,13 @@ async function prepareCliRunContextWithinReadFence(
        mcpLoopbackRuntime && mcpGrant
          ? mintMcpLoopbackClientGrant({
              ...mcpGrant,
@@ -298,7 +408,14 @@ index 7ea677ac..a1039b72 100644
              sessionEventSourcePolicy,
              runtimeOwnerToken: mcpLoopbackRuntime.ownerToken,
              bindQuestionAnswerAuthority: (assertActive) =>
-@@ -1302,11 +1337,15 @@ async function prepareCliRunContextWithinReadFence(
+               bindQuestionAnswerAuthorityForSession(mcpGrant.context.sessionKey, assertActive),
+             ...(skillLibraryAuthoring ? { skillLibraryAuthoring } : {}),
+-            ...(loopbackBundleMcp ? { bundledTools: loopbackBundleMcp.tools } : {}),
++            ...(bundledMcpTools.length > 0 ? { bundledTools: bundledMcpTools } : {}),
+             ...(mcpToolAuth ? { toolAuth: mcpToolAuth } : {}),
+           })
+         : undefined;
+@@ -1302,11 +1372,15 @@ async function prepareCliRunContextWithinReadFence(
        !nodeClaudePlacement &&
        candidateClaudeCliSessionId !== undefined &&
        isClaudeCliBackendId(params.provider);
@@ -314,7 +431,7 @@ index 7ea677ac..a1039b72 100644
        }));
      const managedClaudeLiveSessionGeneration =
        claudeCliTranscriptMissing &&
-@@ -1328,6 +1367,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1328,6 +1402,7 @@ async function prepareCliRunContextWithinReadFence(
        (await claudeCliSessionTranscriptHasOrphanedToolUse({
          sessionId: candidateClaudeCliSessionId,
          workspaceDir: cwd,
@@ -322,22 +439,34 @@ index 7ea677ac..a1039b72 100644
        }));
      const claudeCliInvalidatedReason: "missing-transcript" | "orphaned-tool-use" | undefined =
        claudeCliTranscriptMissing && !hasManagedClaudeLiveSession
-@@ -1369,7 +1409,7 @@ async function prepareCliRunContextWithinReadFence(
-         };
-     const preparedSkills =
-       skipsTurnPreparation || nodeClaudePlacement || claudeSkillsPlugin.args.length > 0
+@@ -1356,30 +1431,6 @@ async function prepareCliRunContextWithinReadFence(
+           cwd,
+           moduleUrl: import.meta.url,
+         });
+-    const skillPreparationParams = params;
+-    const assertSkillsCurrent = skillPreparationParams.admittedRunContext
+-      ? createCliRunCurrentAssertion({
+-          ...skillPreparationParams,
+-          admittedRunContext: skillPreparationParams.admittedRunContext,
+-        })
+-      : () => {
+-          skillPreparationParams.assertCurrent?.();
+-          skillPreparationParams.abortSignal?.throwIfAborted();
+-          skillPreparationParams.preparedRunAdmission?.assertSourceCurrent();
+-        };
+-    const preparedSkills =
+-      skipsTurnPreparation || nodeClaudePlacement || claudeSkillsPlugin.args.length > 0
 -        ? { prompt: "" }
-+        ? { prompt: "", codeModeSkills: [] as CodeModeSkill[] }
-         : await resolveCliSkillsPrompt({
-             assertCurrent: assertSkillsCurrent,
-             run: params,
-@@ -1380,6 +1420,9 @@ async function prepareCliRunContextWithinReadFence(
-             sessionKey: params.sessionKey?.trim() || params.sessionId,
-           });
-     assertSkillsCurrent();
-+    if (codeModeEnabled) {
-+      codeModeSkills.push(...(preparedSkills.codeModeSkills ?? []));
-+    }
+-        : await resolveCliSkillsPrompt({
+-            assertCurrent: assertSkillsCurrent,
+-            run: params,
+-            workspaceDir,
+-            executionWorkspaceDir: cwd,
+-            config: params.config,
+-            agentId: sessionAgentId,
+-            sessionKey: params.sessionKey?.trim() || params.sessionId,
+-          });
+-    assertSkillsCurrent();
      const { runtimeChannel, runtimeCapabilities, customInlineButtonHint, messageToolHints } =
        resolveRuntimeChannelPromptContext({
          cfg: params.config,
@@ -729,10 +858,10 @@ index bf2d4ca6..c492f8ff 100644
      isCurrent,
 diff --git a/src/gateway/mcp-http.code-mode.test.ts b/src/gateway/mcp-http.code-mode.test.ts
 new file mode 100644
-index 00000000..b68bcec0
+index 00000000..9f46a26a
 --- /dev/null
 +++ b/src/gateway/mcp-http.code-mode.test.ts
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,144 @@
 +import { afterEach, describe, expect, it } from "vitest";
 +import {
 +  fakeTool,
@@ -740,8 +869,10 @@ index 00000000..b68bcec0
 +  resultDetails,
 +  testing,
 +} from "../agents/code-mode.test-support.js";
++import { createInstalledSkillTools } from "../agents/tools/installed-skill-tools.js";
 +import type { OpenClawConfig } from "../config/types.openclaw.js";
 +import { createMcpCodeModeToolSurface } from "./mcp-http.code-mode.js";
++import { resolveMcpLoopbackScopedTools } from "./mcp-http.runtime.js";
 +
 +const surfaces: ReturnType<typeof createMcpCodeModeToolSurface>[] = [];
 +afterEach(async () => {
@@ -786,6 +917,60 @@ index 00000000..b68bcec0
 +}
 +
 +describe("MCP Code Mode delegated policy", () => {
++  it("keeps config-denied skill reads out of direct and scripted surfaces", async () => {
++    const skills = [
++      {
++        name: "manual",
++        description: "Synthetic manual",
++        location: "/fixture/SKILL.md",
++        source: { filePath: "/fixture/SKILL.md", readContent: "Authorized instructions" },
++      },
++    ];
++    const config: OpenClawConfig = {
++      plugins: { enabled: false },
++      tools: {
++        deny: ["skills_read"],
++        codeMode: { enabled: true, surface: "additive", executor: "quickjs" },
++      },
++    };
++    const context = {
++      agentId: "main",
++      sessionKey: "agent:main:skill-denied",
++      sessionId: "skill-denied-session",
++      runId: "skill-denied-run",
++      senderIsOwner: false,
++      toolsAllow: ["skills_search", "skills_read"],
++      codeMode: true,
++    };
++    const scoped = await resolveMcpLoopbackScopedTools({
++      cfg: config,
++      context,
++      bundledTools: createInstalledSkillTools(skills),
++    });
++    expect(scoped.tools.map((tool) => tool.name)).toEqual(["skills_search"]);
++    const value = createMcpCodeModeToolSurface({
++      config,
++      context,
++      tools: scoped.tools,
++      skills,
++      executeTool: async ({ toolName, toolCallId, input, signal, onUpdate }) => {
++        const tool = scoped.tools.find((candidate) => candidate.name === toolName);
++        if (!tool) throw new Error(`Unknown scoped tool: ${toolName}`);
++        return tool.execute(toolCallId, input, signal, onUpdate);
++      },
++    });
++    surfaces.push(value);
++    expect(value.tools.map((tool) => tool.name)).not.toContain("skills_read");
++    const exec = value.tools.find((tool) => tool.name === "code_exec")!;
++    expect(
++      resultDetails(
++        await exec.execute("scripted-denied", {
++          code: 'return await skills.read("manual");',
++        }),
++      ).status,
++    ).toBe("failed");
++  });
++
 +  it.each([true, false])(
 +    "selects worker policy %s without replacing the current session",
 +    (enabled) => {
@@ -823,7 +1008,7 @@ index 00000000..b68bcec0
 +});
 diff --git a/src/gateway/mcp-http.code-mode.ts b/src/gateway/mcp-http.code-mode.ts
 new file mode 100644
-index 00000000..78e571a2
+index 00000000..20ed1b49
 --- /dev/null
 +++ b/src/gateway/mcp-http.code-mode.ts
 @@ -0,0 +1,55 @@
@@ -871,7 +1056,7 @@ index 00000000..78e571a2
 +    prepared: {
 +      preserveToolNames: params.tools.map((tool) => tool.name),
 +      toolExecutionAllow: context.toolsAllow,
-+      codeModeSkills: params.skills,
++      codeModeSkills: params.tools.some((tool) => tool.name === "skills_read") ? params.skills : [],
 +      abortSignal: params.signal,
 +      executeTool: params.executeTool,
 +    },
@@ -1473,10 +1658,18 @@ index fb28074f..b685a299 100644
      this.#grantConfigScopes.clear();
    }
 diff --git a/src/gateway/mcp-http.test.ts b/src/gateway/mcp-http.test.ts
-index c9e7155e..ebd71a47 100644
+index c9e7155e..ab9f09a6 100644
 --- a/src/gateway/mcp-http.test.ts
 +++ b/src/gateway/mcp-http.test.ts
-@@ -43,12 +43,12 @@ import type { resolveGatewayScopedTools } from "./tool-resolution.js";
+@@ -32,6 +32,7 @@ import { createProcessSessionFixture } from "../agents/bash-process-registry.tes
+ import { createProcessTool } from "../agents/bash-tools.process.js";
+ import type { AnyAgentTool } from "../agents/tools/common.js";
+ import { getGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
++import { createInstalledSkillTools } from "../agents/tools/installed-skill-tools.js";
+ import {
+   drainSystemEventEntries,
+   enqueueSystemEventWithReceipt,
+@@ -43,12 +44,12 @@ import type { resolveGatewayScopedTools } from "./tool-resolution.js";
  
  const activeAdmissions: PreparedAgentRunAdmission[] = [];
  
@@ -1491,7 +1684,7 @@ index c9e7155e..ebd71a47 100644
        ingress: { kind: "system", boundary: "mcp-http-test", state: "present" },
      },
      operationalRunInstance: createOperationalRunInstanceRef(runId),
-@@ -96,7 +96,9 @@ const loadNodeExecAvailabilityMock = vi.hoisted(() =>
+@@ -96,7 +97,9 @@ const loadNodeExecAvailabilityMock = vi.hoisted(() =>
  
  const logWarnMock = vi.hoisted(() => vi.fn<(message: string) => void>());
  const sessionEntries = vi.hoisted(() => new Map<string, Record<string, unknown>>());
@@ -1502,7 +1695,7 @@ index c9e7155e..ebd71a47 100644
  
  // Partial: the real gateway resolver reaches other exports of this module when a
  // test drives it instead of the mock below.
-@@ -130,7 +132,8 @@ vi.mock("../config/sessions/session-accessor.entry.js", async (importOriginal) =
+@@ -130,7 +133,8 @@ vi.mock("../config/sessions/session-accessor.entry.js", async (importOriginal) =
    };
  });
  
@@ -1512,7 +1705,7 @@ index c9e7155e..ebd71a47 100644
    runBeforeToolCallHook: (...args: Parameters<typeof runBeforeToolCallHookMock>) =>
      runBeforeToolCallHookMock(...args),
  }));
-@@ -930,6 +933,7 @@ describe("mcp loopback server", () => {
+@@ -930,6 +934,7 @@ describe("mcp loopback server", () => {
        sourceReplyDeliveryMode: "message_tool_only",
        sourceReplyOnly: true,
        toolsAllow: ["message"],
@@ -1520,7 +1713,7 @@ index c9e7155e..ebd71a47 100644
        nativeCronCreatorToolAllowlist: ["read", "write", "edit", "apply_patch", "exec", "process"],
        // The delegation gate lives in resolveGatewayScopedTools, so dropping
        // this field at the HTTP mapping silently disables it for CLI backends.
-@@ -976,6 +980,7 @@ describe("mcp loopback server", () => {
+@@ -976,6 +981,7 @@ describe("mcp loopback server", () => {
          headers: jsonHeaders({
            ...(captureKey ? { "x-openclaw-cli-capture-key": captureKey } : {}),
            "x-session-key": "agent:main:main",
@@ -1528,7 +1721,7 @@ index c9e7155e..ebd71a47 100644
            "x-openclaw-session-id": "session-spoofed",
            "x-openclaw-message-channel": "telegram",
            "x-openclaw-client-caps": "inline-widgets,admin",
-@@ -1937,6 +1942,47 @@ describe("mcp loopback server", () => {
+@@ -1937,6 +1943,47 @@ describe("mcp loopback server", () => {
      expect(execute).toHaveBeenCalledWith(expect.stringMatching(/^mcp-/), {}, undefined);
    });
  
@@ -1569,14 +1762,14 @@ index c9e7155e..ebd71a47 100644
 +    });
 +    expect((payload as McpToolResultPayload).result?.isError).toBe(true);
 +    expect(onToolCallResult).toHaveBeenCalledWith(
-+      expect.objectContaining({ outcome: "blocked", deniedReason: "request-aborted" }),
++      expect.objectContaining({ outcome: "unknown", result: partialDelivery }),
 +    );
 +  });
 +
    it("closes a pending startup once for concurrent shutdown callers", async () => {
      const starting = ensureMcpLoopbackServer();
      const closing = Promise.allSettled([closeMcpLoopbackServer(), closeMcpLoopbackServer()]);
-@@ -2536,3 +2582,357 @@ describe("createMcpLoopbackServerConfig", () => {
+@@ -2536,3 +2583,418 @@ describe("createMcpLoopbackServerConfig", () => {
    });
  });
  /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
@@ -1666,7 +1859,7 @@ index c9e7155e..ebd71a47 100644
 +      if (decision === "revoke") revokeMcpLoopbackClientGrant(grant.token);
 +      resolved.resolve();
 +      const response = await readOkMcpPayload(await pending);
-+      expect(prepare).toHaveBeenCalledTimes(1);
++      expect(prepare).toHaveBeenCalledTimes(decision === "allow" ? 2 : 1);
 +      expect(
 +        runBeforeToolCallHookMock.mock.calls.filter(
 +          ([call]) => (call as BeforeToolCallHookInput).toolName === "fixture",
@@ -1725,6 +1918,8 @@ index c9e7155e..ebd71a47 100644
 +          parameters: { type: "object", properties: { value: { type: "number" } } },
 +          execute,
 +        },
++        ...(((params as { bundledTools?: MockGatewayTool[] }).bundledTools ??
++          []) as MockGatewayTool[]),
 +      ],
 +    }));
 +    const { runtime } = await startLoopbackServerForTest();
@@ -1734,21 +1929,24 @@ index c9e7155e..ebd71a47 100644
 +      sessionId: "ptc-session",
 +      runId: "ptc-run",
 +      senderIsOwner: false,
-+      toolsAllow: ["fixture"],
++      toolsAllow: ["fixture", "skills_search", "skills_read"],
 +      codeMode: true,
 +    } satisfies McpLoopbackRequestContext;
++    const codeModeSkills = [
++      {
++        name: "manual",
++        description: "Synthetic manual",
++        location: "/fixture/SKILL.md",
++        source: { filePath: "/fixture/SKILL.md", readContent: "Authorized instructions" },
++      },
++    ];
++    const bundledTools = createInstalledSkillTools(codeModeSkills);
 +    const grant = mintMcpLoopbackClientGrant({
 +      context,
 +      runtimeOwnerToken: runtime.ownerToken,
 +      admittedRunContext: await activeAdmission(context.runId, "reader"),
-+      codeModeSkills: [
-+        {
-+          name: "manual",
-+          description: "Synthetic manual",
-+          location: "/fixture/SKILL.md",
-+          source: { filePath: "/fixture/SKILL.md", readContent: "Authorized instructions" },
-+        },
-+      ],
++      codeModeSkills,
++      bundledTools,
 +    });
 +    expect(
 +      activateMcpLoopbackClientGrantCapture({
@@ -1763,6 +1961,8 @@ index c9e7155e..ebd71a47 100644
 +      "code_exec",
 +      "code_wait",
 +      "fixture",
++      "skills_search",
++      "skills_read",
 +    ]);
 +    const calls: BeforeToolCallHookInput[] = [];
 +    runBeforeToolCallHookMock.mockImplementation(async (args: BeforeToolCallHookInput) => {
@@ -1778,6 +1978,10 @@ index c9e7155e..ebd71a47 100644
 +      { value: 7 },
 +      expect.any(AbortSignal),
 +    );
++    const directSkill = await readOkMcpPayload(
++      await sendLoopbackToolCall({ ...scope, name: "skills_read", args: { name: "manual" } }),
++    );
++    expect(JSON.stringify(directSkill.result?.content)).toContain("Authorized instructions");
 +    const script = await readOkMcpPayload(
 +      await sendLoopbackToolCall({
 +        ...scope,
@@ -1863,6 +2067,56 @@ index c9e7155e..ebd71a47 100644
 +      }),
 +    );
 +    expect(JSON.parse(String(denied.result?.content?.[0]?.text)).status).toBe("failed");
++    const readDeniedContext = {
++      ...context,
++      sessionKey: "agent:reader:read-denied",
++      sessionId: "read-denied-session",
++      runId: "read-denied-run",
++      toolsAllow: ["fixture"],
++    } satisfies McpLoopbackRequestContext;
++    const readDeniedGrant = mintMcpLoopbackClientGrant({
++      context: readDeniedContext,
++      runtimeOwnerToken: runtime.ownerToken,
++      admittedRunContext: await activeAdmission(readDeniedContext.runId, "reader"),
++      codeModeSkills,
++      bundledTools,
++    });
++    activateMcpLoopbackClientGrantCapture({
++      token: readDeniedGrant.token,
++      runtimeOwnerToken: runtime.ownerToken,
++      captureKey: "read-denied-capture",
++    });
++    const readDeniedScope = {
++      token: readDeniedGrant.token,
++      headers: { "x-openclaw-cli-capture-key": "read-denied-capture" },
++    };
++    const readDeniedList = await readOkMcpPayload(await sendLoopbackToolsList(readDeniedScope));
++    expect(readDeniedList.result?.tools?.map((tool) => tool.name)).toEqual([
++      "code_exec",
++      "code_wait",
++      "fixture",
++    ]);
++    expect(
++      (
++        await readOkMcpPayload(
++          await sendLoopbackToolCall({
++            ...readDeniedScope,
++            name: "skills_read",
++            args: { name: "manual" },
++          }),
++        )
++      ).result?.isError,
++    ).toBe(true);
++    const scriptedReadDenied = await readOkMcpPayload(
++      await sendLoopbackToolCall({
++        ...readDeniedScope,
++        name: "code_exec",
++        args: { code: 'return await skills.read("manual");' },
++      }),
++    );
++    expect(JSON.parse(String(scriptedReadDenied.result?.content?.[0]?.text))).toMatchObject({
++      status: "failed",
++    });
 +    const parked = await readOkMcpPayload(
 +      await sendLoopbackToolCall({
 +        ...scope,

@@ -1,5 +1,5 @@
 diff --git a/docs/plugins/cli-backend-plugins.md b/docs/plugins/cli-backend-plugins.md
-index 09b2f2778aa..495d03725c2 100644
+index 09b2f277..495d0372 100644
 --- a/docs/plugins/cli-backend-plugins.md
 +++ b/docs/plugins/cli-backend-plugins.md
 @@ -580,3 +580,30 @@ MCP, or session-resume behavior.
@@ -34,7 +34,7 @@ index 09b2f2778aa..495d03725c2 100644
 +Managed Claude settings still require deployment qualification because they can
 +have higher precedence than inline settings.
 diff --git a/extensions/anthropic/cli-backend.ts b/extensions/anthropic/cli-backend.ts
-index 189471477d3..59d84616c70 100644
+index 18947147..59d84616 100644
 --- a/extensions/anthropic/cli-backend.ts
 +++ b/extensions/anthropic/cli-backend.ts
 @@ -5,6 +5,7 @@ import type {
@@ -94,7 +94,7 @@ index 189471477d3..59d84616c70 100644
      },
 diff --git a/extensions/anthropic/cli-profile.test.ts b/extensions/anthropic/cli-profile.test.ts
 new file mode 100644
-index 00000000000..0637a40bfaf
+index 00000000..0637a40b
 --- /dev/null
 +++ b/extensions/anthropic/cli-profile.test.ts
 @@ -0,0 +1,176 @@
@@ -276,7 +276,7 @@ index 00000000000..0637a40bfaf
 +});
 diff --git a/extensions/anthropic/cli-profile.ts b/extensions/anthropic/cli-profile.ts
 new file mode 100644
-index 00000000000..9cc6b4ca96b
+index 00000000..9cc6b4ca
 --- /dev/null
 +++ b/extensions/anthropic/cli-profile.ts
 @@ -0,0 +1,179 @@
@@ -460,7 +460,7 @@ index 00000000000..9cc6b4ca96b
 +  };
 +}
 diff --git a/extensions/anthropic/cli-runtime.test-support.ts b/extensions/anthropic/cli-runtime.test-support.ts
-index 9e735220398..94c95431a73 100644
+index 9e735220..94c95431 100644
 --- a/extensions/anthropic/cli-runtime.test-support.ts
 +++ b/extensions/anthropic/cli-runtime.test-support.ts
 @@ -34,6 +34,7 @@ let injectedContext;
@@ -494,7 +494,7 @@ index 9e735220398..94c95431a73 100644
        assert.equal(response.behavior, "deny");
        result({ cancelledDecision: response });
 diff --git a/extensions/anthropic/cli-runtime.test.ts b/extensions/anthropic/cli-runtime.test.ts
-index f6ac3840a3d..052fbb6c471 100644
+index 79e325c0..9d2e0512 100644
 --- a/extensions/anthropic/cli-runtime.test.ts
 +++ b/extensions/anthropic/cli-runtime.test.ts
 @@ -973,6 +973,29 @@ describe("Claude native stdio boundary", () => {
@@ -528,7 +528,7 @@ index f6ac3840a3d..052fbb6c471 100644
  
  it("waits for native transcript retention before acknowledging PreCompact, without waiting for memory inference", async () => {
 diff --git a/extensions/anthropic/cli-shared.ts b/extensions/anthropic/cli-shared.ts
-index 713a5a4bbf9..090bce4fa16 100644
+index 713a5a4b..090bce4f 100644
 --- a/extensions/anthropic/cli-shared.ts
 +++ b/extensions/anthropic/cli-shared.ts
 @@ -5,6 +5,7 @@ import {
@@ -591,7 +591,7 @@ index 713a5a4bbf9..090bce4fa16 100644
 +  );
  }
 diff --git a/extensions/anthropic/cli.runtime.ts b/extensions/anthropic/cli.runtime.ts
-index 9b678cda46b..4ac352a6287 100644
+index 374afcef..dd814b4b 100644
 --- a/extensions/anthropic/cli.runtime.ts
 +++ b/extensions/anthropic/cli.runtime.ts
 @@ -90,6 +90,7 @@ async function authorizeTool(
@@ -654,7 +654,7 @@ index 9b678cda46b..4ac352a6287 100644
        hookSpecificOutput: {
          hookEventName: "PreToolUse",
 diff --git a/extensions/anthropic/openclaw.plugin.json b/extensions/anthropic/openclaw.plugin.json
-index 00805a6e7ee..69b773fdfe1 100644
+index 00805a6e..69b773fd 100644
 --- a/extensions/anthropic/openclaw.plugin.json
 +++ b/extensions/anthropic/openclaw.plugin.json
 @@ -400,6 +400,36 @@
@@ -695,7 +695,7 @@ index 00805a6e7ee..69b773fdfe1 100644
          "type": "object",
          "additionalProperties": false,
 diff --git a/src/agents/cli-backends.ts b/src/agents/cli-backends.ts
-index b863c727033..6d8a7353a6e 100644
+index b863c727..6d8a7353 100644
 --- a/src/agents/cli-backends.ts
 +++ b/src/agents/cli-backends.ts
 @@ -212,11 +212,12 @@ export function cliBackendSupportsSessionFork(provider: string, cfg?: OpenClawCo
@@ -713,7 +713,7 @@ index b863c727033..6d8a7353a6e 100644
      ...(cfg ? { config: cfg } : {}),
    };
 diff --git a/src/agents/cli-runner.spawn.test.ts b/src/agents/cli-runner.spawn.test.ts
-index 532c9da4e92..07e65b74758 100644
+index 532c9da4..07e65b74 100644
 --- a/src/agents/cli-runner.spawn.test.ts
 +++ b/src/agents/cli-runner.spawn.test.ts
 @@ -1650,5 +1650,62 @@ describe("runCliAgent spawn path", () => {
@@ -780,7 +780,7 @@ index 532c9da4e92..07e65b74758 100644
  });
  /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
 diff --git a/src/agents/cli-runner/cli-native-tool-approval.ts b/src/agents/cli-runner/cli-native-tool-approval.ts
-index 66cbd014706..df934b6662c 100644
+index 66cbd014..df934b66 100644
 --- a/src/agents/cli-runner/cli-native-tool-approval.ts
 +++ b/src/agents/cli-runner/cli-native-tool-approval.ts
 @@ -95,6 +95,7 @@ export async function requestCliNativeToolApproval(params: {
@@ -802,7 +802,7 @@ index 66cbd014706..df934b6662c 100644
              `${params.pluginId} native tool: ${params.toolName}`,
              PLUGIN_APPROVAL_TITLE_MAX_LENGTH,
 diff --git a/src/agents/cli-runner/cli-run-settlement.test.ts b/src/agents/cli-runner/cli-run-settlement.test.ts
-index cc722f8d3c7..7613285145c 100644
+index cc722f8d..76132851 100644
 --- a/src/agents/cli-runner/cli-run-settlement.test.ts
 +++ b/src/agents/cli-runner/cli-run-settlement.test.ts
 @@ -121,6 +121,21 @@ describe("isCliBindingFlushed", () => {
@@ -828,7 +828,7 @@ index cc722f8d3c7..7613285145c 100644
  
  describe("CLI native continuity projection", () => {
 diff --git a/src/agents/cli-runner/execute-plugin.policy.test.ts b/src/agents/cli-runner/execute-plugin.policy.test.ts
-index 1f40c31e4c2..7a80d709f56 100644
+index 1f40c31e..7a80d709 100644
 --- a/src/agents/cli-runner/execute-plugin.policy.test.ts
 +++ b/src/agents/cli-runner/execute-plugin.policy.test.ts
 @@ -1,3 +1,12 @@
@@ -1051,7 +1051,7 @@ index 1f40c31e4c2..7a80d709f56 100644
  
  describe("CLI MCP capture authority", () => {
 diff --git a/src/agents/cli-runner/execute-plugin.test.ts b/src/agents/cli-runner/execute-plugin.test.ts
-index 23bdbb727e0..e0d173ba46c 100644
+index 23bdbb72..e0d173ba 100644
 --- a/src/agents/cli-runner/execute-plugin.test.ts
 +++ b/src/agents/cli-runner/execute-plugin.test.ts
 @@ -1,3 +1,11 @@
@@ -1263,7 +1263,7 @@ index 23bdbb727e0..e0d173ba46c 100644
  
  describe("plugin-owned CLI ask_user timeout", () => {
 diff --git a/src/agents/cli-runner/execute-plugin.ts b/src/agents/cli-runner/execute-plugin.ts
-index dcf6b423416..691f59ac162 100644
+index dcf6b423..691f59ac 100644
 --- a/src/agents/cli-runner/execute-plugin.ts
 +++ b/src/agents/cli-runner/execute-plugin.ts
 @@ -1,4 +1,5 @@
@@ -1449,7 +1449,7 @@ index dcf6b423416..691f59ac162 100644
        const executionIterator = execution[Symbol.asyncIterator]();
        iterator = executionIterator;
 diff --git a/src/agents/cli-runner/execute.ts b/src/agents/cli-runner/execute.ts
-index 11e3d37bd5c..ddb748177bf 100644
+index 11e3d37b..ddb74817 100644
 --- a/src/agents/cli-runner/execute.ts
 +++ b/src/agents/cli-runner/execute.ts
 @@ -393,7 +393,7 @@ export async function executePreparedCliRun(
@@ -1462,19 +1462,26 @@ index 11e3d37bd5c..ddb748177bf 100644
          }
        }
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index d7d9fa9d77c..80ad37ef811 100644
+index 720e6ca5..f91d6808 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
-@@ -122,6 +122,8 @@ import {
-   hashCliSessionText,
- } from "../cli-session.js";
+@@ -124,6 +124,7 @@ import {
+ import { readCodeModeSkill } from "../code-mode-skills.js";
  import { resetContextWindowCacheForTest } from "../context.test-support.js";
-+import { applyEmbeddedAttemptToolsAllow } from "../embedded-agent-runner/run/attempt-tool-construction-plan.js";
-+import { attachToolAllowlistIntersection } from "../tool-policy.js";
  import { waitForDeferredTurnMaintenanceForSession } from "../embedded-agent-runner/context-engine-maintenance.js";
++import { applyEmbeddedAttemptToolsAllow } from "../embedded-agent-runner/run/attempt-tool-construction-plan.js";
  import { createContextEngineLogicalTurnLease } from "../harness/context-engine-logical-turn.js";
  import { claimPendingAgentQuestionAnswerFromCaller } from "../harness/gateway-question.js";
-@@ -4726,5 +4728,103 @@ describe("prepareCliRunContext", () => {
+ import { withQuestionGateway } from "../harness/gateway-question.test-support.js";
+@@ -136,6 +137,7 @@ import {
+   captureRoutingDecisionWork,
+   createModelRoutingTestAdmission,
+ } from "../test-helpers/model-routing-decision-e2e-fixtures.js";
++import { attachToolAllowlistIntersection } from "../tool-policy.js";
+ import type { SystemAgentToolOptions } from "../tools/system-agent-tool.js";
+ import { prepareCliBundleMcpCaptureAttempt, prepareCliBundleMcpConfig } from "./bundle-mcp.js";
+ import { prepareClaudeCliSkillsPlugin } from "./claude-skills-plugin.js";
+@@ -4764,5 +4766,103 @@ describe("prepareCliRunContext", () => {
        }
      });
    });
@@ -1579,7 +1586,7 @@ index d7d9fa9d77c..80ad37ef811 100644
  });
  /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
 diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index 54dcdeee999..ae7dfb69fad 100644
+index 8d81a9c6..34220dae 100644
 --- a/src/agents/cli-runner/prepare.ts
 +++ b/src/agents/cli-runner/prepare.ts
 @@ -5,6 +5,7 @@ import {
@@ -1590,7 +1597,7 @@ index 54dcdeee999..ae7dfb69fad 100644
  import { getRuntimeConfig } from "../../config/config.js";
  import { canonicalizeMainSessionAlias } from "../../config/sessions/main-session.js";
  import type { OpenClawConfig } from "../../config/types.openclaw.js";
-@@ -285,6 +286,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -287,6 +288,7 @@ async function prepareCliRunContextWithinReadFence(
    // config and managed process reuse must key from the resolved session owner.
    const backendResolved = resolveCliBackendConfig(params.provider, params.config, {
      agentId: workspaceResolution.agentId,
@@ -1598,7 +1605,7 @@ index 54dcdeee999..ae7dfb69fad 100644
    });
    if (!backendResolved) {
      throw new Error(`Unknown CLI backend: ${params.provider}`);
-@@ -312,6 +314,26 @@ async function prepareCliRunContextWithinReadFence(
+@@ -314,6 +316,26 @@ async function prepareCliRunContextWithinReadFence(
      );
      return prepared;
    };
@@ -1625,7 +1632,7 @@ index 54dcdeee999..ae7dfb69fad 100644
    const toolPolicy = await resolveCliRuntimeToolPolicy({
      params,
      policySessionKey,
-@@ -691,7 +713,9 @@ async function prepareCliRunContextWithinReadFence(
+@@ -693,7 +715,9 @@ async function prepareCliRunContextWithinReadFence(
      skipPreparation: skipsTurnPreparation,
    });
    const shouldMaterializeRuntimePolicy =
@@ -1636,7 +1643,7 @@ index 54dcdeee999..ae7dfb69fad 100644
    const skillLibraryAuthoring: RunCliAgentParams["skillLibraryAuthoring"] =
      resolveStableCliSkillAuthoring(
        params.sessionKey,
-@@ -770,7 +794,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -805,7 +829,7 @@ async function prepareCliRunContextWithinReadFence(
    params = mcpProjection.params;
    params.assertCurrent?.();
    const hookFilteredProjectedTools = applyEmbeddedAttemptToolsAllow(
@@ -1645,7 +1652,7 @@ index 54dcdeee999..ae7dfb69fad 100644
      promptBuildToolsAllow,
    );
    if (
-@@ -829,7 +853,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -864,7 +888,7 @@ async function prepareCliRunContextWithinReadFence(
    const codeModeEnabled = codeModePreview?.enabled === true;
    const codeModePromptTools = codeModeEnabled ? codeModePreview.tools : projectedTools;
    codeModePreview?.cleanup();
@@ -1654,7 +1661,7 @@ index 54dcdeee999..ae7dfb69fad 100644
      params = {
        ...params,
        cliToolAvailability: {
-@@ -1157,6 +1181,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1192,6 +1216,7 @@ async function prepareCliRunContextWithinReadFence(
      );
      cleanupPreparedResources = cleanupPreparedBackend;
      const prepareExecutionContext = {
@@ -1663,10 +1670,10 @@ index 54dcdeee999..ae7dfb69fad 100644
        workspaceDir,
        agentDir,
 diff --git a/src/agents/cli-runner/prepare.web-search.test.ts b/src/agents/cli-runner/prepare.web-search.test.ts
-index 877279a308a60d6d785dabc5738f87150acd2c95..065f69d7e61c9f3244507c044965472de24c32d8 100644
+index 877279a3..c2138838 100644
 --- a/src/agents/cli-runner/prepare.web-search.test.ts
 +++ b/src/agents/cli-runner/prepare.web-search.test.ts
-@@ -16,6 +16,7 @@
+@@ -16,6 +16,7 @@ import {
    createTestMcpLoopbackClientGrant,
    createTestMcpLoopbackServerConfig,
  } from "../cli-runner.test-helpers.js";
@@ -1674,7 +1681,7 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..065f69d7e61c9f3244507c044965472d
  import { prepareCliRunContext } from "./prepare.js";
  import {
    resetCliRunnerPrepareTestDeps,
-@@ -23,7 +24,9 @@
+@@ -23,7 +24,9 @@ import {
  } from "./prepare.test-support.js";
  
  const { buildAnthropicCliBackend } = await loadBundledPluginFacade<{
@@ -1685,7 +1692,7 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..065f69d7e61c9f3244507c044965472d
  }>({ pluginId: "anthropic", artifactBasename: "api.js" });
  
  const searchTool = {
-@@ -93,7 +96,12 @@
+@@ -93,7 +96,12 @@ beforeEach(() => {
    nodeConnected = true;
    cliBackendsTesting.setDepsForTest({
      resolvePluginSetupCliBackend: () => undefined,
@@ -1699,7 +1706,7 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..065f69d7e61c9f3244507c044965472d
    });
    setCliRunnerPrepareTestDeps({
      isWorkspaceBootstrapPending: async () => false,
-@@ -269,86 +277,166 @@
+@@ -269,86 +277,169 @@ describe("Claude additive Code Mode preparation", () => {
  });
  
  describe("Code Mode preserves the original CLI execution surface", () => {
@@ -1714,6 +1721,27 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..065f69d7e61c9f3244507c044965472d
 -        },
 -      };
 -      const prepared = await fixture.prepare({
+-        provider: "claude-cli",
+-        model: "fixture-model",
+-        config: cfg,
+-        senderIsOwner: true,
+-        ...(restricted ? { cliToolAvailability: { native: [], openClaw: ["exec"] } } : {}),
+-      });
+-      try {
+-        const context = mintMcpLoopbackClientGrant.mock.calls[0]![0].context;
+-        expect(context.toolsAllow).toEqual(["exec"]);
+-        expect(context.codeModeMediatedTools).toEqual(restricted ? ["exec"] : []);
+-        const scoped = await resolveMcpLoopbackScopedTools({
+-          cfg,
+-          context,
+-          isGrantCurrent: () => true,
+-        });
+-        const exec = scoped.tools.find((tool) => tool.name === "exec")!;
+-        expect(exec.parameters).toMatchObject({
+-          properties: {
+-            host: {
+-              enum: restricted ? expect.arrayContaining(["gateway"]) : ["node"],
+-            },
 +  it.each([undefined, "workspace", "diagnostic"] as const)(
 +    "keeps exec constructor provenance for profile=%s",
 +    async (mode) => {
@@ -1740,24 +1768,55 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..065f69d7e61c9f3244507c044965472d
 +            codeMode: { enabled: true, surface: "additive", executor: "quickjs" },
 +            allow: ["exec"],
 +            exec: { host: "auto", mode: "full" },
-+          },
+           },
+-        });
+-        if (restricted) {
+-          return;
+-        }
+-        const direct = await exec.execute("direct-node", { command: "direct-proof" });
+-        expect(direct).toEqual({ content: [{ type: "text", text: "node execution" }] });
+-        const surface = createMcpCodeModeToolSurface({
 +        };
 +        const prepared = await fixture.prepare({
 +          provider: "claude-cli",
 +          model: "fixture-model",
-+          config: cfg,
+           config: cfg,
+-          context,
+-          tools: scoped.tools,
+-          executeTool: async ({ toolName, toolCallId, input, signal, onUpdate }) => {
+-            const tool = scoped.tools.find((candidate) => candidate.name === toolName);
+-            if (!tool) {
+-              throw new Error(`Unknown scoped tool: ${toolName}`);
+-            }
+-            return tool.execute(toolCallId, input, signal, onUpdate);
+-          },
 +          senderIsOwner: true,
 +          ...(restricted ? { cliToolAvailability: { native: [], openClaw: ["exec"] } } : {}),
-+        });
-+        try {
+         });
+         try {
+-          const codeExec = surface.tools.find((tool) => tool.name === "code_exec")!;
+-          const result = await codeExec.execute("script-node", {
+-            code: 'return await exec({command:"nested-proof"});',
 +          const context = mintMcpLoopbackClientGrant.mock.calls[0]![0].context;
 +          expect(context.toolsAllow).toEqual(["exec"]);
-+          expect(context.codeModeMediatedTools).toEqual(restricted ? ["exec"] : []);
++          expect(context.codeModeMediatedTools).toEqual(
++            restricted ? ["exec"] : expect.arrayContaining(["exec"]),
++          );
 +          const scoped = await resolveMcpLoopbackScopedTools({
 +            cfg,
 +            context,
 +            isGrantCurrent: () => true,
-+          });
+           });
+-          expect(result.details, JSON.stringify(result)).toMatchObject({ status: "completed" });
+-          expect(nodeExecution.mock.calls.map((call) => call[1])).toEqual([
+-            { command: "direct-proof" },
+-            { command: "nested-proof" },
+-          ]);
+-          for (const call of nodeExecution.mock.calls)
+-            expect(call[0]).toMatchObject({ host: "node" });
+-          const refused = await codeExec.execute("script-gateway", {
+-            code: 'return await exec({command:"forbidden",host:"gateway"});',
++          expect(scoped.tools.map((tool) => tool.name)).toEqual(["exec"]);
 +          const exec = scoped.tools.find((tool) => tool.name === "exec")!;
 +          expect(exec.parameters).toMatchObject({
 +            properties: {
@@ -1780,7 +1839,9 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..065f69d7e61c9f3244507c044965472d
 +              }
 +              return tool.execute(toolCallId, input, signal, onUpdate);
 +            },
-+          });
+           });
+-          expect(JSON.stringify(refused)).toContain("exec host not allowed");
+-          expect(nodeExecution).toHaveBeenCalledTimes(2);
 +          try {
 +            const codeExec = surface.tools.find((tool) => tool.name === "code_exec")!;
 +            const result = await codeExec.execute("script-node", {
@@ -1808,9 +1869,17 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..065f69d7e61c9f3244507c044965472d
 +            isGrantCurrent: () => true,
 +          });
 +          expect(disconnected.tools.some((tool) => tool.name === "exec")).toBe(false);
-+        } finally {
+         } finally {
+-          surface.cleanup();
 +          await prepared.preparedBackend.cleanup?.();
-+        }
+         }
+-        nodeConnected = false;
+-        const disconnected = await resolveMcpLoopbackScopedTools({
+-          cfg,
+-          context,
+-          isGrantCurrent: () => true,
+-        });
+-        expect(disconnected.tools.some((tool) => tool.name === "exec")).toBe(false);
 +      }
 +    },
 +  );
@@ -1840,11 +1909,8 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..065f69d7e61c9f3244507c044965472d
 +    "intersects the profile and caller cap $allowed",
 +    async ({ allowed, expected, ...testCase }) => {
 +      const context = await fixture.prepare({
-         provider: "claude-cli",
-         model: "fixture-model",
--        config: cfg,
--        senderIsOwner: true,
--        ...(restricted ? { cliToolAvailability: { native: [], openClaw: ["exec"] } } : {}),
++        provider: "claude-cli",
++        model: "fixture-model",
 +        config: {
 +          plugins: {
 +            entries: {
@@ -1865,68 +1931,8 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..065f69d7e61c9f3244507c044965472d
 +        ...("cap" in testCase
 +          ? { toolsAllow: testCase.cap }
 +          : { cliToolAvailability: { native: ["Write"], openClaw: allowed } }),
-       });
-       try {
--        const context = mintMcpLoopbackClientGrant.mock.calls[0]![0].context;
--        expect(context.toolsAllow).toEqual(["exec"]);
--        expect(context.codeModeMediatedTools).toEqual(restricted ? ["exec"] : []);
--        const scoped = await resolveMcpLoopbackScopedTools({
--          cfg,
--          context,
--          isGrantCurrent: () => true,
--        });
--        const exec = scoped.tools.find((tool) => tool.name === "exec")!;
--        expect(exec.parameters).toMatchObject({
--          properties: {
--            host: {
--              enum: restricted ? expect.arrayContaining(["gateway"]) : ["node"],
--            },
--          },
--        });
--        if (restricted) {
--          return;
--        }
--        const direct = await exec.execute("direct-node", { command: "direct-proof" });
--        expect(direct).toEqual({ content: [{ type: "text", text: "node execution" }] });
--        const surface = createMcpCodeModeToolSurface({
--          config: cfg,
--          context,
--          tools: scoped.tools,
--          executeTool: async ({ toolName, toolCallId, input, signal, onUpdate }) => {
--            const tool = scoped.tools.find((candidate) => candidate.name === toolName);
--            if (!tool) {
--              throw new Error(`Unknown scoped tool: ${toolName}`);
--            }
--            return tool.execute(toolCallId, input, signal, onUpdate);
--          },
--        });
--        try {
--          const codeExec = surface.tools.find((tool) => tool.name === "code_exec")!;
--          const result = await codeExec.execute("script-node", {
--            code: 'return await exec({command:"nested-proof"});',
--          });
--          expect(result.details, JSON.stringify(result)).toMatchObject({ status: "completed" });
--          expect(nodeExecution.mock.calls.map((call) => call[1])).toEqual([
--            { command: "direct-proof" },
--            { command: "nested-proof" },
--          ]);
--          for (const call of nodeExecution.mock.calls)
--            expect(call[0]).toMatchObject({ host: "node" });
--          const refused = await codeExec.execute("script-gateway", {
--            code: 'return await exec({command:"forbidden",host:"gateway"});',
--          });
--          expect(JSON.stringify(refused)).toContain("exec host not allowed");
--          expect(nodeExecution).toHaveBeenCalledTimes(2);
--        } finally {
--          surface.cleanup();
--        }
--        nodeConnected = false;
--        const disconnected = await resolveMcpLoopbackScopedTools({
--          cfg,
--          context,
--          isGrantCurrent: () => true,
--        });
--        expect(disconnected.tools.some((tool) => tool.name === "exec")).toBe(false);
++      });
++      try {
 +        const grant = mintMcpLoopbackClientGrant.mock.calls[0]?.[0]?.context;
 +        expect(grant?.toolsAllow).toEqual(expected);
 +        const names = context.systemPromptReport.tools.entries.map((tool) => tool.name);
@@ -1942,7 +1948,7 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..065f69d7e61c9f3244507c044965472d
      },
    );
 diff --git a/src/agents/command/attempt-execution.helpers.ts b/src/agents/command/attempt-execution.helpers.ts
-index 38096c09e5c..70da8628070 100644
+index 38096c09..70da8628 100644
 --- a/src/agents/command/attempt-execution.helpers.ts
 +++ b/src/agents/command/attempt-execution.helpers.ts
 @@ -390,6 +390,7 @@ function formatFallbackTurns(
@@ -1962,7 +1968,7 @@ index 38096c09e5c..70da8628070 100644
    if (!seed) {
      return "";
 diff --git a/src/agents/command/attempt-execution.ts b/src/agents/command/attempt-execution.ts
-index 098d2f2b9bb..fc4d61e5e8d 100644
+index 098d2f2b..fc4d61e5 100644
 --- a/src/agents/command/attempt-execution.ts
 +++ b/src/agents/command/attempt-execution.ts
 @@ -79,6 +79,7 @@ import {
@@ -1990,7 +1996,7 @@ index 098d2f2b9bb..fc4d61e5e8d 100644
            ) {
              return;
 diff --git a/src/agents/command/claude-cli-project-dir.ts b/src/agents/command/claude-cli-project-dir.ts
-index 357375644ac..764dd1843df 100644
+index 35737564..764dd184 100644
 --- a/src/agents/command/claude-cli-project-dir.ts
 +++ b/src/agents/command/claude-cli-project-dir.ts
 @@ -3,6 +3,25 @@ import os from "node:os";
@@ -2020,7 +2026,7 @@ index 357375644ac..764dd1843df 100644
  export function resolveClaudeCliProjectsDir(params: {
    homeDir?: string;
 diff --git a/src/agents/exec-defaults.test.ts b/src/agents/exec-defaults.test.ts
-index 6a47defc2b9..4d71615cca0 100644
+index 6a47defc..4d71615c 100644
 --- a/src/agents/exec-defaults.test.ts
 +++ b/src/agents/exec-defaults.test.ts
 @@ -362,4 +362,27 @@ describe("resolveExecDefaults", () => {
@@ -2052,7 +2058,7 @@ index 6a47defc2b9..4d71615cca0 100644
 +  });
  });
 diff --git a/src/agents/exec-defaults.ts b/src/agents/exec-defaults.ts
-index 3e28a79f160..3d35f7f6220 100644
+index 3e28a79f..3d35f7f6 100644
 --- a/src/agents/exec-defaults.ts
 +++ b/src/agents/exec-defaults.ts
 @@ -122,6 +122,8 @@ export type ResolveExecDefaultsParams = {
@@ -2075,7 +2081,7 @@ index 3e28a79f160..3d35f7f6220 100644
      ? resolveSessionPermissionExecPolicy(
          { mode: params.sessionEntry.permissionMode },
 diff --git a/src/agents/tools/embedded-gateway-stub.ts b/src/agents/tools/embedded-gateway-stub.ts
-index e3917da534d..40ed3fd2819 100644
+index e3917da5..40ed3fd2 100644
 --- a/src/agents/tools/embedded-gateway-stub.ts
 +++ b/src/agents/tools/embedded-gateway-stub.ts
 @@ -7,6 +7,7 @@ import type { CallGatewayOptions } from "../../gateway/call.js";
@@ -2097,7 +2103,7 @@ index e3917da534d..40ed3fd2819 100644
      sessionId,
      storePath,
 diff --git a/src/commands/doctor-claude-cli.ts b/src/commands/doctor-claude-cli.ts
-index 07cb371e66f..a39d03e5821 100644
+index 07cb371e..a39d03e5 100644
 --- a/src/commands/doctor-claude-cli.ts
 +++ b/src/commands/doctor-claude-cli.ts
 @@ -13,6 +13,7 @@ import {
@@ -2117,7 +2123,7 @@ index 07cb371e66f..a39d03e5821 100644
      return {
        agentId,
 diff --git a/src/config/sessions/session-history-types.ts b/src/config/sessions/session-history-types.ts
-index 0319892b26a..1d9bf5afc7f 100644
+index 0319892b..1d9bf5af 100644
 --- a/src/config/sessions/session-history-types.ts
 +++ b/src/config/sessions/session-history-types.ts
 @@ -108,6 +108,7 @@ export type ChatHistoryPageParams = {
@@ -2129,7 +2135,7 @@ index 0319892b26a..1d9bf5afc7f 100644
  
  type SessionHistoryTranscriptMeta = {
 diff --git a/src/gateway/cli-session-history.claude-snapshot.ts b/src/gateway/cli-session-history.claude-snapshot.ts
-index c1537f6c697..15e1f2f18be 100644
+index c1537f6c..15e1f2f1 100644
 --- a/src/gateway/cli-session-history.claude-snapshot.ts
 +++ b/src/gateway/cli-session-history.claude-snapshot.ts
 @@ -75,6 +75,7 @@ type Message = Record<string, unknown>;
@@ -2141,7 +2147,7 @@ index c1537f6c697..15e1f2f18be 100644
    reseedReceipt?: CliSessionReseedReceipt;
  };
 diff --git a/src/gateway/cli-session-history.claude.ts b/src/gateway/cli-session-history.claude.ts
-index e1fc51866c5..18a9b03949d 100644
+index e1fc5186..18a9b039 100644
 --- a/src/gateway/cli-session-history.claude.ts
 +++ b/src/gateway/cli-session-history.claude.ts
 @@ -1,7 +1,7 @@
@@ -2200,7 +2206,7 @@ index e1fc51866c5..18a9b03949d 100644
    if (!filePath) {
 diff --git a/src/gateway/cli-session-history.profile-dir.test.ts b/src/gateway/cli-session-history.profile-dir.test.ts
 new file mode 100644
-index 00000000000..43f24ddff2d
+index 00000000..43f24ddf
 --- /dev/null
 +++ b/src/gateway/cli-session-history.profile-dir.test.ts
 @@ -0,0 +1,154 @@
@@ -2359,7 +2365,7 @@ index 00000000000..43f24ddff2d
 +  });
 +});
 diff --git a/src/gateway/cli-session-history.ts b/src/gateway/cli-session-history.ts
-index c1ca6600b36..59d249952c6 100644
+index c1ca6600..59d24995 100644
 --- a/src/gateway/cli-session-history.ts
 +++ b/src/gateway/cli-session-history.ts
 @@ -118,6 +118,7 @@ export async function prepareCliSessionHistoryReader(
@@ -2371,7 +2377,7 @@ index c1ca6600b36..59d249952c6 100644
      reseedReceipt: binding.reseedReceipt,
    };
 diff --git a/src/gateway/server-methods/chat-history-handler.ts b/src/gateway/server-methods/chat-history-handler.ts
-index 81a31878c08..a4ae67d12a7 100644
+index 81a31878..a4ae67d1 100644
 --- a/src/gateway/server-methods/chat-history-handler.ts
 +++ b/src/gateway/server-methods/chat-history-handler.ts
 @@ -8,6 +8,7 @@ import {
@@ -2391,7 +2397,7 @@ index 81a31878c08..a4ae67d12a7 100644
                      sessionId,
                      storePath,
 diff --git a/src/plugins/cli-backend.types.ts b/src/plugins/cli-backend.types.ts
-index 20c2c9d2ebb..75dd8f7e651 100644
+index 20c2c9d2..75dd8f7e 100644
 --- a/src/plugins/cli-backend.types.ts
 +++ b/src/plugins/cli-backend.types.ts
 @@ -13,6 +13,10 @@ type CliBackendNoOutputWatchdog = {
@@ -2450,7 +2456,7 @@ index 20c2c9d2ebb..75dd8f7e651 100644
    backendId: string;
    agentId?: string;
 diff --git a/src/tui/embedded-backend.test.ts b/src/tui/embedded-backend.test.ts
-index cd42798159f..4ac26a46e28 100644
+index cd427981..4ac26a46 100644
 --- a/src/tui/embedded-backend.test.ts
 +++ b/src/tui/embedded-backend.test.ts
 @@ -3279,5 +3279,31 @@ describe("EmbeddedTuiBackend", () => {
@@ -2486,7 +2492,7 @@ index cd42798159f..4ac26a46e28 100644
  });
  /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
 diff --git a/src/tui/embedded-backend.ts b/src/tui/embedded-backend.ts
-index 3d58782534c..3d007d00e6d 100644
+index 3d587825..3d007d00 100644
 --- a/src/tui/embedded-backend.ts
 +++ b/src/tui/embedded-backend.ts
 @@ -21,6 +21,7 @@ import {

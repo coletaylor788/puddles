@@ -698,3 +698,26 @@ index 00000000000..6efc52ab3a7
 +  }
 +  throw new Error("test barrier timed out");
 +}
+diff --git a/src/auto-reply/reply/session-hooks-context.test.ts b/src/auto-reply/reply/session-hooks-context.test.ts
+index 5e179e809b84300c4d865d4050b0845cd643a833..2a8a99234a1b35757823f9831cdb7272dba4293b 100644
+--- a/src/auto-reply/reply/session-hooks-context.test.ts
++++ b/src/auto-reply/reply/session-hooks-context.test.ts
+@@ -299,8 +299,16 @@ describe("session hook context wiring", () => {
+         await flushSessionMemoryWritesForTest();
+         const memoryDir = path.join(workspaceDir, "memory");
+         const files = await fs.readdir(memoryDir);
+-        expect(files).toHaveLength(1);
+-        const content = await fs.readFile(path.join(memoryDir, files[0]!), "utf8");
++        const notes = files.filter((filename) => filename.endsWith(".md"));
++        expect(notes).toHaveLength(1);
++        const guard = ".session-memory.lock.reclaim";
++        expect(files.toSorted()).toEqual(
++          [...notes, ...(process.platform === "darwin" ? [guard] : [])].toSorted(),
++        );
++        if (process.platform === "darwin") {
++          expect((await fs.lstat(path.join(memoryDir, guard))).isFile()).toBe(true);
++        }
++        const content = await fs.readFile(path.join(memoryDir, notes[0]!), "utf8");
+         expect(content).toContain('assistant: "retiring-memory-5"');
+         expect(content).toContain('assistant: "retiring-memory-19"');
+         expect(content).not.toContain('"retiring-memory-4"');
