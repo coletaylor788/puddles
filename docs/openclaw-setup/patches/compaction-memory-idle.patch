@@ -1280,7 +1280,7 @@ index f04f02d6..94928bbd 100644
      signal: admittedParams.abortSignal,
      context,
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 7f5e5e9a..720e6ca5 100644
+index 3ec204fc..7d12c61e 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
 @@ -187,6 +187,7 @@ const ensureSandboxWorkspaceForSessionMock = vi.hoisted(() =>
@@ -1423,7 +1423,7 @@ index 7f5e5e9a..720e6ca5 100644
      "stops CLI skill preparation before sandbox materialization when %s authority is revoked",
      async (phase) => {
 diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index 3216691b..8d81a9c6 100644
+index f13b35b5..2d08924d 100644
 --- a/src/agents/cli-runner/prepare.ts
 +++ b/src/agents/cli-runner/prepare.ts
 @@ -354,6 +354,34 @@ async function prepareCliRunContextWithinReadFence(
@@ -1461,7 +1461,7 @@ index 3216691b..8d81a9c6 100644
    const sideQuestionDisablesNativeTools =
      isSideQuestion && backendResolved.sideQuestionToolMode === "disabled";
    const requestedNoNativeTools = params.cliToolAvailability?.native.length === 0;
-@@ -1508,6 +1536,8 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1515,6 +1543,8 @@ async function prepareCliRunContextWithinReadFence(
          ? undefined
          : await loadCliSessionPromptContext({
              ...params,
@@ -1470,7 +1470,7 @@ index 3216691b..8d81a9c6 100644
              allowRawTranscriptReseed,
              rawTranscriptReseedReason,
              nativeSessionId: reusableCliSessionId,
-@@ -1596,7 +1626,10 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1603,7 +1633,10 @@ async function prepareCliRunContextWithinReadFence(
        ? buildCliSessionHistoryPrompt({
            messages: sessionPromptContext?.reseedMessages ?? [],
            prompt: historyPromptCurrentTurn,
@@ -2280,7 +2280,7 @@ index d162899e..a62ef6f5 100644
    if (!hookRunner?.hasHooks("before_compaction")) {
      return;
 diff --git a/src/agents/harness/tool-surface-bridge.test.ts b/src/agents/harness/tool-surface-bridge.test.ts
-index 9efa08e5..69a40fd0 100644
+index 5120ae69..fea5c48d 100644
 --- a/src/agents/harness/tool-surface-bridge.test.ts
 +++ b/src/agents/harness/tool-surface-bridge.test.ts
 @@ -9,6 +9,11 @@ import { setPluginToolMeta } from "../../plugins/tool-metadata.js";
@@ -2295,7 +2295,7 @@ index 9efa08e5..69a40fd0 100644
  import { applyEmbeddedAttemptToolsAllow } from "../embedded-agent-runner/run/attempt-tool-construction-plan.js";
  import { projectAgentToolDefinition } from "../prepared-tool-surface.js";
  import { createStubTool } from "../test-helpers/agent-tool-stubs.js";
-@@ -114,6 +119,57 @@ describe("createAgentHarnessToolSurfaceRuntime", () => {
+@@ -116,6 +121,57 @@ describe("createAgentHarnessToolSurfaceRuntime", () => {
      },
    );
  
@@ -6796,10 +6796,10 @@ index b685a299..07d1e0da 100644
    scoped.captureFinalCronCreatorTools?.(new Set(toolSchema.map((tool) => tool.name)));
    return {
 diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
-index bac33203..d1213baf 100644
+index 24ec980f..90b037db 100644
 --- a/src/gateway/mcp-http.ts
 +++ b/src/gateway/mcp-http.ts
-@@ -302,6 +302,8 @@ async function startMcpLoopbackServer(
+@@ -303,6 +303,8 @@ async function startMcpLoopbackServer(
                    admittedRunContext: boundClientGrant?.admittedRunContext,
                    sessionEventSourcePolicy: boundClientGrant?.sessionEventSourcePolicy,
                    messageActionTurnCapability: boundClientGrant?.messageActionTurnCapability,

@@ -1462,7 +1462,7 @@ index 11e3d37b..ddb74817 100644
          }
        }
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 720e6ca5..f91d6808 100644
+index 7d12c61e..ba974a25 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
 @@ -124,6 +124,7 @@ import {
@@ -1481,7 +1481,7 @@ index 720e6ca5..f91d6808 100644
  import type { SystemAgentToolOptions } from "../tools/system-agent-tool.js";
  import { prepareCliBundleMcpCaptureAttempt, prepareCliBundleMcpConfig } from "./bundle-mcp.js";
  import { prepareClaudeCliSkillsPlugin } from "./claude-skills-plugin.js";
-@@ -4764,5 +4766,103 @@ describe("prepareCliRunContext", () => {
+@@ -4809,5 +4811,103 @@ describe("prepareCliRunContext", () => {
        }
      });
    });
@@ -1586,7 +1586,7 @@ index 720e6ca5..f91d6808 100644
  });
  /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
 diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index 8d81a9c6..34220dae 100644
+index 2d08924d..3a03dafa 100644
 --- a/src/agents/cli-runner/prepare.ts
 +++ b/src/agents/cli-runner/prepare.ts
 @@ -5,6 +5,7 @@ import {
@@ -1643,7 +1643,7 @@ index 8d81a9c6..34220dae 100644
    const skillLibraryAuthoring: RunCliAgentParams["skillLibraryAuthoring"] =
      resolveStableCliSkillAuthoring(
        params.sessionKey,
-@@ -805,7 +829,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -808,7 +832,7 @@ async function prepareCliRunContextWithinReadFence(
    params = mcpProjection.params;
    params.assertCurrent?.();
    const hookFilteredProjectedTools = applyEmbeddedAttemptToolsAllow(
@@ -1652,7 +1652,7 @@ index 8d81a9c6..34220dae 100644
      promptBuildToolsAllow,
    );
    if (
-@@ -864,7 +888,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -867,7 +891,7 @@ async function prepareCliRunContextWithinReadFence(
    const codeModeEnabled = codeModePreview?.enabled === true;
    const codeModePromptTools = codeModeEnabled ? codeModePreview.tools : projectedTools;
    codeModePreview?.cleanup();
@@ -1661,7 +1661,7 @@ index 8d81a9c6..34220dae 100644
      params = {
        ...params,
        cliToolAvailability: {
-@@ -1192,6 +1216,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1195,6 +1219,7 @@ async function prepareCliRunContextWithinReadFence(
      );
      cleanupPreparedResources = cleanupPreparedBackend;
      const prepareExecutionContext = {
