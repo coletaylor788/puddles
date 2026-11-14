@@ -1,6 +1,6 @@
 diff --git a/src/agents/cli-runner/code-mode-skills.test.ts b/src/agents/cli-runner/code-mode-skills.test.ts
 new file mode 100644
-index 00000000..80fd3782
+index 0000000000000000000000000000000000000000..80fd37824e830c448330e2618bb05e4ac4c662f8
 --- /dev/null
 +++ b/src/agents/cli-runner/code-mode-skills.test.ts
 @@ -0,0 +1,57 @@
@@ -63,7 +63,7 @@ index 00000000..80fd3782
 +});
 diff --git a/src/agents/cli-runner/code-mode-skills.ts b/src/agents/cli-runner/code-mode-skills.ts
 new file mode 100644
-index 00000000..bce80868
+index 0000000000000000000000000000000000000000..bce80868ac216f1dbf41c72f03560168fdcca93c
 --- /dev/null
 +++ b/src/agents/cli-runner/code-mode-skills.ts
 @@ -0,0 +1,24 @@
@@ -92,7 +92,7 @@ index 00000000..bce80868
 +  return skills;
 +}
 diff --git a/src/agents/cli-runner/prepare-mcp.test-support.ts b/src/agents/cli-runner/prepare-mcp.test-support.ts
-index f8a575f0..131ea831 100644
+index f8a575f0d85478356708ee6744a55a7a065c7848..131ea831276269a884db9e08c4c332b73eeb9bd5 100644
 --- a/src/agents/cli-runner/prepare-mcp.test-support.ts
 +++ b/src/agents/cli-runner/prepare-mcp.test-support.ts
 @@ -135,6 +135,9 @@ export function registerCliMcpPreparationTests({
@@ -124,7 +124,7 @@ index f8a575f0..131ea831 100644
        },
        runtimeOwnerToken: "loopback-owner-token",
 diff --git a/src/agents/cli-runner/prepare-mcp.ts b/src/agents/cli-runner/prepare-mcp.ts
-index d00197c2..f04f02d6 100644
+index d00197c253aa47526a36e7f90dd338b1f89d12c9..f04f02d642c988507497392ce33ced290c538996 100644
 --- a/src/agents/cli-runner/prepare-mcp.ts
 +++ b/src/agents/cli-runner/prepare-mcp.ts
 @@ -88,14 +88,14 @@ export async function prepareCliMcpToolProjection(
@@ -179,7 +179,7 @@ index d00197c2..f04f02d6 100644
        Boolean(projectNativeToolAuthority),
        run,
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 6084207f..3ec204fc 100644
+index 6084207f4cf9e1803c8356a2db976e8b69032ce2..37ba47882bbdcf2a6b93103f0b762b78ead00787 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
 @@ -121,6 +121,7 @@ import {
@@ -190,7 +190,7 @@ index 6084207f..3ec204fc 100644
  import { resetContextWindowCacheForTest } from "../context.test-support.js";
  import { waitForDeferredTurnMaintenanceForSession } from "../embedded-agent-runner/context-engine-maintenance.js";
  import { createContextEngineLogicalTurnLease } from "../harness/context-engine-logical-turn.js";
-@@ -4130,10 +4131,40 @@ describe("prepareCliRunContext", () => {
+@@ -4130,10 +4131,41 @@ describe("prepareCliRunContext", () => {
        containerWorkdir: "/workspace",
        skillsWorkspaceDir: materializedWorkspace,
        workspaceAccess: "rw",
@@ -207,6 +207,7 @@ index 6084207f..3ec204fc 100644
 +    const mintMcpLoopbackClientGrant = vi.fn(createTestMcpLoopbackClientGrant);
 +    const projectSkillReader = vi.fn(() => ({
 +      agentId: "main",
++      mediatedNativeTools: [],
 +      tools: [
 +        {
 +          name: "read",
@@ -231,7 +232,7 @@ index 6084207f..3ec204fc 100644
      };
      const skillsSnapshot: SkillSnapshot = {
        prompt: [
-@@ -4170,6 +4201,7 @@ describe("prepareCliRunContext", () => {
+@@ -4170,6 +4202,7 @@ describe("prepareCliRunContext", () => {
        agentId: "main",
        prompt: "are there any unread emails",
        skillsSnapshot,
@@ -239,7 +240,7 @@ index 6084207f..3ec204fc 100644
      });
  
      expect(ensureSandboxWorkspaceForSessionMock).toHaveBeenCalledWith({
-@@ -4187,6 +4219,10 @@ describe("prepareCliRunContext", () => {
+@@ -4187,6 +4220,10 @@ describe("prepareCliRunContext", () => {
      expect(context.systemPromptReport.skills.entries).toEqual([
        { name: "gog", blockChars: expect.any(Number) },
      ]);
@@ -250,7 +251,7 @@ index 6084207f..3ec204fc 100644
    });
  
    it("lazily rebuilds an unsafe modern skills snapshot for a non-sandbox CLI run", async () => {
-@@ -4231,6 +4267,7 @@ describe("prepareCliRunContext", () => {
+@@ -4231,6 +4268,7 @@ describe("prepareCliRunContext", () => {
      const skill = createWeatherSkillFixture(dir, true);
      const preparedExecutionCleanup = vi.fn(async () => undefined);
      const revokeMintedMcpLoopbackClientGrant = vi.fn(() => true);
@@ -258,7 +259,7 @@ index 6084207f..3ec204fc 100644
      setCliBackendForPrepareTest({
        id: "claude-cli",
        pluginId: "anthropic",
-@@ -4240,6 +4277,7 @@ describe("prepareCliRunContext", () => {
+@@ -4240,6 +4278,7 @@ describe("prepareCliRunContext", () => {
      setCliRunnerPrepareTestDeps({
        prepareClaudeCliSkillsPlugin,
        getActiveMcpLoopbackRuntime: vi.fn(createLoopbackRuntime),
@@ -266,7 +267,7 @@ index 6084207f..3ec204fc 100644
        revokeMintedMcpLoopbackClientGrant,
      });
  
-@@ -4260,6 +4298,12 @@ describe("prepareCliRunContext", () => {
+@@ -4260,6 +4299,12 @@ describe("prepareCliRunContext", () => {
      expect(manifest).toMatchObject({ name: "openclaw-skills", skills: "./skills" });
      const skillPath = path.join(pluginDir, "skills", "weather", "SKILL.md");
      expect(fs.readFileSync(skillPath, "utf8")).toContain("Read forecast data before replying.");
@@ -279,7 +280,7 @@ index 6084207f..3ec204fc 100644
  
      const releaseSkills = context.preparedBackend.claimLiveSessionResources?.();
      expect(releaseSkills).toEqual(expect.any(Function));
-@@ -4295,6 +4339,45 @@ describe("prepareCliRunContext", () => {
+@@ -4295,6 +4340,45 @@ describe("prepareCliRunContext", () => {
      expect(fs.existsSync(pluginDir)).toBe(false);
    });
  
@@ -311,7 +312,7 @@ index 6084207f..3ec204fc 100644
 +
 +    expect(prepareSkillsPlugin).toHaveBeenCalledOnce();
 +    expect(context.claudeSkillsPluginArgs).toEqual([]);
-+    expect(context.systemPrompt).toContain("Read forecast data before replying.");
++    expect(context.systemPrompt).toContain(skill.snapshot.prompt);
 +    const codeModeSkills = mintMcpLoopbackClientGrant.mock.calls[0]?.[0]?.codeModeSkills;
 +    expect(codeModeSkills).toHaveLength(1);
 +    await expect(readCodeModeSkill(codeModeSkills![0]!)).resolves.toContain(
@@ -326,7 +327,7 @@ index 6084207f..3ec204fc 100644
      "isolates %s caller memory through outer normalization and real CLI execution",
      (scenario, { signal }) =>
 diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index 7ea677ac..f13b35b5 100644
+index 7ea677ace74cd99604833e44a2a4e15eec4dce89..f13b35b5f6a260120e62f65cc4542970eb4035de 100644
 --- a/src/agents/cli-runner/prepare.ts
 +++ b/src/agents/cli-runner/prepare.ts
 @@ -23,6 +23,7 @@ import {
@@ -558,7 +559,7 @@ index 7ea677ac..f13b35b5 100644
        resolveRuntimeChannelPromptContext({
          cfg: params.config,
 diff --git a/src/agents/cli-runner/prepare.web-search.test.ts b/src/agents/cli-runner/prepare.web-search.test.ts
-index 8ef9e80c..877279a3 100644
+index 8ef9e80c5d1cca8bb43479f05ac9485e87693179..877279a308a60d6d785dabc5738f87150acd2c95 100644
 --- a/src/agents/cli-runner/prepare.web-search.test.ts
 +++ b/src/agents/cli-runner/prepare.web-search.test.ts
 @@ -1,11 +1,14 @@
@@ -752,7 +753,7 @@ index 8ef9e80c..877279a3 100644
 +  );
 +});
 diff --git a/src/agents/cli-runner/skills-prompt.ts b/src/agents/cli-runner/skills-prompt.ts
-index da73354f..0f64c6c3 100644
+index da73354ffe63413b247414597efe09901bb2bf54..0f64c6c30a469a395c3d4c4e426cac6c50e08a95 100644
 --- a/src/agents/cli-runner/skills-prompt.ts
 +++ b/src/agents/cli-runner/skills-prompt.ts
 @@ -1,9 +1,12 @@
@@ -835,7 +836,7 @@ index da73354f..0f64c6c3 100644
 +  };
  }
 diff --git a/src/gateway/mcp-grant-store.test.ts b/src/gateway/mcp-grant-store.test.ts
-index 2fdfe590..79f9acfc 100644
+index 2fdfe590cd3816725d92df56b7a4d45bfcff1c9e..79f9acfcac397d0be4ae2a78f39a0767c334bf23 100644
 --- a/src/gateway/mcp-grant-store.test.ts
 +++ b/src/gateway/mcp-grant-store.test.ts
 @@ -137,6 +137,7 @@ describe("mcp-grant-store", () => {
@@ -868,7 +869,7 @@ index 2fdfe590..79f9acfc 100644
    });
  
 diff --git a/src/gateway/mcp-grant-store.ts b/src/gateway/mcp-grant-store.ts
-index bf2d4ca6..c492f8ff 100644
+index bf2d4ca6490b27f2357b7aefb87b123a60cc692c..c492f8ff4e656c2fa1f05fca18fd197404d68517 100644
 --- a/src/gateway/mcp-grant-store.ts
 +++ b/src/gateway/mcp-grant-store.ts
 @@ -6,6 +6,7 @@ import {
@@ -945,7 +946,7 @@ index bf2d4ca6..c492f8ff 100644
      isCurrent,
 diff --git a/src/gateway/mcp-http.code-mode.test.ts b/src/gateway/mcp-http.code-mode.test.ts
 new file mode 100644
-index 00000000..6eb13f02
+index 0000000000000000000000000000000000000000..6eb13f02afadf809062cbee4faa4cd3ffbdb11d7
 --- /dev/null
 +++ b/src/gateway/mcp-http.code-mode.test.ts
 @@ -0,0 +1,150 @@
@@ -1101,7 +1102,7 @@ index 00000000..6eb13f02
 +});
 diff --git a/src/gateway/mcp-http.code-mode.ts b/src/gateway/mcp-http.code-mode.ts
 new file mode 100644
-index 00000000..20ed1b49
+index 0000000000000000000000000000000000000000..20ed1b498f19775415331aad11b981e41863c4ca
 --- /dev/null
 +++ b/src/gateway/mcp-http.code-mode.ts
 @@ -0,0 +1,55 @@
@@ -1161,7 +1162,7 @@ index 00000000..20ed1b49
 +  };
 +}
 diff --git a/src/gateway/mcp-http.handlers.ts b/src/gateway/mcp-http.handlers.ts
-index 2c9de998..b8ef7808 100644
+index 2c9de998143eeb9310d704dfbfcaa432942de6d8..b8ef7808605f8d9fca59e2fa0e04abbfd7061fe8 100644
 --- a/src/gateway/mcp-http.handlers.ts
 +++ b/src/gateway/mcp-http.handlers.ts
 @@ -4,10 +4,28 @@ import crypto from "node:crypto";
@@ -1610,7 +1611,7 @@ index 2c9de998..b8ef7808 100644
      }
      default:
 diff --git a/src/gateway/mcp-http.runtime.test.ts b/src/gateway/mcp-http.runtime.test.ts
-index 5a910a39..da1fe356 100644
+index 5a910a39c5b6fb084a46e38040929dc2d108bef1..da1fe35637eb0a52f94f246078831e65842d8e29 100644
 --- a/src/gateway/mcp-http.runtime.test.ts
 +++ b/src/gateway/mcp-http.runtime.test.ts
 @@ -156,6 +156,30 @@ describe("resolveMcpLoopbackScopedTools", () => {
@@ -1645,7 +1646,7 @@ index 5a910a39..da1fe356 100644
      const cache = new McpLoopbackToolCache();
      const params = scopeParams({ toolsAllow: ["sessions"] });
 diff --git a/src/gateway/mcp-http.runtime.ts b/src/gateway/mcp-http.runtime.ts
-index fb28074f..b685a299 100644
+index fb28074fa62c795c5457441f93b1e48d6010d4a6..b685a29974ecf00026a7ccc3fd4e6195474a050c 100644
 --- a/src/gateway/mcp-http.runtime.ts
 +++ b/src/gateway/mcp-http.runtime.ts
 @@ -7,6 +7,7 @@ import {
@@ -1840,7 +1841,7 @@ index fb28074f..b685a299 100644
      this.#grantConfigScopes.clear();
    }
 diff --git a/src/gateway/mcp-http.test.ts b/src/gateway/mcp-http.test.ts
-index c9e7155e..e2147192 100644
+index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..5a8d2028ff0f3b34ebf44ec7f2cf165e53fb821c 100644
 --- a/src/gateway/mcp-http.test.ts
 +++ b/src/gateway/mcp-http.test.ts
 @@ -32,6 +32,7 @@ import { createProcessSessionFixture } from "../agents/bash-process-registry.tes
@@ -1951,7 +1952,7 @@ index c9e7155e..e2147192 100644
    it("closes a pending startup once for concurrent shutdown callers", async () => {
      const starting = ensureMcpLoopbackServer();
      const closing = Promise.allSettled([closeMcpLoopbackServer(), closeMcpLoopbackServer()]);
-@@ -2536,3 +2583,436 @@ describe("createMcpLoopbackServerConfig", () => {
+@@ -2536,3 +2583,435 @@ describe("createMcpLoopbackServerConfig", () => {
    });
  });
  /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
@@ -2041,7 +2042,7 @@ index c9e7155e..e2147192 100644
 +      if (decision === "revoke") revokeMcpLoopbackClientGrant(grant.token);
 +      resolved.resolve();
 +      const response = await readOkMcpPayload(await pending);
-+      expect(prepare).toHaveBeenCalledTimes(decision === "allow" ? 2 : 1);
++      expect(prepare).toHaveBeenCalledOnce();
 +      expect(
 +        runBeforeToolCallHookMock.mock.calls.filter(
 +          ([call]) => (call as BeforeToolCallHookInput).toolName === "fixture",
@@ -2053,7 +2054,6 @@ index c9e7155e..e2147192 100644
 +          expect.any(String),
 +          { value: 7 },
 +          expect.any(AbortSignal),
-+          undefined,
 +          undefined,
 +        );
 +        expect(identities[0]).toMatchObject({ agentId: "main", sessionKey: context.sessionKey });
@@ -2389,7 +2389,7 @@ index c9e7155e..e2147192 100644
 +  });
 +});
 diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
-index 236a1005..f82f4d52 100644
+index 236a1005bbd0512115d0fb2581c709f8eb94d278..f82f4d5224ef60030151f8810f77f211259c4095 100644
 --- a/src/gateway/mcp-http.ts
 +++ b/src/gateway/mcp-http.ts
 @@ -2,6 +2,7 @@ import crypto from "node:crypto";
