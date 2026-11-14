@@ -247,16 +247,17 @@ index 853e77d7696..4207cc0d7e6 100644
  /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
  
 diff --git a/src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts b/src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts
-index 54ef224ba47..252606450ea 100644
+index 54ef224ba4771748658ba1e02a7c3087ca7d9043..69f4910a68eb13c6e06134ca78b345401d324944 100644
 --- a/src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts
 +++ b/src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts
-@@ -16,6 +16,52 @@ const SETTLED_TOOL_TERMINAL_CONTINUATION_INSTRUCTION =
+@@ -16,6 +16,55 @@ const SETTLED_TOOL_TERMINAL_CONTINUATION_INSTRUCTION =
    "The previous assistant turn completed its tool calls but did not produce a user-visible answer. Continue from the current transcript and produce the final user-visible answer now. Do not repeat completed tool calls or restart from scratch. Tools are unavailable in this step: it is a text-only pass, so reply with plain text and do not attempt any tool call.";
  
  describe("resolveSettledTurnFinalizationRequest", () => {
 +  it.each([false, true])(
 +    "accepts native heartbeat notify=%s without text-only finalization",
 +    (notify) => {
++      const sessionKey = "agent:main:heartbeat-fixture";
 +      const assistant = buildEmbeddedRunnerAssistant({ content: [{ type: "text", text: "" }] });
 +      const heartbeatToolResponse = {
 +        outcome: "needs_attention" as const,
@@ -273,6 +274,7 @@ index 54ef224ba47..252606450ea 100644
 +        itemLifecycle: { startedCount: 1, completedCount: 1, activeCount: 0 },
 +      });
 +      const payloads = buildEmbeddedRunPayloads({
++        sessionKey,
 +        assistantTexts: [],
 +        lastAssistant: assistant,
 +        currentAssistant: assistant,
@@ -283,6 +285,7 @@ index 54ef224ba47..252606450ea 100644
 +        resolveSettledTurnFinalizationRequest({
 +          runParams: {
 +            sessionId: "heartbeat-fixture",
++            sessionKey,
 +            runId: "heartbeat-run",
 +            trigger: "heartbeat",
 +            terminalReplyExpectation: "required",

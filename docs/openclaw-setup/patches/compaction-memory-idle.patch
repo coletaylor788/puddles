@@ -1,6 +1,6 @@
 diff --git a/extensions/anthropic/cli-compaction-snapshot.test.ts b/extensions/anthropic/cli-compaction-snapshot.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..1f025e439732ed1908bcb079d02488b8c4609ea4
+index 00000000..1f025e43
 --- /dev/null
 +++ b/extensions/anthropic/cli-compaction-snapshot.test.ts
 @@ -0,0 +1,137 @@
@@ -143,7 +143,7 @@ index 0000000000000000000000000000000000000000..1f025e439732ed1908bcb079d02488b8
 +});
 diff --git a/extensions/anthropic/cli-compaction-snapshot.ts b/extensions/anthropic/cli-compaction-snapshot.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..c420db9d2949d7723be471588e753474b6e9b235
+index 00000000..c420db9d
 --- /dev/null
 +++ b/extensions/anthropic/cli-compaction-snapshot.ts
 @@ -0,0 +1,215 @@
@@ -363,7 +363,7 @@ index 0000000000000000000000000000000000000000..c420db9d2949d7723be471588e753474
 +  return entries;
 +}
 diff --git a/extensions/anthropic/cli-runtime.test-support.ts b/extensions/anthropic/cli-runtime.test-support.ts
-index c1c421c6976e09180ddf926879aca9014e08a375..9e7352203986c74507c7c6978352b99735c7e6e7 100644
+index c1c421c6..9e735220 100644
 --- a/extensions/anthropic/cli-runtime.test-support.ts
 +++ b/extensions/anthropic/cli-runtime.test-support.ts
 @@ -12,7 +12,7 @@ export const CLAUDE_PROTOCOL_FIXTURE = String.raw`
@@ -405,7 +405,7 @@ index c1c421c6976e09180ddf926879aca9014e08a375..9e7352203986c74507c7c6978352b997
        lateDecision = response;
        if (turn === 2) result({ lateDecision });
 diff --git a/extensions/anthropic/cli-runtime.test.ts b/extensions/anthropic/cli-runtime.test.ts
-index 74a7be913f764a57507511141f81b3e68358eea4..79e325c0f060222b99f4a15d1cce89be5c619f09 100644
+index 74a7be91..79e325c0 100644
 --- a/extensions/anthropic/cli-runtime.test.ts
 +++ b/extensions/anthropic/cli-runtime.test.ts
 @@ -21,6 +21,7 @@ import {
@@ -508,7 +508,7 @@ index 74a7be913f764a57507511141f81b3e68358eea4..79e325c0f060222b99f4a15d1cce89be
 +  expect(liveSession.current()).toBeUndefined();
 +});
 diff --git a/extensions/anthropic/cli-shared.test.ts b/extensions/anthropic/cli-shared.test.ts
-index d0885fc18514b5e7c84682df919adabaf066eb58..009df096d530907ce993e81179bc5d6e0e0b8d95 100644
+index d0885fc1..009df096 100644
 --- a/extensions/anthropic/cli-shared.test.ts
 +++ b/extensions/anthropic/cli-shared.test.ts
 @@ -150,6 +150,54 @@ it.each([
@@ -624,7 +624,7 @@ index d0885fc18514b5e7c84682df919adabaf066eb58..009df096d530907ce993e81179bc5d6e
  
    it("keeps the real resumed manual-compaction command enabled", () => {
 diff --git a/extensions/anthropic/cli-shared.ts b/extensions/anthropic/cli-shared.ts
-index 527cb2fdd8e0679b538a486eec0d20f89372c8d3..713a5a4bbf9e018b238027a60e8bfe4dc091afd0 100644
+index 527cb2fd..713a5a4b 100644
 --- a/extensions/anthropic/cli-shared.ts
 +++ b/extensions/anthropic/cli-shared.ts
 @@ -437,10 +437,36 @@ function resolveClaudeCliRestrictedExecutionArgs(
@@ -665,7 +665,7 @@ index 527cb2fdd8e0679b538a486eec0d20f89372c8d3..713a5a4bbf9e018b238027a60e8bfe4d
    const baseArgs = context.hostOwnedTools?.includes("exec")
      ? [
 diff --git a/extensions/anthropic/cli.runtime.ts b/extensions/anthropic/cli.runtime.ts
-index 8b488fd627646548ee0dbaf08523ca011fe651eb..374afcefc3fa4a6864a3b1afb7affd9157b48afe 100644
+index 8b488fd6..374afcef 100644
 --- a/extensions/anthropic/cli.runtime.ts
 +++ b/extensions/anthropic/cli.runtime.ts
 @@ -10,6 +10,7 @@ import type {
@@ -706,7 +706,7 @@ index 8b488fd627646548ee0dbaf08523ca011fe651eb..374afcefc3fa4a6864a3b1afb7affd91
          },
          onMessage: (message) => acceptMessage(session, message),
 diff --git a/src/agents/cli-runner.spawn.test.ts b/src/agents/cli-runner.spawn.test.ts
-index 1aab236d1365ff8da8e8b0be3c5a25c3629aca81..532c9da4e921ddb4925fcc1534780dfeed7bcf50 100644
+index 1aab236d..532c9da4 100644
 --- a/src/agents/cli-runner.spawn.test.ts
 +++ b/src/agents/cli-runner.spawn.test.ts
 @@ -166,6 +166,22 @@ async function createCliPackageFixture(version: string): Promise<{
@@ -733,7 +733,7 @@ index 1aab236d1365ff8da8e8b0be3c5a25c3629aca81..532c9da4e921ddb4925fcc1534780dfe
      const stateDir = tempDirs.make("openclaw-cli-agent-image-");
      const workspaceDir = path.join(stateDir, "workspace-arthur");
 diff --git a/src/agents/cli-runner.ts b/src/agents/cli-runner.ts
-index 3d4a7d907767cec0abcb24716758a1fc4029a109..f91baa4094b287a828fec5b06077514b8955877e 100644
+index 3d4a7d90..f91baa40 100644
 --- a/src/agents/cli-runner.ts
 +++ b/src/agents/cli-runner.ts
 @@ -90,7 +90,7 @@ export async function isCliBindingFlushed(
@@ -788,7 +788,7 @@ index 3d4a7d907767cec0abcb24716758a1fc4029a109..f91baa4094b287a828fec5b06077514b
          const assistantTranscript = await persistCliAssistantTranscript({
            runParams: params,
 diff --git a/src/agents/cli-runner/execute-events.ts b/src/agents/cli-runner/execute-events.ts
-index 739b11d9b26066ff06cfb2e06b8c5f989851b2f7..01328204cf603d177804717ac51014bd9fc591fb 100644
+index 739b11d9..01328204 100644
 --- a/src/agents/cli-runner/execute-events.ts
 +++ b/src/agents/cli-runner/execute-events.ts
 @@ -2,6 +2,7 @@ import { projectAgentToolActivity } from "../../infra/agent-activity-events.js";
@@ -855,7 +855,7 @@ index 739b11d9b26066ff06cfb2e06b8c5f989851b2f7..01328204cf603d177804717ac51014bd
      // between phase boundaries, so an end event must always clear the flag,
      // even for a failed compaction (`completed: false`).
 diff --git a/src/agents/cli-runner/execute-plugin.test.ts b/src/agents/cli-runner/execute-plugin.test.ts
-index 648dfa8c88c2046206da266f0c741cb7f91f524a..23bdbb727e04b674dec74fd4d08b8bf8f7636a53 100644
+index 648dfa8c..23bdbb72 100644
 --- a/src/agents/cli-runner/execute-plugin.test.ts
 +++ b/src/agents/cli-runner/execute-plugin.test.ts
 @@ -28,6 +28,10 @@ vi.mock("../tools/gateway.js", () => ({
@@ -955,7 +955,7 @@ index 648dfa8c88c2046206da266f0c741cb7f91f524a..23bdbb727e04b674dec74fd4d08b8bf8
 +  },
 +);
 diff --git a/src/agents/cli-runner/execute-plugin.ts b/src/agents/cli-runner/execute-plugin.ts
-index 8c594a39d130af468c07315114f4b74bd1aad3ea..dcf6b4234161e25ec177071836d0b49c047b512e 100644
+index 8c594a39..dcf6b423 100644
 --- a/src/agents/cli-runner/execute-plugin.ts
 +++ b/src/agents/cli-runner/execute-plugin.ts
 @@ -28,6 +28,7 @@ import type { CliTerminalInterruption } from "../cli-output-contracts.js";
@@ -1033,7 +1033,7 @@ index 8c594a39d130af468c07315114f4b74bd1aad3ea..dcf6b4234161e25ec177071836d0b49c
            ? {
                registerMessageInjection: (injection: CliBackendMessageInjection) => {
 diff --git a/src/agents/cli-runner/execute.supervisor-capture.test.ts b/src/agents/cli-runner/execute.supervisor-capture.test.ts
-index b63fbe57e79ddcfd6352e3cc2a3e7de85c22bd97..327e6a5965a531398c41df7f7e8647c576d082cf 100644
+index b63fbe57..327e6a59 100644
 --- a/src/agents/cli-runner/execute.supervisor-capture.test.ts
 +++ b/src/agents/cli-runner/execute.supervisor-capture.test.ts
 @@ -28,6 +28,7 @@ import {
@@ -1132,7 +1132,7 @@ index b63fbe57e79ddcfd6352e3cc2a3e7de85c22bd97..327e6a5965a531398c41df7f7e8647c5
      const raw = jsonl({ type: "system", subtype: "compacting" });
      mockOutput([raw]);
 diff --git a/src/agents/cli-runner/execute.ts b/src/agents/cli-runner/execute.ts
-index 84c43a02b14c71a6d18555590ebd19274ab0e1c9..11e3d37bd5c6106aeded5f026f0e5070f052b6da 100644
+index 84c43a02..11e3d37b 100644
 --- a/src/agents/cli-runner/execute.ts
 +++ b/src/agents/cli-runner/execute.ts
 @@ -236,7 +236,11 @@ export async function executePreparedCliRun(
@@ -1157,7 +1157,7 @@ index 84c43a02b14c71a6d18555590ebd19274ab0e1c9..11e3d37bd5c6106aeded5f026f0e5070
            // not exist on the node, and auto-approval must not cross that boundary.
            toolAvailability:
 diff --git a/src/agents/cli-runner/execution-target.ts b/src/agents/cli-runner/execution-target.ts
-index 94c6297aae512177f3d980fbf08d661bc38300a8..db34bb4ce861d0984bdfa67deb8df5c9c57e9c9f 100644
+index 94c6297a..db34bb4c 100644
 --- a/src/agents/cli-runner/execution-target.ts
 +++ b/src/agents/cli-runner/execution-target.ts
 @@ -87,7 +87,10 @@ export function resolveCliExecutionTarget(context: {
@@ -1173,7 +1173,7 @@ index 94c6297aae512177f3d980fbf08d661bc38300a8..db34bb4ce861d0984bdfa67deb8df5c9
      : { kind: "process" };
  }
 diff --git a/src/agents/cli-runner/mcp-grant-context.test.ts b/src/agents/cli-runner/mcp-grant-context.test.ts
-index ca2bb50bb3c77300649fb8f64408bd04d0188adf..8b3736e8e979aa54b83e919349b2a344b2c1cb35 100644
+index ca2bb50b..8b3736e8 100644
 --- a/src/agents/cli-runner/mcp-grant-context.test.ts
 +++ b/src/agents/cli-runner/mcp-grant-context.test.ts
 @@ -36,6 +36,26 @@ function buildGrant(
@@ -1204,7 +1204,7 @@ index ca2bb50bb3c77300649fb8f64408bd04d0188adf..8b3736e8e979aa54b83e919349b2a344
      const requesterModel = {
        provider: "selected-provider",
 diff --git a/src/agents/cli-runner/mcp-grant-context.ts b/src/agents/cli-runner/mcp-grant-context.ts
-index 39c936fc22ec2d96a66d530383ea0b6b74298fb7..b3b7b3e26e80c6781677afbd8178db9810d39bad 100644
+index 39c936fc..b3b7b3e2 100644
 --- a/src/agents/cli-runner/mcp-grant-context.ts
 +++ b/src/agents/cli-runner/mcp-grant-context.ts
 @@ -28,6 +28,8 @@ export function finalizeCliMcpGrant(
@@ -1238,7 +1238,7 @@ index 39c936fc22ec2d96a66d530383ea0b6b74298fb7..b3b7b3e26e80c6781677afbd8178db98
      agentId: params.agentId,
      sessionId: normalizeOptionalString(params.run.sessionId),
 diff --git a/src/agents/cli-runner/prepare-mcp.test-support.ts b/src/agents/cli-runner/prepare-mcp.test-support.ts
-index 131ea831276269a884db9e08c4c332b73eeb9bd5..0b47528a322297a8872c9219e759a4e65ef56665 100644
+index 131ea831..0b47528a 100644
 --- a/src/agents/cli-runner/prepare-mcp.test-support.ts
 +++ b/src/agents/cli-runner/prepare-mcp.test-support.ts
 @@ -151,6 +151,7 @@ export function registerCliMcpPreparationTests({
@@ -1267,7 +1267,7 @@ index 131ea831276269a884db9e08c4c332b73eeb9bd5..0b47528a322297a8872c9219e759a4e6
          toolsAllow: undefined,
          settings: { permissionMode: undefined, toolOverrides: undefined },
 diff --git a/src/agents/cli-runner/prepare-mcp.ts b/src/agents/cli-runner/prepare-mcp.ts
-index f04f02d642c988507497392ce33ced290c538996..94928bbdded92e6d5a08319c4be98107fd7661d0 100644
+index f04f02d6..94928bbd 100644
 --- a/src/agents/cli-runner/prepare-mcp.ts
 +++ b/src/agents/cli-runner/prepare-mcp.ts
 @@ -90,6 +90,8 @@ export async function prepareCliMcpToolProjection(
@@ -1280,10 +1280,10 @@ index f04f02d642c988507497392ce33ced290c538996..94928bbdded92e6d5a08319c4be98107
      signal: admittedParams.abortSignal,
      context,
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 37ba47882bbdcf2a6b93103f0b762b78ead00787..769a583da0ee6cf851857ea668164865b83abea2 100644
+index 5e2f22d8..a59769a7 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
-@@ -187,6 +187,7 @@ const ensureSandboxWorkspaceForSessionMock = vi.hoisted(() =>
+@@ -188,6 +188,7 @@ const ensureSandboxWorkspaceForSessionMock = vi.hoisted(() =>
  );
  vi.mock("../../config/config.js", async () => ({
    getRuntimeConfig: getRuntimeConfigMock,
@@ -1291,7 +1291,7 @@ index 37ba47882bbdcf2a6b93103f0b762b78ead00787..769a583da0ee6cf851857ea668164865
    resolveGatewayPort: (await import("../../config/paths.js")).resolveGatewayPort,
  }));
  
-@@ -560,6 +561,72 @@ describe("prepareCliRunContext", () => {
+@@ -563,6 +564,72 @@ describe("prepareCliRunContext", () => {
      clearRuntimeConfigSnapshot();
    });
  
@@ -1364,7 +1364,7 @@ index 37ba47882bbdcf2a6b93103f0b762b78ead00787..769a583da0ee6cf851857ea668164865
    it.each(["process", "plugin"] as const)(
      "carries silent heartbeat outcome in late %s user input without rebinding",
      async (targetKind) => {
-@@ -4044,6 +4111,57 @@ describe("prepareCliRunContext", () => {
+@@ -4051,6 +4118,57 @@ describe("prepareCliRunContext", () => {
      expect(orphanCheck).not.toHaveBeenCalled();
    });
  
@@ -1423,7 +1423,7 @@ index 37ba47882bbdcf2a6b93103f0b762b78ead00787..769a583da0ee6cf851857ea668164865
      "stops CLI skill preparation before sandbox materialization when %s authority is revoked",
      async (phase) => {
 diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index f13b35b5f6a260120e62f65cc4542970eb4035de..2d08924d5540a7a10814438a1963b9932e8e873e 100644
+index f13b35b5..2d08924d 100644
 --- a/src/agents/cli-runner/prepare.ts
 +++ b/src/agents/cli-runner/prepare.ts
 @@ -354,6 +354,34 @@ async function prepareCliRunContextWithinReadFence(
@@ -1483,7 +1483,7 @@ index f13b35b5f6a260120e62f65cc4542970eb4035de..2d08924d5540a7a10814438a1963b993
        : undefined;
      const systemPromptWithReplacements = skipsTurnPreparation
 diff --git a/src/agents/cli-runner/session-history.test.ts b/src/agents/cli-runner/session-history.test.ts
-index 64e1efabc0314d5c45fccd5b1eba793f57150336..e84c9fb74f598a6ca0a8927a1025ca3f4c0e5ccb 100644
+index 64e1efab..e84c9fb7 100644
 --- a/src/agents/cli-runner/session-history.test.ts
 +++ b/src/agents/cli-runner/session-history.test.ts
 @@ -1036,3 +1036,24 @@ describe("buildCliSessionHistoryPrompt", () => {
@@ -1512,7 +1512,7 @@ index 64e1efabc0314d5c45fccd5b1eba793f57150336..e84c9fb74f598a6ca0a8927a1025ca3f
 +  expect(ordinary.reseedMessages).toHaveLength(MAX_CLI_SESSION_HISTORY_MESSAGES);
 +});
 diff --git a/src/agents/cli-runner/session-history.ts b/src/agents/cli-runner/session-history.ts
-index 3d35031179ce5537aefb9f803e032699b80b8b1e..61f0d706ca1849ff3c760ab50ac253d37af21ad2 100644
+index 3d350311..61f0d706 100644
 --- a/src/agents/cli-runner/session-history.ts
 +++ b/src/agents/cli-runner/session-history.ts
 @@ -58,6 +58,8 @@ const CLI_DURABLE_CONTEXT_OMISSION = "[Session notes truncated; earlier notes ma
@@ -1581,7 +1581,7 @@ index 3d35031179ce5537aefb9f803e032699b80b8b1e..61f0d706ca1849ff3c760ab50ac253d3
    const reseedMessages = selected.map((message) => {
      const timestamp = timestampMsToIsoString(message.timestamp);
 diff --git a/src/agents/cli-runner/types.ts b/src/agents/cli-runner/types.ts
-index 3e7673acd027e60daaec15cb8c508c21b84db150..2ec107832ad96efebb5855b498c724049b8b4ed3 100644
+index 3e7673ac..2ec10783 100644
 --- a/src/agents/cli-runner/types.ts
 +++ b/src/agents/cli-runner/types.ts
 @@ -76,6 +76,14 @@ export type RunCliAgentParams = {
@@ -1600,7 +1600,7 @@ index 3e7673acd027e60daaec15cb8c508c21b84db150..2ec107832ad96efebb5855b498c72404
    trigger?: EmbeddedRunTrigger;
    /** Heartbeat-transported turn that continues a conversation (its own command completion). */
 diff --git a/src/agents/command/attempt-execution.helpers.ts b/src/agents/command/attempt-execution.helpers.ts
-index 9069335ece4f93561949d1503f09dba991194576..38096c09e5ce06767d6a8f7ea4ebaa282fd6c064 100644
+index 9069335e..38096c09 100644
 --- a/src/agents/command/attempt-execution.helpers.ts
 +++ b/src/agents/command/attempt-execution.helpers.ts
 @@ -175,6 +175,7 @@ function claudeCliSessionTranscriptPath(params: {
@@ -1621,7 +1621,7 @@ index 9069335ece4f93561949d1503f09dba991194576..38096c09e5ce06767d6a8f7ea4ebaa28
    );
 diff --git a/src/agents/command/claude-cli-project-dir.test.ts b/src/agents/command/claude-cli-project-dir.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..8fd99f3d5d2c0cb78be7eda71af76503ccaa67c2
+index 00000000..8fd99f3d
 --- /dev/null
 +++ b/src/agents/command/claude-cli-project-dir.test.ts
 @@ -0,0 +1,99 @@
@@ -1725,7 +1725,7 @@ index 0000000000000000000000000000000000000000..8fd99f3d5d2c0cb78be7eda71af76503
 +  );
 +});
 diff --git a/src/agents/command/claude-cli-project-dir.ts b/src/agents/command/claude-cli-project-dir.ts
-index 98bc049f168ee68a8a31ed28455f0ac34775722b..357375644acdc30402f6d23b0d208632d40a5461 100644
+index 98bc049f..35737564 100644
 --- a/src/agents/command/claude-cli-project-dir.ts
 +++ b/src/agents/command/claude-cli-project-dir.ts
 @@ -3,17 +3,29 @@ import os from "node:os";
@@ -1777,7 +1777,7 @@ index 98bc049f168ee68a8a31ed28455f0ac34775722b..357375644acdc30402f6d23b0d208632
    );
  }
 diff --git a/src/agents/command/maintenance.test.ts b/src/agents/command/maintenance.test.ts
-index 8ba46f4473b666e617c3743e18725c1eb345ae11..9ef8cad40c322f6da35df2c65b2d471b3f23e725 100644
+index 8ba46f44..1f48e4bb 100644
 --- a/src/agents/command/maintenance.test.ts
 +++ b/src/agents/command/maintenance.test.ts
 @@ -14,6 +14,7 @@ import {
@@ -1788,7 +1788,7 @@ index 8ba46f4473b666e617c3743e18725c1eb345ae11..9ef8cad40c322f6da35df2c65b2d471b
  
  const {
    replaceSessionEntry,
-@@ -315,3 +316,96 @@ describe("agent command foreground completion", () => {
+@@ -315,3 +316,106 @@ describe("agent command foreground completion", () => {
      },
    );
  });
@@ -1830,11 +1830,16 @@ index 8ba46f4473b666e617c3743e18725c1eb345ae11..9ef8cad40c322f6da35df2c65b2d471b
 +      ...GATEWAY_INGRESS_ARGS,
 +    );
 +    expect(schedule).toHaveBeenCalledOnce();
-+    expect(schedule.mock.calls[0][0]).toMatchObject({
++    const scheduled = schedule.mock.calls[0]?.[0];
++    expect(scheduled).toBeDefined();
++    if (!scheduled) {
++      throw new Error("expected native idle maintenance to be scheduled");
++    }
++    expect(scheduled).toMatchObject({
 +      agentHarnessId: "claude-cli",
 +      nativeIdleBinding: { backendId: "claude-cli", binding: { sessionId: binding.sessionId } },
 +    });
-+    expect(schedule.mock.calls[0][0].followupRun.run.authProfileId).toBeUndefined();
++    expect(scheduled.followupRun.run.authProfileId).toBeUndefined();
 +    expect(findStoredSessionEntry(sessionKey)?.agentHarnessId).toBeUndefined();
 +  } finally {
 +    schedule.mockRestore();
@@ -1879,14 +1884,19 @@ index 8ba46f4473b666e617c3743e18725c1eb345ae11..9ef8cad40c322f6da35df2c65b2d471b
 +      ...GATEWAY_INGRESS_ARGS,
 +    );
 +    expect(schedule).toHaveBeenCalledOnce();
-+    expect(schedule.mock.calls[0][0].agentHarnessId).toBe("configured-runtime");
-+    expect(schedule.mock.calls[0][0].nativeIdleBinding).toBeUndefined();
++    const scheduled = schedule.mock.calls[0]?.[0];
++    expect(scheduled).toBeDefined();
++    if (!scheduled) {
++      throw new Error("expected configured idle maintenance to be scheduled");
++    }
++    expect(scheduled.agentHarnessId).toBe("configured-runtime");
++    expect(scheduled.nativeIdleBinding).toBeUndefined();
 +  } finally {
 +    schedule.mockRestore();
 +  }
 +});
 diff --git a/src/agents/command/post-run.ts b/src/agents/command/post-run.ts
-index 175589bd7b7f0d9652a284bd68788ae08c9dcdf2..3cd6b2fb0148ec1627d58faa804a01dfcb9afa5d 100644
+index 175589bd..3cd6b2fb 100644
 --- a/src/agents/command/post-run.ts
 +++ b/src/agents/command/post-run.ts
 @@ -45,6 +45,8 @@ import {
@@ -1942,7 +1952,7 @@ index 175589bd7b7f0d9652a284bd68788ae08c9dcdf2..3cd6b2fb0148ec1627d58faa804a01df
            }
          : undefined;
 diff --git a/src/agents/embedded-agent-runner/cli-backend-dispatch.ts b/src/agents/embedded-agent-runner/cli-backend-dispatch.ts
-index 2a823f7a7009eda50ee81eb5fb3b56a299de5765..ea87937ec745ae4ff6a4b2cdb0243aa77644db92 100644
+index 2a823f7a..ea87937e 100644
 --- a/src/agents/embedded-agent-runner/cli-backend-dispatch.ts
 +++ b/src/agents/embedded-agent-runner/cli-backend-dispatch.ts
 @@ -148,6 +148,15 @@ export async function runEmbeddedAgentViaCliBackendIfEligible(
@@ -1962,7 +1972,7 @@ index 2a823f7a7009eda50ee81eb5fb3b56a299de5765..ea87937ec745ae4ff6a4b2cdb0243aa7
        storePath,
        trigger: params.trigger,
 diff --git a/src/agents/embedded-agent-runner/compact.hooks.test.ts b/src/agents/embedded-agent-runner/compact.hooks.test.ts
-index a03ad8fa8341f33f1e8b77bfd996e6374dac6c0c..982bcea2122c7d17912be85251dbefb3a84f5fff 100644
+index a03ad8fa..982bcea2 100644
 --- a/src/agents/embedded-agent-runner/compact.hooks.test.ts
 +++ b/src/agents/embedded-agent-runner/compact.hooks.test.ts
 @@ -314,6 +314,39 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
@@ -2083,7 +2093,7 @@ index a03ad8fa8341f33f1e8b77bfd996e6374dac6c0c..982bcea2122c7d17912be85251dbefb3
    it("rejects a replaced writer claim before queued native CLI compaction", async () => {
      const laneEntered = createDeferred();
 diff --git a/src/agents/embedded-agent-runner/compact.ts b/src/agents/embedded-agent-runner/compact.ts
-index 42ea76f3580a8121004d1044ff890d90a27267ea..e3f31198f28f91a38c71cabeff8b89c28f5ab024 100644
+index 42ea76f3..e3f31198 100644
 --- a/src/agents/embedded-agent-runner/compact.ts
 +++ b/src/agents/embedded-agent-runner/compact.ts
 @@ -22,6 +22,7 @@ import {
@@ -2174,7 +2184,7 @@ index 42ea76f3580a8121004d1044ff890d90a27267ea..e3f31198f28f91a38c71cabeff8b89c2
          runId,
          cliSessionId,
 diff --git a/src/agents/embedded-agent-runner/compact.types.ts b/src/agents/embedded-agent-runner/compact.types.ts
-index 990db5b38c430aac8171094bae9c9aaa89e3529b..e535510321c54e5d8d051a0a619aa7a347079eee 100644
+index 990db5b3..e5355103 100644
 --- a/src/agents/embedded-agent-runner/compact.types.ts
 +++ b/src/agents/embedded-agent-runner/compact.types.ts
 @@ -111,6 +111,10 @@ export type CompactEmbeddedAgentSessionParams = Pick<
@@ -2189,7 +2199,7 @@ index 990db5b38c430aac8171094bae9c9aaa89e3529b..e535510321c54e5d8d051a0a619aa7a3
    /** Source-turn urgency survives replacing its trigger with a compaction reason. */
    modelCallUrgency?: ModelCallUrgency;
 diff --git a/src/agents/embedded-agent-runner/compaction-session-execution.ts b/src/agents/embedded-agent-runner/compaction-session-execution.ts
-index a93761f4d1e00169639a4a8228e3079ef2fe9ec8..077489c99e2f733fcbd4f777885be294a6c167ff 100644
+index a93761f4..077489c9 100644
 --- a/src/agents/embedded-agent-runner/compaction-session-execution.ts
 +++ b/src/agents/embedded-agent-runner/compaction-session-execution.ts
 @@ -383,6 +383,38 @@ export async function executePreparedCompactionSession(runtime: PreparedCompacti
@@ -2232,7 +2242,7 @@ index a93761f4d1e00169639a4a8228e3079ef2fe9ec8..077489c99e2f733fcbd4f777885be294
          const hookContext = () => ({
            hookRunner,
 diff --git a/src/agents/harness/hook-context.ts b/src/agents/harness/hook-context.ts
-index c7a06e3096579bcd2c407d7a3c718bd7fe34f8e4..a8c102214481da586eeb2e68972d988caede6d89 100644
+index c7a06e30..a8c10221 100644
 --- a/src/agents/harness/hook-context.ts
 +++ b/src/agents/harness/hook-context.ts
 @@ -1,3 +1,4 @@
@@ -2265,7 +2275,7 @@ index c7a06e3096579bcd2c407d7a3c718bd7fe34f8e4..a8c102214481da586eeb2e68972d988c
  
  /** Builds the sparse hook context object passed to agent harness plugin hooks. */
 diff --git a/src/agents/harness/prompt-compaction-hook-helpers.ts b/src/agents/harness/prompt-compaction-hook-helpers.ts
-index d162899ee78b64753ee049d4c59b5d48f6af3749..a62ef6f5bed8b6248a9cfdb5dd27232f4d731c09 100644
+index d162899e..a62ef6f5 100644
 --- a/src/agents/harness/prompt-compaction-hook-helpers.ts
 +++ b/src/agents/harness/prompt-compaction-hook-helpers.ts
 @@ -188,6 +188,10 @@ export async function runAgentHarnessBeforeCompactionHook(params: {
@@ -2280,7 +2290,7 @@ index d162899ee78b64753ee049d4c59b5d48f6af3749..a62ef6f5bed8b6248a9cfdb5dd27232f
    if (!hookRunner?.hasHooks("before_compaction")) {
      return;
 diff --git a/src/agents/harness/tool-surface-bridge.test.ts b/src/agents/harness/tool-surface-bridge.test.ts
-index 5120ae69919e87c43eefb8c7f3bcacad88927efd..fea5c48ddcc65e8ac27d8ce0a6cc44c21f69d244 100644
+index 5120ae69..fea5c48d 100644
 --- a/src/agents/harness/tool-surface-bridge.test.ts
 +++ b/src/agents/harness/tool-surface-bridge.test.ts
 @@ -9,6 +9,11 @@ import { setPluginToolMeta } from "../../plugins/tool-metadata.js";
@@ -2354,7 +2364,7 @@ index 5120ae69919e87c43eefb8c7f3bcacad88927efd..fea5c48ddcc65e8ac27d8ce0a6cc44c2
      {
        mode: "automatic Code Mode",
 diff --git a/src/agents/harness/tool-surface-bridge.ts b/src/agents/harness/tool-surface-bridge.ts
-index 12d5bf9f1cacf02dba5537eb93028693f8b2f8a6..9aa28c529414551c8d382f8ffb805231b5d20fca 100644
+index 12d5bf9f..9aa28c52 100644
 --- a/src/agents/harness/tool-surface-bridge.ts
 +++ b/src/agents/harness/tool-surface-bridge.ts
 @@ -53,6 +53,8 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
@@ -2412,7 +2422,7 @@ index 12d5bf9f1cacf02dba5537eb93028693f8b2f8a6..9aa28c529414551c8d382f8ffb805231
              : undefined,
 diff --git a/src/agents/session-maintenance/compaction-memory-input.test.ts b/src/agents/session-maintenance/compaction-memory-input.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..59a99a479ddb7299826b3b78dd1c9c0623a60180
+index 00000000..59a99a47
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory-input.test.ts
 @@ -0,0 +1,86 @@
@@ -2504,7 +2514,7 @@ index 0000000000000000000000000000000000000000..59a99a479ddb7299826b3b78dd1c9c06
 +});
 diff --git a/src/agents/session-maintenance/compaction-memory-input.ts b/src/agents/session-maintenance/compaction-memory-input.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..4c7eb324c04f2ac93abaa2957fd403237addec41
+index 00000000..4c7eb324
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory-input.ts
 @@ -0,0 +1,85 @@
@@ -2595,7 +2605,7 @@ index 0000000000000000000000000000000000000000..4c7eb324c04f2ac93abaa2957fd40323
 +}
 diff --git a/src/agents/session-maintenance/compaction-memory-jobs.test.ts b/src/agents/session-maintenance/compaction-memory-jobs.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..c07b36bfb069d04afb300c3c76453f377fdb6b9c
+index 00000000..c07b36bf
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory-jobs.test.ts
 @@ -0,0 +1,194 @@
@@ -2795,7 +2805,7 @@ index 0000000000000000000000000000000000000000..c07b36bfb069d04afb300c3c76453f37
 +});
 diff --git a/src/agents/session-maintenance/compaction-memory-jobs.ts b/src/agents/session-maintenance/compaction-memory-jobs.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..b9939b7d1eb4dc40301399acada4c3ca965def9f
+index 00000000..b9939b7d
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory-jobs.ts
 @@ -0,0 +1,209 @@
@@ -3010,7 +3020,7 @@ index 0000000000000000000000000000000000000000..b9939b7d1eb4dc40301399acada4c3ca
 +}
 diff --git a/src/agents/session-maintenance/compaction-memory.capture.test.ts b/src/agents/session-maintenance/compaction-memory.capture.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..3903b9a1e1482df64633553bd81c3f5bc786bb42
+index 00000000..3903b9a1
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory.capture.test.ts
 @@ -0,0 +1,161 @@
@@ -3177,7 +3187,7 @@ index 0000000000000000000000000000000000000000..3903b9a1e1482df64633553bd81c3f5b
 +);
 diff --git a/src/agents/session-maintenance/compaction-memory.test.ts b/src/agents/session-maintenance/compaction-memory.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..4acd93fefc9e0fb21b8992fc5898f043687df92d
+index 00000000..4acd93fe
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory.test.ts
 @@ -0,0 +1,547 @@
@@ -3730,7 +3740,7 @@ index 0000000000000000000000000000000000000000..4acd93fefc9e0fb21b8992fc5898f043
 +});
 diff --git a/src/agents/session-maintenance/compaction-memory.ts b/src/agents/session-maintenance/compaction-memory.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..464bb7a1f77b4134507f8c2e504eb9855b3b9a8c
+index 00000000..464bb7a1
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory.ts
 @@ -0,0 +1,410 @@
@@ -4145,7 +4155,7 @@ index 0000000000000000000000000000000000000000..464bb7a1f77b4134507f8c2e504eb985
 +  }
 +}
 diff --git a/src/agents/session-maintenance/coordinator.ts b/src/agents/session-maintenance/coordinator.ts
-index 9d49843b0c22fd518763148fe892fcf1b64c964c..11a14f7ddeaf31011c1fd2e0068eac1578544c51 100644
+index 9d49843b..11a14f7d 100644
 --- a/src/agents/session-maintenance/coordinator.ts
 +++ b/src/agents/session-maintenance/coordinator.ts
 @@ -9,6 +9,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -4166,7 +4176,7 @@ index 9d49843b0c22fd518763148fe892fcf1b64c964c..11a14f7ddeaf31011c1fd2e0068eac15
    let released = false;
 diff --git a/src/agents/session-maintenance/idle.test.ts b/src/agents/session-maintenance/idle.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..8e56a7b148ca9dabd54607299205962b6574dc4b
+index 00000000..8e56a7b1
 --- /dev/null
 +++ b/src/agents/session-maintenance/idle.test.ts
 @@ -0,0 +1,58 @@
@@ -4230,7 +4240,7 @@ index 0000000000000000000000000000000000000000..8e56a7b148ca9dabd54607299205962b
 +});
 diff --git a/src/agents/session-maintenance/idle.ts b/src/agents/session-maintenance/idle.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..331ecbb5cc84820f866f2542ec654fcd9579f3cd
+index 00000000..331ecbb5
 --- /dev/null
 +++ b/src/agents/session-maintenance/idle.ts
 @@ -0,0 +1,97 @@
@@ -4333,7 +4343,7 @@ index 0000000000000000000000000000000000000000..331ecbb5cc84820f866f2542ec654fcd
 +}
 diff --git a/src/agents/session-maintenance/native-idle.test.ts b/src/agents/session-maintenance/native-idle.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..889c15c01710bb13768f95bc624a54532abc67e9
+index 00000000..889c15c0
 --- /dev/null
 +++ b/src/agents/session-maintenance/native-idle.test.ts
 @@ -0,0 +1,108 @@
@@ -4447,7 +4457,7 @@ index 0000000000000000000000000000000000000000..889c15c01710bb13768f95bc624a5453
 +});
 diff --git a/src/agents/session-maintenance/native-idle.ts b/src/agents/session-maintenance/native-idle.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..e5d698c58322baac8eb29f2686b4408d47ec8560
+index 00000000..e5d698c5
 --- /dev/null
 +++ b/src/agents/session-maintenance/native-idle.ts
 @@ -0,0 +1,58 @@
@@ -4511,7 +4521,7 @@ index 0000000000000000000000000000000000000000..e5d698c58322baac8eb29f2686b4408d
 +}
 diff --git a/src/agents/session-maintenance/run.native-idle.test.ts b/src/agents/session-maintenance/run.native-idle.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..f9c22062c8acf6873f4d0c1cc10a1fc95b486d1f
+index 00000000..f9c22062
 --- /dev/null
 +++ b/src/agents/session-maintenance/run.native-idle.test.ts
 @@ -0,0 +1,359 @@
@@ -4875,7 +4885,7 @@ index 0000000000000000000000000000000000000000..f9c22062c8acf6873f4d0c1cc10a1fc9
 +  });
 +});
 diff --git a/src/agents/session-maintenance/run.ts b/src/agents/session-maintenance/run.ts
-index 62a9c267b8e0d14ebcf1aa55edfc5ff862a29113..789698514d80e32654d619cf448d919dd439b4fc 100644
+index 62a9c267..78969851 100644
 --- a/src/agents/session-maintenance/run.ts
 +++ b/src/agents/session-maintenance/run.ts
 @@ -1,4 +1,6 @@
@@ -5041,7 +5051,7 @@ index 62a9c267b8e0d14ebcf1aa55edfc5ff862a29113..789698514d80e32654d619cf448d919d
                      return true;
 diff --git a/src/auto-reply/reply/agent-runner-maintenance.test.ts b/src/auto-reply/reply/agent-runner-maintenance.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..346d35d7073e27f1188712046f23f6baf45dc3b0
+index 00000000..346d35d7
 --- /dev/null
 +++ b/src/auto-reply/reply/agent-runner-maintenance.test.ts
 @@ -0,0 +1,114 @@
@@ -5160,7 +5170,7 @@ index 0000000000000000000000000000000000000000..346d35d7073e27f1188712046f23f6ba
 +  expect(scheduled.mock.calls[0]![0].nativeIdleBinding).toBeUndefined();
 +});
 diff --git a/src/auto-reply/reply/agent-runner-maintenance.ts b/src/auto-reply/reply/agent-runner-maintenance.ts
-index f033affa6f116070dc63f36e707d71023922b2f0..0f32134ecbf2fc1a96804847fd7b5ba0bd3d05c7 100644
+index f033affa..0f32134e 100644
 --- a/src/auto-reply/reply/agent-runner-maintenance.ts
 +++ b/src/auto-reply/reply/agent-runner-maintenance.ts
 @@ -1,4 +1,6 @@
@@ -5205,7 +5215,7 @@ index f033affa6f116070dc63f36e707d71023922b2f0..0f32134ecbf2fc1a96804847fd7b5ba0
      replyOperation.ownerSettlement.then(
 diff --git a/src/auto-reply/reply/agent-runner-memory.native-idle.test.ts b/src/auto-reply/reply/agent-runner-memory.native-idle.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..07e11f54fb96e531116d9e0ab325a2b23a188126
+index 00000000..07e11f54
 --- /dev/null
 +++ b/src/auto-reply/reply/agent-runner-memory.native-idle.test.ts
 @@ -0,0 +1,132 @@
@@ -5342,7 +5352,7 @@ index 0000000000000000000000000000000000000000..07e11f54fb96e531116d9e0ab325a2b2
 +  45_000,
 +);
 diff --git a/src/auto-reply/reply/agent-runner-memory.test.ts b/src/auto-reply/reply/agent-runner-memory.test.ts
-index 3faac2e0dd6a9b189b3f4b51993f7f9caeb86372..159394ab6e17bc0705c9be880e5a78f91538f3db 100644
+index 3faac2e0..159394ab 100644
 --- a/src/auto-reply/reply/agent-runner-memory.test.ts
 +++ b/src/auto-reply/reply/agent-runner-memory.test.ts
 @@ -60,6 +60,7 @@ import { setActivePluginRegistry } from "../../plugins/runtime.js";
@@ -5505,7 +5515,7 @@ index 3faac2e0dd6a9b189b3f4b51993f7f9caeb86372..159394ab6e17bc0705c9be880e5a78f9
      ensureSelectedAgentHarnessPluginMock.mockReset().mockResolvedValue(undefined);
      registerAgentRunContextMock.mockReset();
 diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/agent-runner-memory.ts
-index 8cbe28f6850e4906b4df27af05b493c90798b6ce..df382e2b697b895b793814a238e1c08a776230e3 100644
+index 8cbe28f6..df382e2b 100644
 --- a/src/auto-reply/reply/agent-runner-memory.ts
 +++ b/src/auto-reply/reply/agent-runner-memory.ts
 @@ -8,13 +8,20 @@ import { resolveEffectiveCompactionReserveTokens } from "../../agents/agent-comp
@@ -6134,7 +6144,7 @@ index 8cbe28f6850e4906b4df27af05b493c90798b6ce..df382e2b697b895b793814a238e1c08a
          const updatedEntry = await updateSessionEntry(
            { storePath: params.storePath, sessionKey: params.sessionKey },
 diff --git a/src/auto-reply/reply/memory-flush-prepare.ts b/src/auto-reply/reply/memory-flush-prepare.ts
-index d60ba159efb8abcbd2d96d8fb5238f3c4d5a9b44..a5f665f7e3ccd8e3a183044b0f8e93b55093f16e 100644
+index d60ba159..a5f665f7 100644
 --- a/src/auto-reply/reply/memory-flush-prepare.ts
 +++ b/src/auto-reply/reply/memory-flush-prepare.ts
 @@ -20,6 +20,7 @@ import {
@@ -6219,7 +6229,7 @@ index d60ba159efb8abcbd2d96d8fb5238f3c4d5a9b44..a5f665f7e3ccd8e3a183044b0f8e93b5
      );
      return {
 diff --git a/src/auto-reply/reply/memory-flush-session.test.ts b/src/auto-reply/reply/memory-flush-session.test.ts
-index f6610a489f541c1c52e4cd3220769f3179fd0df6..7c4a6a86f3c08ec61248c2f972121720cd7a60f4 100644
+index f6610a48..7c4a6a86 100644
 --- a/src/auto-reply/reply/memory-flush-session.test.ts
 +++ b/src/auto-reply/reply/memory-flush-session.test.ts
 @@ -21,7 +21,12 @@ import { createSessionTranscriptHeader } from "../../config/sessions/transcript-
@@ -6302,7 +6312,7 @@ index f6610a489f541c1c52e4cd3220769f3179fd0df6..7c4a6a86f3c08ec61248c2f972121720
 +  }
 +});
 diff --git a/src/auto-reply/reply/memory-flush-session.ts b/src/auto-reply/reply/memory-flush-session.ts
-index f03f7ebf07b99a48b62e6290183efd440a18b934..65456fb7688e52ca5a34554cf535a34b59ac0a68 100644
+index f03f7ebf..65456fb7 100644
 --- a/src/auto-reply/reply/memory-flush-session.ts
 +++ b/src/auto-reply/reply/memory-flush-session.ts
 @@ -25,11 +25,23 @@ export function deriveMemoryFlushId(params: {
@@ -6357,7 +6367,7 @@ index f03f7ebf07b99a48b62e6290183efd440a18b934..65456fb7688e52ca5a34554cf535a34b
 +  };
 +}
 diff --git a/src/config/zod-schema.agent-defaults-base.ts b/src/config/zod-schema.agent-defaults-base.ts
-index c144457ee531c262394d7bab25bd317e4b5fe20f..92908599613f8d169a0e828e99ada7fa5abe86aa 100644
+index c144457e..92908599 100644
 --- a/src/config/zod-schema.agent-defaults-base.ts
 +++ b/src/config/zod-schema.agent-defaults-base.ts
 @@ -131,6 +131,14 @@ export const AgentDefaultsBaseSchema = z.strictObject({
@@ -6385,7 +6395,7 @@ index c144457ee531c262394d7bab25bd317e4b5fe20f..92908599613f8d169a0e828e99ada7fa
            model: z.string().optional(),
            /** Run the memory flush when context is within this many tokens of the compaction threshold. */
 diff --git a/src/gateway/mcp-grant-store.test.ts b/src/gateway/mcp-grant-store.test.ts
-index 79f9acfcac397d0be4ae2a78f39a0767c334bf23..0049ebb7c9f20b201083948970fc4c237f7d57bc 100644
+index 79f9acfc..0049ebb7 100644
 --- a/src/gateway/mcp-grant-store.test.ts
 +++ b/src/gateway/mcp-grant-store.test.ts
 @@ -69,6 +69,35 @@ describe("mcp-grant-store", () => {
@@ -6448,7 +6458,7 @@ index 79f9acfcac397d0be4ae2a78f39a0767c334bf23..0049ebb7c9f20b201083948970fc4c23
      expect(first?.isCurrent()).toBe(false);
      expect(
 diff --git a/src/gateway/mcp-grant-store.ts b/src/gateway/mcp-grant-store.ts
-index c492f8ff4e656c2fa1f05fca18fd197404d68517..50e9539673615846830197a11e2f0909f528fcab 100644
+index c492f8ff..50e95396 100644
 --- a/src/gateway/mcp-grant-store.ts
 +++ b/src/gateway/mcp-grant-store.ts
 @@ -45,6 +45,7 @@ export type McpLoopbackRequestContext = {
@@ -6496,7 +6506,7 @@ index c492f8ff4e656c2fa1f05fca18fd197404d68517..50e9539673615846830197a11e2f0909
      isCurrent,
  
 diff --git a/src/gateway/mcp-http.code-mode.ts b/src/gateway/mcp-http.code-mode.ts
-index 20ed1b498f19775415331aad11b981e41863c4ca..f8b8080f4323b887006d7408357da52d1d0f08e7 100644
+index 20ed1b49..f8b8080f 100644
 --- a/src/gateway/mcp-http.code-mode.ts
 +++ b/src/gateway/mcp-http.code-mode.ts
 @@ -21,6 +21,7 @@ export function createMcpCodeModeToolSurface(params: {
@@ -6509,7 +6519,7 @@ index 20ed1b498f19775415331aad11b981e41863c4ca..f8b8080f4323b887006d7408357da52d
      modelId: context.modelId,
 diff --git a/src/gateway/mcp-http.memory-flush.test.ts b/src/gateway/mcp-http.memory-flush.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..35536ee39e96aa50385b7ce9f76f3fafb3e31897
+index 00000000..35536ee3
 --- /dev/null
 +++ b/src/gateway/mcp-http.memory-flush.test.ts
 @@ -0,0 +1,219 @@
@@ -6733,7 +6743,7 @@ index 0000000000000000000000000000000000000000..35536ee39e96aa50385b7ce9f76f3faf
 +  });
 +});
 diff --git a/src/gateway/mcp-http.runtime.ts b/src/gateway/mcp-http.runtime.ts
-index b685a29974ecf00026a7ccc3fd4e6195474a050c..07d1e0da3d4499630ca296f884270be631c42a3c 100644
+index b685a299..07d1e0da 100644
 --- a/src/gateway/mcp-http.runtime.ts
 +++ b/src/gateway/mcp-http.runtime.ts
 @@ -6,6 +6,7 @@ import {
@@ -6796,7 +6806,7 @@ index b685a29974ecf00026a7ccc3fd4e6195474a050c..07d1e0da3d4499630ca296f884270be6
    scoped.captureFinalCronCreatorTools?.(new Set(toolSchema.map((tool) => tool.name)));
    return {
 diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
-index f82f4d5224ef60030151f8810f77f211259c4095..476aed3b392bb0b9f16e7afbff388564bf00aa38 100644
+index f82f4d52..476aed3b 100644
 --- a/src/gateway/mcp-http.ts
 +++ b/src/gateway/mcp-http.ts
 @@ -304,6 +304,8 @@ async function startMcpLoopbackServer(
@@ -6809,7 +6819,7 @@ index f82f4d5224ef60030151f8810f77f211259c4095..476aed3b392bb0b9f16e7afbff388564
                    signal: requestAbort.signal,
                    authProfileStore: boundClientGrant?.toolAuth?.store,
 diff --git a/src/gateway/server-startup-observers.ts b/src/gateway/server-startup-observers.ts
-index 437406cdc974225434beec1ae89273caabb0f84f..0373a681512d17c049d7d3692963470498233bd0 100644
+index 437406cd..0373a681 100644
 --- a/src/gateway/server-startup-observers.ts
 +++ b/src/gateway/server-startup-observers.ts
 @@ -150,6 +150,17 @@ export async function runGatewayStartupObservers(params: {
@@ -6831,7 +6841,7 @@ index 437406cdc974225434beec1ae89273caabb0f84f..0373a681512d17c049d7d36929634704
      if (params.isClosing?.() || !hookRunner.hasHooks("gateway_start")) {
        return;
 diff --git a/src/gateway/tool-resolution.test.ts b/src/gateway/tool-resolution.test.ts
-index 3f800aa2d18052aeeb512ad6b906a348628a6f26..ef9a8684b461556ab3ad4228408205349868f7f8 100644
+index 3f800aa2..ef9a8684 100644
 --- a/src/gateway/tool-resolution.test.ts
 +++ b/src/gateway/tool-resolution.test.ts
 @@ -1,3 +1,4 @@
@@ -6896,7 +6906,7 @@ index 3f800aa2d18052aeeb512ad6b906a348628a6f26..ef9a8684b461556ab3ad422840820534
  
    it("retains a computer execution across MCP catalog rebuilds and releases it with its run", async () => {
 diff --git a/src/gateway/tool-resolution.ts b/src/gateway/tool-resolution.ts
-index 5225f597fdac1520a3f1ec02e27af2b0cf363dba..47b85b76ed0173bb25aa86a4abf436f19fb9fd40 100644
+index 5225f597..47b85b76 100644
 --- a/src/gateway/tool-resolution.ts
 +++ b/src/gateway/tool-resolution.ts
 @@ -28,7 +28,7 @@ import { resolveSandboxRuntimeStatusAsync } from "../agents/sandbox/runtime-stat
@@ -7009,7 +7019,7 @@ index 5225f597fdac1520a3f1ec02e27af2b0cf363dba..47b85b76ed0173bb25aa86a4abf436f1
            (tool) => !coreToolNames.has(normalizeToolPolicyName(tool.name)),
          )
 diff --git a/src/plugins/cli-backend.types.ts b/src/plugins/cli-backend.types.ts
-index 8331f8e03b364732def51d54d3908dda707b2cc6..20c2c9d2ebb3dcdf12da848d56716104ba4bb8e9 100644
+index 8331f8e0..20c2c9d2 100644
 --- a/src/plugins/cli-backend.types.ts
 +++ b/src/plugins/cli-backend.types.ts
 @@ -240,11 +240,15 @@ export type CliBackendExecuteContext = {

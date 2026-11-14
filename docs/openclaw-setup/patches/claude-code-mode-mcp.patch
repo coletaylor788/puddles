@@ -179,10 +179,18 @@ index d00197c253aa47526a36e7f90dd338b1f89d12c9..f04f02d642c988507497392ce33ced29
        Boolean(projectNativeToolAuthority),
        run,
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 6084207f4cf9e1803c8356a2db976e8b69032ce2..37ba47882bbdcf2a6b93103f0b762b78ead00787 100644
+index 6084207f4cf9e1803c8356a2db976e8b69032ce2..5e2f22d8ae00464d7bff384b4b560f5ef04b695e 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
-@@ -121,6 +121,7 @@ import {
+@@ -44,6 +44,7 @@ import {
+ } from "../../context-engine/registry.js";
+ import type { ContextEngine } from "../../context-engine/types.js";
+ import type { resolveMcpLoopbackScopedTools as resolveLoopbackTools } from "../../gateway/mcp-http.runtime.js";
++import type { mintMcpLoopbackClientGrant as mintClientGrant } from "../../gateway/mcp-grant-store.js";
+ import { setActiveNodeContexts } from "../../infra/active-node-context.js";
+ import {
+   claimHeartbeatOutcomeForRun,
+@@ -121,6 +122,7 @@ import {
    getCliSessionBinding,
    hashCliSessionText,
  } from "../cli-session.js";
@@ -190,7 +198,40 @@ index 6084207f4cf9e1803c8356a2db976e8b69032ce2..37ba47882bbdcf2a6b93103f0b762b78
  import { resetContextWindowCacheForTest } from "../context.test-support.js";
  import { waitForDeferredTurnMaintenanceForSession } from "../embedded-agent-runner/context-engine-maintenance.js";
  import { createContextEngineLogicalTurnLease } from "../harness/context-engine-logical-turn.js";
-@@ -4130,10 +4131,41 @@ describe("prepareCliRunContext", () => {
+@@ -404,7 +406,9 @@ describe("prepareCliRunContext", () => {
+     capabilities: readonly string[],
+     overrides: Parameters<typeof fixture.prepare>[0] = {},
+   ) {
+-    const mintMcpLoopbackClientGrant = vi.fn(createTestMcpLoopbackClientGrant);
++    const mintMcpLoopbackClientGrant = vi.fn((params: Parameters<typeof mintClientGrant>[0]) =>
++      createTestMcpLoopbackClientGrant(params),
++    );
+     const projectNativeToolAuthority = vi.fn((_tools: readonly string[]) => capabilities);
+     const captureNativeToolAuthority = vi.fn((_names: readonly string[] | null) => true);
+     setCliRunnerPrepareTestDeps({
+@@ -2445,7 +2449,9 @@ describe("prepareCliRunContext", () => {
+       captureNativeToolAuthority: vi.fn((_names: readonly string[] | null) => true),
+     }));
+     const deactivateMcpLoopbackClientGrantCapture = vi.fn(() => true);
+-    const mintMcpLoopbackClientGrant = vi.fn(createTestMcpLoopbackClientGrant);
++    const mintMcpLoopbackClientGrant = vi.fn((params: Parameters<typeof mintClientGrant>[0]) =>
++      createTestMcpLoopbackClientGrant(params),
++    );
+     const revokeMintedMcpLoopbackClientGrant = vi.fn(() => true);
+     const resolveMcpLoopbackScopedTools = vi.fn((_scope: McpProjectionParams) => ({
+       agentId: "main",
+@@ -3287,7 +3293,9 @@ describe("prepareCliRunContext", () => {
+     "applies before_prompt_build tool filtering before CLI guidance and submission: $name",
+     async ({ cliToolAvailability, hookToolsAllow, projectedToolNames }) => {
+       const prepareExecution = vi.fn(async () => ({ toolAvailabilityEnforced: true as const }));
+-      const mintMcpLoopbackClientGrant = vi.fn(createTestMcpLoopbackClientGrant);
++      const mintMcpLoopbackClientGrant = vi.fn((params: Parameters<typeof mintClientGrant>[0]) =>
++        createTestMcpLoopbackClientGrant(params),
++      );
+       const hookRunner = {
+         hasHooks: vi.fn((hookName: string) => hookName === "before_prompt_build"),
+         runBeforePromptBuild: vi.fn(async () => ({ toolsAllow: hookToolsAllow })),
+@@ -4130,10 +4138,43 @@ describe("prepareCliRunContext", () => {
        containerWorkdir: "/workspace",
        skillsWorkspaceDir: materializedWorkspace,
        workspaceAccess: "rw",
@@ -202,9 +243,11 @@ index 6084207f4cf9e1803c8356a2db976e8b69032ce2..37ba47882bbdcf2a6b93103f0b762b78
 +          readPath: materializedSkillPath,
 +        },
 +      ],
-+    });
-+
-+    const mintMcpLoopbackClientGrant = vi.fn(createTestMcpLoopbackClientGrant);
+     });
+ 
++    const mintMcpLoopbackClientGrant = vi.fn((params: Parameters<typeof mintClientGrant>[0]) =>
++      createTestMcpLoopbackClientGrant(params),
++    );
 +    const projectSkillReader = vi.fn(() => ({
 +      agentId: "main",
 +      mediatedNativeTools: [],
@@ -223,16 +266,16 @@ index 6084207f4cf9e1803c8356a2db976e8b69032ce2..37ba47882bbdcf2a6b93103f0b762b78
 +      mintMcpLoopbackClientGrant,
 +      resolveMcpLoopbackPolicyTools: projectSkillReader,
 +      resolveMcpLoopbackScopedTools: projectSkillReader,
-     });
++    });
 +    setRawCliBackendForPrepareTest(buildDefaultTestCliBackend({ bundleMcp: true }));
- 
++
      const config: OpenClawConfig = {
        agents: { ownership: "explicit", entries: { main: {}, worker: {} } },
 +      tools: { codeMode: { enabled: true, surface: "additive", executor: "quickjs" } },
      };
      const skillsSnapshot: SkillSnapshot = {
        prompt: [
-@@ -4170,6 +4202,7 @@ describe("prepareCliRunContext", () => {
+@@ -4170,6 +4211,7 @@ describe("prepareCliRunContext", () => {
        agentId: "main",
        prompt: "are there any unread emails",
        skillsSnapshot,
@@ -240,7 +283,7 @@ index 6084207f4cf9e1803c8356a2db976e8b69032ce2..37ba47882bbdcf2a6b93103f0b762b78
      });
  
      expect(ensureSandboxWorkspaceForSessionMock).toHaveBeenCalledWith({
-@@ -4187,6 +4220,10 @@ describe("prepareCliRunContext", () => {
+@@ -4187,6 +4229,10 @@ describe("prepareCliRunContext", () => {
      expect(context.systemPromptReport.skills.entries).toEqual([
        { name: "gog", blockChars: expect.any(Number) },
      ]);
@@ -251,15 +294,17 @@ index 6084207f4cf9e1803c8356a2db976e8b69032ce2..37ba47882bbdcf2a6b93103f0b762b78
    });
  
    it("lazily rebuilds an unsafe modern skills snapshot for a non-sandbox CLI run", async () => {
-@@ -4231,6 +4268,7 @@ describe("prepareCliRunContext", () => {
+@@ -4231,6 +4277,9 @@ describe("prepareCliRunContext", () => {
      const skill = createWeatherSkillFixture(dir, true);
      const preparedExecutionCleanup = vi.fn(async () => undefined);
      const revokeMintedMcpLoopbackClientGrant = vi.fn(() => true);
-+    const mintMcpLoopbackClientGrant = vi.fn(createTestMcpLoopbackClientGrant);
++    const mintMcpLoopbackClientGrant = vi.fn((params: Parameters<typeof mintClientGrant>[0]) =>
++      createTestMcpLoopbackClientGrant(params),
++    );
      setCliBackendForPrepareTest({
        id: "claude-cli",
        pluginId: "anthropic",
-@@ -4240,6 +4278,7 @@ describe("prepareCliRunContext", () => {
+@@ -4240,6 +4289,7 @@ describe("prepareCliRunContext", () => {
      setCliRunnerPrepareTestDeps({
        prepareClaudeCliSkillsPlugin,
        getActiveMcpLoopbackRuntime: vi.fn(createLoopbackRuntime),
@@ -267,7 +312,7 @@ index 6084207f4cf9e1803c8356a2db976e8b69032ce2..37ba47882bbdcf2a6b93103f0b762b78
        revokeMintedMcpLoopbackClientGrant,
      });
  
-@@ -4260,6 +4299,12 @@ describe("prepareCliRunContext", () => {
+@@ -4260,6 +4310,12 @@ describe("prepareCliRunContext", () => {
      expect(manifest).toMatchObject({ name: "openclaw-skills", skills: "./skills" });
      const skillPath = path.join(pluginDir, "skills", "weather", "SKILL.md");
      expect(fs.readFileSync(skillPath, "utf8")).toContain("Read forecast data before replying.");
@@ -280,7 +325,7 @@ index 6084207f4cf9e1803c8356a2db976e8b69032ce2..37ba47882bbdcf2a6b93103f0b762b78
  
      const releaseSkills = context.preparedBackend.claimLiveSessionResources?.();
      expect(releaseSkills).toEqual(expect.any(Function));
-@@ -4295,6 +4340,45 @@ describe("prepareCliRunContext", () => {
+@@ -4295,6 +4351,47 @@ describe("prepareCliRunContext", () => {
      expect(fs.existsSync(pluginDir)).toBe(false);
    });
  
@@ -289,7 +334,9 @@ index 6084207f4cf9e1803c8356a2db976e8b69032ce2..37ba47882bbdcf2a6b93103f0b762b78
 +    const skill = createWeatherSkillFixture(dir, true);
 +    const cleanup = vi.fn(async () => undefined);
 +    const prepareSkillsPlugin = vi.fn(async () => ({ args: [], cleanup }));
-+    const mintMcpLoopbackClientGrant = vi.fn(createTestMcpLoopbackClientGrant);
++    const mintMcpLoopbackClientGrant = vi.fn((params: Parameters<typeof mintClientGrant>[0]) =>
++      createTestMcpLoopbackClientGrant(params),
++    );
 +    setCliBackendForPrepareTest({
 +      id: "claude-cli",
 +      pluginId: "anthropic",
@@ -946,7 +993,7 @@ index bf2d4ca6490b27f2357b7aefb87b123a60cc692c..c492f8ff4e656c2fa1f05fca18fd1974
      isCurrent,
 diff --git a/src/gateway/mcp-http.code-mode.test.ts b/src/gateway/mcp-http.code-mode.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..6eb13f02afadf809062cbee4faa4cd3ffbdb11d7
+index 0000000000000000000000000000000000000000..ef4ddb5604138a88413f78b5478d209cb0e4dc6b
 --- /dev/null
 +++ b/src/gateway/mcp-http.code-mode.test.ts
 @@ -0,0 +1,150 @@
@@ -1033,7 +1080,7 @@ index 0000000000000000000000000000000000000000..6eb13f02afadf809062cbee4faa4cd3f
 +      runId: "skill-denied-run",
 +      senderIsOwner: false,
 +      toolsAllow: ["skills_search", "skills_read"],
-+      codeMode: true,
++      codeMode: true as const,
 +    };
 +    await setAppliedRuntimeConfigSnapshot(config, config);
 +    const scoped = await resolveMcpLoopbackScopedTools({
@@ -1841,10 +1888,18 @@ index fb28074fa62c795c5457441f93b1e48d6010d4a6..b685a29974ecf00026a7ccc3fd4e6195
      this.#grantConfigScopes.clear();
    }
 diff --git a/src/gateway/mcp-http.test.ts b/src/gateway/mcp-http.test.ts
-index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..5a8d2028ff0f3b34ebf44ec7f2cf165e53fb821c 100644
+index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..b08a60ccc91de99746b158ce85059b615fdd6828 100644
 --- a/src/gateway/mcp-http.test.ts
 +++ b/src/gateway/mcp-http.test.ts
-@@ -32,6 +32,7 @@ import { createProcessSessionFixture } from "../agents/bash-process-registry.tes
+@@ -21,6 +21,7 @@ import {
+ } from "../agents/admitted-run-context.js";
+ import type { runBeforeToolCallHook } from "../agents/agent-tools.before-tool-call.js";
+ import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
++import type { OpenClawConfig } from "../config/types.openclaw.js";
+ import {
+   addSession,
+   appendOutput,
+@@ -32,6 +33,7 @@ import { createProcessSessionFixture } from "../agents/bash-process-registry.tes
  import { createProcessTool } from "../agents/bash-tools.process.js";
  import type { AnyAgentTool } from "../agents/tools/common.js";
  import { getGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
@@ -1852,7 +1907,7 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..5a8d2028ff0f3b34ebf44ec7f2cf165e
  import {
    drainSystemEventEntries,
    enqueueSystemEventWithReceipt,
-@@ -43,12 +44,12 @@ import type { resolveGatewayScopedTools } from "./tool-resolution.js";
+@@ -43,12 +45,12 @@ import type { resolveGatewayScopedTools } from "./tool-resolution.js";
  
  const activeAdmissions: PreparedAgentRunAdmission[] = [];
  
@@ -1867,7 +1922,16 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..5a8d2028ff0f3b34ebf44ec7f2cf165e
        ingress: { kind: "system", boundary: "mcp-http-test", state: "present" },
      },
      operationalRunInstance: createOperationalRunInstanceRef(runId),
-@@ -96,7 +97,9 @@ const loadNodeExecAvailabilityMock = vi.hoisted(() =>
+@@ -67,7 +69,7 @@ type ScopedToolsCall = Parameters<typeof resolveGatewayScopedTools>[0] & {
+ type BeforeToolCallHookInput = Parameters<typeof runBeforeToolCallHook>[0];
+ 
+ const runBeforeToolCallHookMock = vi.hoisted(() =>
+-  vi.fn(async (args: { params: unknown }): Promise<MockBeforeToolCallHookResult> => ({
++  vi.fn(async (args: BeforeToolCallHookInput): Promise<MockBeforeToolCallHookResult> => ({
+     blocked: false,
+     params: args.params,
+   })),
+@@ -96,7 +98,9 @@ const loadNodeExecAvailabilityMock = vi.hoisted(() =>
  
  const logWarnMock = vi.hoisted(() => vi.fn<(message: string) => void>());
  const sessionEntries = vi.hoisted(() => new Map<string, Record<string, unknown>>());
@@ -1878,7 +1942,7 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..5a8d2028ff0f3b34ebf44ec7f2cf165e
  
  // Partial: the real gateway resolver reaches other exports of this module when a
  // test drives it instead of the mock below.
-@@ -130,7 +133,8 @@ vi.mock("../config/sessions/session-accessor.entry.js", async (importOriginal) =
+@@ -130,7 +134,8 @@ vi.mock("../config/sessions/session-accessor.entry.js", async (importOriginal) =
    };
  });
  
@@ -1888,7 +1952,7 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..5a8d2028ff0f3b34ebf44ec7f2cf165e
    runBeforeToolCallHook: (...args: Parameters<typeof runBeforeToolCallHookMock>) =>
      runBeforeToolCallHookMock(...args),
  }));
-@@ -930,6 +934,7 @@ describe("mcp loopback server", () => {
+@@ -930,6 +935,7 @@ describe("mcp loopback server", () => {
        sourceReplyDeliveryMode: "message_tool_only",
        sourceReplyOnly: true,
        toolsAllow: ["message"],
@@ -1896,7 +1960,7 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..5a8d2028ff0f3b34ebf44ec7f2cf165e
        nativeCronCreatorToolAllowlist: ["read", "write", "edit", "apply_patch", "exec", "process"],
        // The delegation gate lives in resolveGatewayScopedTools, so dropping
        // this field at the HTTP mapping silently disables it for CLI backends.
-@@ -976,6 +981,7 @@ describe("mcp loopback server", () => {
+@@ -976,6 +982,7 @@ describe("mcp loopback server", () => {
          headers: jsonHeaders({
            ...(captureKey ? { "x-openclaw-cli-capture-key": captureKey } : {}),
            "x-session-key": "agent:main:main",
@@ -1904,7 +1968,7 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..5a8d2028ff0f3b34ebf44ec7f2cf165e
            "x-openclaw-session-id": "session-spoofed",
            "x-openclaw-message-channel": "telegram",
            "x-openclaw-client-caps": "inline-widgets,admin",
-@@ -1937,6 +1943,47 @@ describe("mcp loopback server", () => {
+@@ -1937,6 +1944,47 @@ describe("mcp loopback server", () => {
      expect(execute).toHaveBeenCalledWith(expect.stringMatching(/^mcp-/), {}, undefined);
    });
  
@@ -1952,7 +2016,7 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..5a8d2028ff0f3b34ebf44ec7f2cf165e
    it("closes a pending startup once for concurrent shutdown callers", async () => {
      const starting = ensureMcpLoopbackServer();
      const closing = Promise.allSettled([closeMcpLoopbackServer(), closeMcpLoopbackServer()]);
-@@ -2536,3 +2583,435 @@ describe("createMcpLoopbackServerConfig", () => {
+@@ -2536,3 +2584,435 @@ describe("createMcpLoopbackServerConfig", () => {
    });
  });
  /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
@@ -2090,7 +2154,7 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..5a8d2028ff0f3b34ebf44ec7f2cf165e
 +        execute,
 +      },
 +    ]);
-+    resolveGatewayScopedToolsMock.mockImplementation((params) => ({
++    resolveGatewayScopedToolsMock.mockImplementation(async (params) => ({
 +      agentId: (params as { agentId?: string }).agentId ?? "reader",
 +      tools: [
 +        {

@@ -1,5 +1,5 @@
 diff --git a/src/agents/command/prepare.ts b/src/agents/command/prepare.ts
-index 611cd4c..73a640c 100644
+index 611cd4cd..73a640ce 100644
 --- a/src/agents/command/prepare.ts
 +++ b/src/agents/command/prepare.ts
 @@ -430,14 +430,14 @@ export async function prepareAgentCommandExecution(
@@ -20,7 +20,7 @@ index 611cd4c..73a640c 100644
      return {
        opts: commandOpts,
 diff --git a/src/agents/embedded-agent-runner/run/attempt-prompt-build.ts b/src/agents/embedded-agent-runner/run/attempt-prompt-build.ts
-index aef13cb..db1d5ff 100644
+index aef13cbf..db1d5ffa 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-prompt-build.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-prompt-build.ts
 @@ -136,6 +136,8 @@ export async function prepareEmbeddedAttemptPromptAssembly(input: {
@@ -42,7 +42,7 @@ index aef13cb..db1d5ff 100644
      ...(input.prompt.originContext
        ? escapedProjection
 diff --git a/src/agents/internal-events.test.ts b/src/agents/internal-events.test.ts
-index 8cb5afc..c33f3e7 100644
+index 8cb5afc0..c33f3e7e 100644
 --- a/src/agents/internal-events.test.ts
 +++ b/src/agents/internal-events.test.ts
 @@ -1,5 +1,9 @@
@@ -150,7 +150,7 @@ index 8cb5afc..c33f3e7 100644
 +  },
 +);
 diff --git a/src/agents/internal-events.ts b/src/agents/internal-events.ts
-index 30d753b..42e7e44 100644
+index 30d753b4..42e7e445 100644
 --- a/src/agents/internal-events.ts
 +++ b/src/agents/internal-events.ts
 @@ -5,6 +5,8 @@
@@ -304,7 +304,7 @@ index 30d753b..42e7e44 100644
 +    : resolveAcpPromptBody(body, events, inputProvenance, config);
  }
 diff --git a/src/agents/openclaw-tools.sessions-send-child-coordination.test.ts b/src/agents/openclaw-tools.sessions-send-child-coordination.test.ts
-index dcf9b5f..1a4eac9 100644
+index dcf9b5fd..1a4eac94 100644
 --- a/src/agents/openclaw-tools.sessions-send-child-coordination.test.ts
 +++ b/src/agents/openclaw-tools.sessions-send-child-coordination.test.ts
 @@ -814,6 +814,53 @@ describe("sessions_send child coordination", () => {
@@ -362,7 +362,7 @@ index dcf9b5f..1a4eac9 100644
      { direction: "requester", child: true },
      { direction: "target", child: false },
 diff --git a/src/agents/subagents/announce/subagent-announce-output.test.ts b/src/agents/subagents/announce/subagent-announce-output.test.ts
-index 1448c55..c0bbaec 100644
+index 1448c550..c0bbaec4 100644
 --- a/src/agents/subagents/announce/subagent-announce-output.test.ts
 +++ b/src/agents/subagents/announce/subagent-announce-output.test.ts
 @@ -348,22 +348,72 @@ describe("buildChildCompletionFindings", () => {
@@ -454,7 +454,7 @@ index 1448c55..c0bbaec 100644
  
    it.each([
 diff --git a/src/agents/subagents/announce/subagent-announce-output.ts b/src/agents/subagents/announce/subagent-announce-output.ts
-index 8914c78..4d1e085 100644
+index 8914c78f..4d1e0855 100644
 --- a/src/agents/subagents/announce/subagent-announce-output.ts
 +++ b/src/agents/subagents/announce/subagent-announce-output.ts
 @@ -271,6 +271,7 @@ export async function readChildCompletionFindings(
@@ -474,7 +474,7 @@ index 8914c78..4d1e085 100644
      isCurrent,
    };
 diff --git a/src/agents/subagents/announce/subagent-announce-result.ts b/src/agents/subagents/announce/subagent-announce-result.ts
-index a9b9917..aaad82c 100644
+index a9b99178..aaad82c3 100644
 --- a/src/agents/subagents/announce/subagent-announce-result.ts
 +++ b/src/agents/subagents/announce/subagent-announce-result.ts
 @@ -1,8 +1,13 @@
@@ -572,7 +572,7 @@ index a9b9917..aaad82c 100644
      remaining -= section.resultBlock.length - section.minimumChars;
    }
 diff --git a/src/agents/subagents/registry/subagent-list.ts b/src/agents/subagents/registry/subagent-list.ts
-index 3da3ed9..b78b0e9 100644
+index 3da3ed94..b78b0e9f 100644
 --- a/src/agents/subagents/registry/subagent-list.ts
 +++ b/src/agents/subagents/registry/subagent-list.ts
 @@ -11,6 +11,10 @@ import {
@@ -637,7 +637,7 @@ index 3da3ed9..b78b0e9 100644
        line,
 diff --git a/src/agents/subagents/registry/subagent-list.untrusted.test.ts b/src/agents/subagents/registry/subagent-list.untrusted.test.ts
 new file mode 100644
-index 0000000..988d34e
+index 00000000..988d34ec
 --- /dev/null
 +++ b/src/agents/subagents/registry/subagent-list.untrusted.test.ts
 @@ -0,0 +1,70 @@
@@ -712,7 +712,7 @@ index 0000000..988d34e
 +  );
 +});
 diff --git a/src/agents/tools/sessions-history-tool.test.ts b/src/agents/tools/sessions-history-tool.test.ts
-index 2586a8d..2c78586 100644
+index 2586a8d5..2c78586a 100644
 --- a/src/agents/tools/sessions-history-tool.test.ts
 +++ b/src/agents/tools/sessions-history-tool.test.ts
 @@ -51,9 +51,13 @@ function writeSessionStore(
@@ -764,7 +764,7 @@ index 2586a8d..2c78586 100644
      const tool = createHistoryToolWithMessage("hello");
      const result = await tool.execute("contract", { sessionKey: "main" });
 diff --git a/src/agents/tools/sessions-history-tool.ts b/src/agents/tools/sessions-history-tool.ts
-index fcf38a0..6fece29 100644
+index fcf38a06..6fece29c 100644
 --- a/src/agents/tools/sessions-history-tool.ts
 +++ b/src/agents/tools/sessions-history-tool.ts
 @@ -49,6 +49,7 @@ import {
@@ -833,7 +833,7 @@ index fcf38a0..6fece29 100644
          ? capSessionsHistoryAroundMessage(sanitizedItems, messageId, transcriptBudget)
          : capArrayByJsonBytes(sanitizedItems, transcriptBudget);
 diff --git a/src/agents/tools/sessions-list-projection.test.ts b/src/agents/tools/sessions-list-projection.test.ts
-index 626a59e..dc672bc 100644
+index 626a59ee..dc672bc9 100644
 --- a/src/agents/tools/sessions-list-projection.test.ts
 +++ b/src/agents/tools/sessions-list-projection.test.ts
 @@ -33,6 +33,42 @@ describe("sessions-list inventory projection", () => {
@@ -888,7 +888,7 @@ index 626a59e..dc672bc 100644
        path: "/tmp/sessions.json",
        sessions: [
 diff --git a/src/agents/tools/sessions-list-tool.ts b/src/agents/tools/sessions-list-tool.ts
-index 7ef0cae..6369461 100644
+index 7ef0caeb..6369461d 100644
 --- a/src/agents/tools/sessions-list-tool.ts
 +++ b/src/agents/tools/sessions-list-tool.ts
 @@ -7,7 +7,11 @@ import { SessionRunStatusSchema } from "../../../packages/gateway-protocol/src/s
@@ -978,7 +978,7 @@ index 7ef0cae..6369461 100644
          const resultFor = (count: number) => ({
            count,
 diff --git a/src/agents/tools/sessions-search-tool.test.ts b/src/agents/tools/sessions-search-tool.test.ts
-index 9e86f1b..a5aab4e 100644
+index 9e86f1bd..a5aab4e4 100644
 --- a/src/agents/tools/sessions-search-tool.test.ts
 +++ b/src/agents/tools/sessions-search-tool.test.ts
 @@ -599,3 +599,20 @@ describe("sessions_search tool", () => {
@@ -1003,7 +1003,7 @@ index 9e86f1b..a5aab4e 100644
 +  expect(Value.Check(tool.outputSchema!, details)).toBe(true);
 +});
 diff --git a/src/agents/tools/sessions-search-tool.ts b/src/agents/tools/sessions-search-tool.ts
-index 6c4e766..07e7f66 100644
+index 6c4e766f..07e7f663 100644
 --- a/src/agents/tools/sessions-search-tool.ts
 +++ b/src/agents/tools/sessions-search-tool.ts
 @@ -13,6 +13,7 @@ import {
@@ -1031,7 +1031,7 @@ index 6c4e766..07e7f66 100644
              }
            }
 diff --git a/src/agents/tools/sessions-send-reply-flow.ts b/src/agents/tools/sessions-send-reply-flow.ts
-index 673871a..4be4c17 100644
+index 673871a0..4be4c178 100644
 --- a/src/agents/tools/sessions-send-reply-flow.ts
 +++ b/src/agents/tools/sessions-send-reply-flow.ts
 @@ -11,6 +11,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -1100,7 +1100,7 @@ index 673871a..4be4c17 100644
  }
 diff --git a/src/agents/tools/sessions-send-tokens.test.ts b/src/agents/tools/sessions-send-tokens.test.ts
 new file mode 100644
-index 0000000..b88f638
+index 00000000..b88f638f
 --- /dev/null
 +++ b/src/agents/tools/sessions-send-tokens.test.ts
 @@ -0,0 +1,23 @@
@@ -1128,7 +1128,7 @@ index 0000000..b88f638
 +  });
 +});
 diff --git a/src/agents/tools/sessions-send-tokens.ts b/src/agents/tools/sessions-send-tokens.ts
-index 034724f..73e414b 100644
+index 034724f3..73e414be 100644
 --- a/src/agents/tools/sessions-send-tokens.ts
 +++ b/src/agents/tools/sessions-send-tokens.ts
 @@ -1,6 +1,13 @@
@@ -1147,7 +1147,7 @@ index 034724f..73e414b 100644
  export function isNonDeliverableSessionsReply(text?: string) {
    return NON_DELIVERABLE_REPLY_TOKENS.some((token) => isSilentReplyText(text, token));
 diff --git a/src/agents/tools/sessions-send-tool.a2a.test.ts b/src/agents/tools/sessions-send-tool.a2a.test.ts
-index 2dbe3a9..2b547b5 100644
+index 2dbe3a9a..2b547b51 100644
 --- a/src/agents/tools/sessions-send-tool.a2a.test.ts
 +++ b/src/agents/tools/sessions-send-tool.a2a.test.ts
 @@ -1,6 +1,10 @@
@@ -1230,7 +1230,7 @@ index 2dbe3a9..2b547b5 100644
 +beforeEach(() => setRuntimeConfigSnapshot({}));
 +afterEach(() => clearRuntimeConfigSnapshot());
 diff --git a/src/agents/tools/sessions-send-tool.a2a.ts b/src/agents/tools/sessions-send-tool.a2a.ts
-index 5e42c19..5045331 100644
+index 5e42c190..50453318 100644
 --- a/src/agents/tools/sessions-send-tool.a2a.ts
 +++ b/src/agents/tools/sessions-send-tool.a2a.ts
 @@ -1,4 +1,6 @@
@@ -1289,7 +1289,7 @@ index 5e42c19..5045331 100644
          sourceAgentId: params.targetAgentId,
        });
 diff --git a/src/agents/tools/sessions-send-tool.ts b/src/agents/tools/sessions-send-tool.ts
-index 34efe99..f7c51eb 100644
+index 34efe99e..f7c51eb3 100644
 --- a/src/agents/tools/sessions-send-tool.ts
 +++ b/src/agents/tools/sessions-send-tool.ts
 @@ -37,6 +37,7 @@ import {
@@ -1336,7 +1336,7 @@ index 34efe99..f7c51eb 100644
                  targetAgentId,
 diff --git a/src/agents/tools/sessions-untrusted-projection.test.ts b/src/agents/tools/sessions-untrusted-projection.test.ts
 new file mode 100644
-index 0000000..1f3c7cd
+index 00000000..1f3c7cd5
 --- /dev/null
 +++ b/src/agents/tools/sessions-untrusted-projection.test.ts
 @@ -0,0 +1,49 @@
@@ -1391,7 +1391,7 @@ index 0000000..1f3c7cd
 +});
 diff --git a/src/agents/tools/sessions-untrusted-projection.ts b/src/agents/tools/sessions-untrusted-projection.ts
 new file mode 100644
-index 0000000..dc72d83
+index 00000000..dc72d83f
 --- /dev/null
 +++ b/src/agents/tools/sessions-untrusted-projection.ts
 @@ -0,0 +1,101 @@
@@ -1497,7 +1497,7 @@ index 0000000..dc72d83
 +  return result(entry);
 +}
 diff --git a/src/agents/tools/subagents-tool.test.ts b/src/agents/tools/subagents-tool.test.ts
-index 8a9550d..018dbcc 100644
+index 8a9550d6..018dbcc8 100644
 --- a/src/agents/tools/subagents-tool.test.ts
 +++ b/src/agents/tools/subagents-tool.test.ts
 @@ -173,3 +173,48 @@ describe("subagents native run contract", () => {
@@ -1550,7 +1550,7 @@ index 8a9550d..018dbcc 100644
 +  );
 +});
 diff --git a/src/agents/tools/subagents-tool.ts b/src/agents/tools/subagents-tool.ts
-index b135ef5..0a927b9 100644
+index b135ef51..0a927b94 100644
 --- a/src/agents/tools/subagents-tool.ts
 +++ b/src/agents/tools/subagents-tool.ts
 @@ -36,6 +36,7 @@ import {
@@ -1630,7 +1630,7 @@ index b135ef5..0a927b9 100644
            });
 diff --git a/src/agents/untrusted-agent-results.test.ts b/src/agents/untrusted-agent-results.test.ts
 new file mode 100644
-index 0000000..c33544e
+index 00000000..c33544ef
 --- /dev/null
 +++ b/src/agents/untrusted-agent-results.test.ts
 @@ -0,0 +1,109 @@
@@ -1745,7 +1745,7 @@ index 0000000..c33544e
 +});
 diff --git a/src/agents/untrusted-agent-results.ts b/src/agents/untrusted-agent-results.ts
 new file mode 100644
-index 0000000..c31c6ac
+index 00000000..c31c6ace
 --- /dev/null
 +++ b/src/agents/untrusted-agent-results.ts
 @@ -0,0 +1,86 @@
@@ -1836,7 +1836,7 @@ index 0000000..c31c6ac
 +  };
 +}
 diff --git a/src/config/schema.help.runtime.ts b/src/config/schema.help.runtime.ts
-index 8455d54..3c6c886 100644
+index 8455d540..3c6c8866 100644
 --- a/src/config/schema.help.runtime.ts
 +++ b/src/config/schema.help.runtime.ts
 @@ -122,6 +122,8 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
@@ -1849,7 +1849,7 @@ index 8455d54..3c6c886 100644
      "Enables cross-agent session tool access (default: true); omitted or empty allow permits every agent pair. Set false to block ordinary cross-agent access; requester-owned native subagent and ACP child sessions stay reachable under tree or all visibility. For strict separation, set tools.sessions.visibility to agent or self (tree still admits requester-owned native/ACP children), or use separate gateways.",
    "tools.agentToAgent.allow":
 diff --git a/src/config/schema.labels.ts b/src/config/schema.labels.ts
-index 5a9d7be..79d8d9f 100644
+index 5a9d7be3..79d8d9f0 100644
 --- a/src/config/schema.labels.ts
 +++ b/src/config/schema.labels.ts
 @@ -175,6 +175,7 @@ export const FIELD_LABELS: Record<string, string> = {
@@ -1861,7 +1861,7 @@ index 5a9d7be..79d8d9f 100644
    "tools.toolSearch": "Tool Search",
    "tools.toolSearch.enabled": "Enable Tool Search",
 diff --git a/src/config/zod-schema.agent-runtime.ts b/src/config/zod-schema.agent-runtime.ts
-index 0aa5247..e629dad 100644
+index 0aa5247c..e629dad8 100644
 --- a/src/config/zod-schema.agent-runtime.ts
 +++ b/src/config/zod-schema.agent-runtime.ts
 @@ -1,3 +1,4 @@
@@ -1881,7 +1881,7 @@ index 0aa5247..e629dad 100644
        .optional(),
      /** Elevated exec permissions for the host machine. */
 diff --git a/src/cron/isolated-agent/subagent-followup.test.ts b/src/cron/isolated-agent/subagent-followup.test.ts
-index cb17073..f36cfcc 100644
+index cb170731..a562164a 100644
 --- a/src/cron/isolated-agent/subagent-followup.test.ts
 +++ b/src/cron/isolated-agent/subagent-followup.test.ts
 @@ -460,3 +460,26 @@ describe("waitForDescendantSubagentSummary", () => {
@@ -1901,7 +1901,7 @@ index cb17073..f36cfcc 100644
 +    resultText: "plain findings",
 +    hasInternalTranscript: true,
 +  });
-+  vi.mocked(listDescendantRunsForRequester).mockReturnValue([reader, other]);
++  vi.mocked(listDescendantRunsForRequester).mockResolvedValue([reader, other]);
 +  const result = await readDescendantSubagentFallbackReply({
 +    sessionKey: "test-session",
 +    runStartedAt: 1000,
@@ -1912,7 +1912,7 @@ index cb17073..f36cfcc 100644
 +  expect(reader.completion?.resultText).toBe("<reader findings>");
 +});
 diff --git a/src/cron/isolated-agent/subagent-followup.ts b/src/cron/isolated-agent/subagent-followup.ts
-index 205f244..949f25c 100644
+index 205f244f..949f25cc 100644
 --- a/src/cron/isolated-agent/subagent-followup.ts
 +++ b/src/cron/isolated-agent/subagent-followup.ts
 @@ -4,12 +4,14 @@ import type { SubagentRunRecord } from "../../agents/subagents/registry/subagent
