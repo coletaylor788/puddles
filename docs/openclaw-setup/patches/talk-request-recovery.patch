@@ -1,5 +1,5 @@
 diff --git a/extensions/openai/realtime-quicksilver-concurrency.test.ts b/extensions/openai/realtime-quicksilver-concurrency.test.ts
-index 974da103..658b0ecc 100644
+index 974da103d7300c03de7cd9b2a70f12297ae0e0bd..658b0ecc3e589e17e315e6716b0c20d0bc95aab0 100644
 --- a/extensions/openai/realtime-quicksilver-concurrency.test.ts
 +++ b/extensions/openai/realtime-quicksilver-concurrency.test.ts
 @@ -1,5 +1,6 @@
@@ -191,7 +191,7 @@ index 974da103..658b0ecc 100644
          result.resolve({ text: "" });
          h.controller.stop(new Error("test cleanup"));
 diff --git a/extensions/openai/realtime-quicksilver-delegation-controller.ts b/extensions/openai/realtime-quicksilver-delegation-controller.ts
-index fc898bbc..b695496c 100644
+index 7c720a9db0b18fd50f880552b0b8a51527b0b5e5..2975e58fc5e47407976176bc1b1fbd2e2a2bb3a7 100644
 --- a/extensions/openai/realtime-quicksilver-delegation-controller.ts
 +++ b/extensions/openai/realtime-quicksilver-delegation-controller.ts
 @@ -4,7 +4,6 @@ import type {
@@ -199,10 +199,10 @@ index fc898bbc..b695496c 100644
  } from "openclaw/plugin-sdk/realtime-voice";
  import {
 -  buildRealtimeVoiceAgentControlSpeechMessage,
-   canonicalizeBase64,
    extractErrorCode,
    readErrorName,
-@@ -362,8 +361,19 @@ export class OpenAIQuicksilverDelegationController {
+   rawDataToString,
+@@ -343,8 +342,19 @@ export class OpenAIQuicksilverDelegationController {
        prompt: buildOpenAIQuicksilverDelegationPrompt({ input, transcript }),
      };
      if (this.consultController) {
@@ -223,7 +223,7 @@ index fc898bbc..b695496c 100644
        if (runner.steer) {
          this.schedulePendingSteering(this.consultController, runner.steer);
        } else {
-@@ -439,14 +449,22 @@ export class OpenAIQuicksilverDelegationController {
+@@ -420,14 +430,22 @@ export class OpenAIQuicksilverDelegationController {
              this.revokeRequesterFinal();
              return;
            }
@@ -249,7 +249,7 @@ index fc898bbc..b695496c 100644
                  "speakable",
                  delegation.id,
                );
-@@ -513,13 +531,8 @@ export class OpenAIQuicksilverDelegationController {
+@@ -500,13 +518,8 @@ export class OpenAIQuicksilverDelegationController {
      const socket = this.options.getSocket();
      let progressOpen = true;
      try {
@@ -266,10 +266,10 @@ index fc898bbc..b695496c 100644
          prompt: delegation.prompt,
          signal,
 diff --git a/extensions/openai/realtime-quicksilver-delegation.test.ts b/extensions/openai/realtime-quicksilver-delegation.test.ts
-index 954ebf6b..f5da5b0f 100644
+index 17e26326b142b69e80712b90466ebff6d5b35d30..0ef19cabc36af562275099f112b24b547b9c225d 100644
 --- a/extensions/openai/realtime-quicksilver-delegation.test.ts
 +++ b/extensions/openai/realtime-quicksilver-delegation.test.ts
-@@ -492,16 +492,10 @@ describe("GPT-Live sideband protocol", () => {
+@@ -332,16 +332,10 @@ describe("GPT-Live sideband protocol", () => {
        );
        delegate(controller, "late-cancel", "cancel");
        expect(runAgentConsult).toHaveBeenCalledOnce();
@@ -289,40 +289,32 @@ index 954ebf6b..f5da5b0f 100644
        });
      } finally {
        controller.stop(new Error("test complete"));
-@@ -551,8 +545,7 @@ describe("GPT-Live sideband protocol", () => {
-     });
+@@ -431,6 +425,15 @@ describe("GPT-Live sideband protocol", () => {
  
-     delegate(controller, "delegation-1", "first task");
--    expect(socket.sent).toHaveLength(1);
--    expect(socket.sent[0]).toContain("Do not delegate this message or call any tools.");
-+    expect(socket.sent).toHaveLength(0);
-     delegate(controller, "control-active", "host-control");
-     expect(signals[0]?.aborted).toBe(false);
+     expect(consultSignal?.aborted).toBe(false);
      expect(runAgentConsult).toHaveBeenCalledOnce();
-@@ -560,11 +553,10 @@ describe("GPT-Live sideband protocol", () => {
-     delegate(controller, "delegation-3", "latest task");
-     delegate(controller, "control-pending", "host-control");
- 
--    expect(socket.sent).toHaveLength(1);
-+    expect(socket.sent).toHaveLength(0);
-     expect(signals[0]?.aborted).toBe(true);
-     await vi.waitFor(() => expect(runAgentConsult).toHaveBeenCalledTimes(2));
--    expect(socket.sent).toHaveLength(2);
--    expect(socket.sent[1]).toBe(socket.sent[0]);
-+    expect(socket.sent).toHaveLength(0);
-     expect(runAgentConsult.mock.calls[1]?.[0].prompt).toContain("latest task");
-     expect(runAgentConsult.mock.calls[1]?.[0].prompt).not.toContain("second task");
-     controller.stop(new Error("test complete"));
-@@ -861,7 +853,7 @@ describe("GPT-Live sideband protocol", () => {
-     },
-   );
++    // Only the displaced request is refused; neither accepted owner has a final yet.
++    expect(parseSent(socket)).toEqual([
++      delegationAppend(
++        "delegation-second",
++        "This additional request was not accepted because a newer instruction arrived " +
++          "before it could be submitted. This did not cancel the original task. " +
++          "Use each request's separate status or result.",
++      ),
++    ]);
+     await vi.waitFor(() => expect(steerAgentConsult).toHaveBeenCalledOnce());
+     expect(steerAgentConsult.mock.calls[0]?.[0].prompt).toContain("latest task");
+     expect(steerAgentConsult.mock.calls[0]?.[0].prompt).not.toContain("second task");
+@@ -641,7 +644,7 @@ describe("GPT-Live sideband protocol", () => {
+     );
+   });
  
 -  it("drops pending receipts and late results when detached before settlement", async () => {
 +  it("drops unadmitted work and late results when detached before settlement", async () => {
      let finish!: (result: { text: string }) => void;
      const result = new Promise<{ text: string }>((resolve) => {
        finish = resolve;
-@@ -874,14 +866,14 @@ describe("GPT-Live sideband protocol", () => {
+@@ -654,14 +657,14 @@ describe("GPT-Live sideband protocol", () => {
      try {
        delegate(controller, "active", "first task");
        delegate(controller, "pending", "next task");
@@ -340,7 +332,7 @@ index 954ebf6b..f5da5b0f 100644
        finish({ text: "Finished" });
        controller.stop(new Error("test complete"));
 diff --git a/extensions/openai/realtime-quicksilver-gateway-bridge-lifecycle.test.ts b/extensions/openai/realtime-quicksilver-gateway-bridge-lifecycle.test.ts
-index 5be9e255..08afd3e4 100644
+index 5be9e255089d51f856b24330f747d8977f1e9c53..08afd3e45148ce24bbfe45bfbf6fdaf00028b111 100644
 --- a/extensions/openai/realtime-quicksilver-gateway-bridge-lifecycle.test.ts
 +++ b/extensions/openai/realtime-quicksilver-gateway-bridge-lifecycle.test.ts
 @@ -176,7 +176,7 @@ describe("OpenAI Quicksilver gateway bridge lifecycle", () => {
@@ -353,10 +345,10 @@ index 5be9e255..08afd3e4 100644
          await harness.bridge.close({ disposition: "detach" });
          const sentAtClose = socket.sent.length;
 diff --git a/extensions/openai/realtime-quicksilver-gateway-bridge.test.ts b/extensions/openai/realtime-quicksilver-gateway-bridge.test.ts
-index afbc6a43..711fbdc5 100644
+index 3091530205e9edf65a63acbbeda76b06b036093c..29a3f2180300009374c44e217082ef553f34611a 100644
 --- a/extensions/openai/realtime-quicksilver-gateway-bridge.test.ts
 +++ b/extensions/openai/realtime-quicksilver-gateway-bridge.test.ts
-@@ -475,8 +475,14 @@ describe("GPT-Live gateway relay bridge", () => {
+@@ -454,8 +454,14 @@ describe("GPT-Live gateway relay bridge", () => {
      );
      expect(
        parseSent(connectedSocket).filter((event) => event.type === "session.context.append"),
@@ -373,131 +365,61 @@ index afbc6a43..711fbdc5 100644
  
      await bridge.close();
      expect(closePeer).toHaveBeenCalledOnce();
-diff --git a/extensions/openai/realtime-quicksilver-instructions.ts b/extensions/openai/realtime-quicksilver-instructions.ts
-index 0d0ef210..12dede63 100644
---- a/extensions/openai/realtime-quicksilver-instructions.ts
-+++ b/extensions/openai/realtime-quicksilver-instructions.ts
-@@ -5,12 +5,15 @@ Converse live by default. Reason, explain, brainstorm, and iterate using the con
- Delegate to the client only to retrieve missing memory or context, look up or verify information using the internet or other tools, or take an external action. Reasoning alone does not require delegation.
- Reuse available results; delegate again only when a new lookup or action is needed. If essential information must come from the user, ask a brief clarification live.
- Continue conversation from available context while delegated work runs. Delegate each backend request once; receipts, progress, and results are context, not new requests.
-+A refused additional request does not mean the original task failed. Use each request's own host status or result. Do not retry unsupported task changes or claim they were queued.
-+After a task completes or fails, you may delegate a fresh request when useful to fulfill the user's request, including when they ask to try again. Carry forward the earlier outcome and any correction. A new attempt is allowed; do not automatically repeat failures or replay an external action with an unknown outcome.
- Do not invent results, progress, or completion. Never claim an action succeeded without a result.`;
- 
- const OPENAI_QUICKSILVER_CHANNEL_INSTRUCTIONS = `Context on the commentary channel is silent background. You may use it, but never read it aloud.
- Context on the speakable channel is your answer to deliver naturally in your own words. Never mention the channel or the delegation.`;
- 
- export const OPENAI_QUICKSILVER_HOST_CONTROL_INSTRUCTIONS = `Delegate requests to check live task status, cancel, redirect, or change backend work to the client, even while another delegation is active.
-+Questions about whether work is actually happening are status checks, even when phrased conversationally, such as "Are you actually checking?" or "How is that lookup going?" Each new status question requires a new client delegation and its fresh host result before you answer. Earlier receipts and progress updates, even from this call, cannot answer a new status question.
- For these task-control requests, wait for a fresh host control result for this voice call. Do not infer current task status from shared history or rewrite a control request into a progress claim.
- Ordinary conversational follow-ups, clarification, and brainstorming from available context do not require host control. Continue that discussion while backend work runs.
- Shared conversation history may describe other calls or completed work; it does not establish this call's live ownership or status.
-diff --git a/extensions/openai/realtime-quicksilver-public-delegation.test.ts b/extensions/openai/realtime-quicksilver-public-delegation.test.ts
-index ca8c48a4..fc47b614 100644
---- a/extensions/openai/realtime-quicksilver-public-delegation.test.ts
-+++ b/extensions/openai/realtime-quicksilver-public-delegation.test.ts
-@@ -70,9 +70,13 @@ describe("public GPT-Live delegation", () => {
-         "<input>Check the forecast.</input>",
-       );
-       expect(runAgentConsult.mock.calls[0]?.[0].prompt).toContain("assistant: I can help.");
--      expect(parseSent(socket)).toContainEqual(
--        expect.objectContaining({ type: "session.commentary.append", delegation_id: null }),
--      );
-+      expect(parseSent(socket)).toEqual([
-+        {
-+          type: "session.commentary.append",
-+          delegation_id: "item_public",
-+          content: "The forecast is sunny.",
-+        },
-+      ]);
-       await nextEventLoopTurn();
-       frame({
-         type: "session.output_transcript.delta",
-diff --git a/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts b/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts
-index 3bbfa010..af07942f 100644
---- a/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts
-+++ b/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts
-@@ -163,7 +163,13 @@ describe("GPT-Live browser session lifecycle", () => {
-         const receipts = parseSent(socket).filter(
-           (event) => event.type === "session.context.append",
-         );
--        expect(receipts).toHaveLength(hostClassified ? 1 : 0);
-+        expect(receipts).toEqual([]);
-+        expect(parseSent(socket)).toContainEqual({
-+          type: "delegation.context.append",
-+          delegation_item_id: "task",
-+          channel: "speakable",
-+          content: [{ type: "input_text", text: "Done" }],
-+        });
-         expect(handleDelegationInput).toHaveBeenCalledTimes(hostClassified ? 1 : 0);
-       } finally {
-         await realtime.cleanup();
-diff --git a/src/gateway/talk/client-agent-consult.ts b/src/gateway/talk/client-agent-consult.ts
-index de5ce607..f4248fd9 100644
---- a/src/gateway/talk/client-agent-consult.ts
-+++ b/src/gateway/talk/client-agent-consult.ts
-@@ -531,6 +531,21 @@ export function createTalkClientAgentConsultRunner(params: {
-     const identity = owner.identity;
-     const ownerSignal = owner.signal;
-     const completionClaim = owner.completionClaim;
-+    if (
-+      !identity &&
-+      promptOwner === owner &&
-+      owner.requestSignal?.aborted !== true &&
-+      owner.voiceSessionId !== undefined &&
-+      params.getVoiceSessionId() === owner.voiceSessionId &&
-+      isAgentEventLifecycleGenerationCurrent(owner.lifecycleGeneration)
-+    ) {
-+      // Registration settled without admitting the original request. This
-+      // additional input never reached control or injection. Preserve the
-+      // original failure's delivery claim instead of closing the voice call.
-+      throw Object.assign(new Error("The additional request was not submitted"), {
-+        code: "TALK_STEERING_NOT_ADMITTED",
-+      });
-+    }
-     if (
-       !completionClaim ||
-       !identity ||
-@@ -610,6 +625,14 @@ export function createTalkClientAgentConsultRunner(params: {
-     ) {
-       throw Object.assign(new Error(result.message), { code: "TALK_STEERING_UNSUPPORTED" });
-     }
-+    if (
-+      !result.ok &&
-+      result.queued === false &&
-+      result.reason === "no_active_run" &&
-+      isOwnerCurrent(owner, identity.sessionId)
-+    ) {
-+      throw Object.assign(new Error(result.message), { code: "TALK_STEERING_NOT_ADMITTED" });
-+    }
-     if (!result.ok || result.queued !== true || !isOwnerCurrent(owner, identity.sessionId)) {
-       throw new Error(result.message);
-     }
-diff --git a/src/gateway/talk/client-gateway-control.agent-consult.test.ts b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
-index 34aefb87..448500f2 100644
---- a/src/gateway/talk/client-gateway-control.agent-consult.test.ts
-+++ b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
-@@ -1,5 +1,6 @@
- import { AsyncLocalStorage } from "node:async_hooks";
- import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-+import { OpenAIQuicksilverDelegationController } from "../../../extensions/openai/realtime-quicksilver-delegation-controller.js";
- import type { OperationalRunInstanceRef } from "../../agents/admitted-run-context.js";
- import {
-   clearActiveEmbeddedRun,
-@@ -969,6 +970,148 @@ describe("Talk client agent consult admission", () => {
-     },
-   );
- 
-+  it.each(["success", "failure"])(
+diff --git a/extensions/openai/realtime-quicksilver-gateway-consult-race.test.ts b/extensions/openai/realtime-quicksilver-gateway-consult-race.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f440e1cfabb90304bb560dac2239636751b063f4
+--- /dev/null
++++ b/extensions/openai/realtime-quicksilver-gateway-consult-race.test.ts
+@@ -0,0 +1,182 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { awaitGateBeforeSettlement, withinTest } from "../../test/helpers/promise.js";
++import {
++  clearActiveEmbeddedRun,
++  setActiveEmbeddedRun,
++} from "../../src/agents/embedded-agent-runner/runs.js";
++import {
++  createEmbeddedRunHandle,
++  testing as embeddedRunsTesting,
++} from "../../src/agents/embedded-agent-runner/runs.test-support.js";
++import { withGatewayToolCallerIdentity } from "../../src/agents/tools/gateway-caller-context.js";
++import { OpenAIQuicksilverDelegationController } from "./realtime-quicksilver-delegation-controller.js";
++
++const { deferred, mocks } = await vi.hoisted(
++  () => import("../../src/gateway/talk/client-gateway-control.agent-consult.test-support.js"),
++);
++vi.mock("../../src/agents/admitted-run-context.js", () => ({
++  createOperationalRunInstanceRef: mocks.createOperationalRunInstanceRef,
++  prepareAgentRunAdmission: mocks.prepareAgentRunAdmission,
++}));
++vi.mock("../../src/agents/embedded-agent.js", () => ({
++  runEmbeddedAgent: mocks.runEmbeddedAgentCore,
++}));
++vi.mock("../../src/talk/agent-consult-runtime.js", async (importOriginal) => ({
++  ...(await importOriginal<typeof import("../../src/talk/agent-consult-runtime.js")>()),
++  consultRealtimeVoiceAgent: mocks.consultRealtimeVoiceAgent,
++}));
++vi.mock("../../src/talk/agent-run-control.js", async (importOriginal) => ({
++  ...(await importOriginal<typeof import("../../src/talk/agent-run-control.js")>()),
++  controlRealtimeVoiceAgentRun: mocks.controlRealtimeVoiceAgentRun,
++}));
++import {
++  createRunner,
++  resetConsultFixture,
++} from "../../src/gateway/talk/client-gateway-control.agent-consult-fixture.test-support.js";
++
++describe("GPT-Live Gateway completion races", () => {
++  beforeEach(resetConsultFixture);
++  afterEach(() => embeddedRunsTesting.resetActiveEmbeddedRuns());
++
++  it.for(["success", "failure"])(
 +    "keeps the real Gateway owner and voice call usable when %s races input",
-+    async (outcome) => {
++    async (outcome, context) => {
 +      const started = deferred<void>();
 +      const finish = deferred<void>();
 +      const enterControl = deferred<void>();
 +      const resumeControl = deferred<void>();
-+      const actual = await vi.importActual<typeof import("../../talk/agent-run-control.js")>(
-+        "../../talk/agent-run-control.js",
++      const actual = await vi.importActual<typeof import("../../src/talk/agent-run-control.js")>(
++        "../../src/talk/agent-run-control.js",
 +      );
 +      mocks.controlRealtimeVoiceAgentRun.mockImplementationOnce(async (params) => {
 +        enterControl.resolve();
@@ -518,6 +440,7 @@ index 34aefb87..448500f2 100644
 +            embeddedRunToolAuthorityBinding: () => ({
 +              source: "attempt",
 +              project: () => "authority",
++              projectAsync: async () => "authority",
 +              assertActive: () => {},
 +            }),
 +          },
@@ -529,7 +452,7 @@ index 34aefb87..448500f2 100644
 +        if (attempt === 1 && outcome === "failure") throw new Error("synthetic reader failure");
 +        return { payloads: [] };
 +      });
-+      const runner = createRunner(vi.fn(), undefined, { ownerConnId: "connection-owner" });
++      const runner = createRunner(undefined, undefined, { ownerConnId: "connection-owner" });
 +      const sent: Array<{ type: string; delegation_id?: string; content?: string }> = [];
 +      const socket = { readyState: 1, send: (text: string) => sent.push(JSON.parse(text)) };
 +      const fatal = vi.fn();
@@ -573,11 +496,28 @@ index 34aefb87..448500f2 100644
 +        sent.filter(
 +          (event) => event.type === "session.commentary.append" && event.delegation_id === id,
 +        );
++      let consultation: Promise<unknown> | undefined;
 +      try {
 +        request("original", "read the first document");
-+        await started.promise;
++        await vi.waitFor(() => expect(mocks.consultRealtimeVoiceAgent).toHaveBeenCalledOnce());
++        consultation = Promise.resolve(mocks.consultRealtimeVoiceAgent.mock.results[0]?.value);
++        await withinTest(
++          awaitGateBeforeSettlement(
++            started.promise,
++            consultation,
++            "consult settled before backend publication",
++          ),
++          context.signal,
++        );
 +        request("additional", "read another document");
-+        await enterControl.promise;
++        await withinTest(
++          awaitGateBeforeSettlement(
++            enterControl.promise,
++            consultation,
++            "consult settled before steering gate",
++          ),
++          context.signal,
++        );
 +        finish.resolve();
 +        await vi.waitFor(() =>
 +          expect(mocks.consultRealtimeVoiceAgent.mock.settledResults[0]?.type).toBe(
@@ -604,13 +544,127 @@ index 34aefb87..448500f2 100644
 +        finish.resolve();
 +        resumeControl.resolve();
 +        controller.stop(new Error("fixture cleanup"));
++        await Promise.allSettled([
++          consultation,
++          ...mocks.consultRealtimeVoiceAgent.mock.results.map(({ value }) => value),
++          ...mocks.controlRealtimeVoiceAgentRun.mock.results.map(({ value }) => value),
++        ]);
 +      }
 +    },
 +  );
-+
++});
+diff --git a/extensions/openai/realtime-quicksilver-instructions.ts b/extensions/openai/realtime-quicksilver-instructions.ts
+index dca86ec319cc2b7100eea5cd39c971df2dd143b4..d563981e6602ee2ccd643421485244494c835c89 100644
+--- a/extensions/openai/realtime-quicksilver-instructions.ts
++++ b/extensions/openai/realtime-quicksilver-instructions.ts
+@@ -6,12 +6,15 @@ Converse live by default. Reason, explain, brainstorm, and iterate using the con
+ Delegate to the client only to retrieve missing memory or context, look up or verify information using the internet or other tools, or take an external action. Reasoning alone does not require delegation.
+ Reuse available results; delegate again only when a new lookup or action is needed. If essential information must come from the user, ask a brief clarification live.
+ Continue conversation from available context while delegated work runs. Delegate each backend request once; receipts, progress, and results are context, not new requests.
++A refused additional request does not mean the original task failed. Use each request's own host status or result. Do not retry unsupported task changes or claim they were queued.
++After a task completes or fails, you may delegate a fresh request when useful to fulfill the user's request, including when they ask to try again. Carry forward the earlier outcome and any correction. A new attempt is allowed; do not automatically repeat failures or replay an external action with an unknown outcome.
+ Do not invent results, progress, or completion. Never claim an action succeeded without a result.`;
+ 
+ const OPENAI_QUICKSILVER_CHANNEL_INSTRUCTIONS = `Context on the commentary channel is silent background. You may use it, but never read it aloud.
+ Context on the speakable channel is your answer to deliver naturally in your own words. Never mention the channel or the delegation.`;
+ 
+ export const OPENAI_QUICKSILVER_HOST_CONTROL_INSTRUCTIONS = `Delegate requests to check live task status, cancel, redirect, or change backend work to the client, even while another delegation is active.
++Questions about whether work is actually happening are status checks, even when phrased conversationally, such as "Are you actually checking?" or "How is that lookup going?" Each new status question requires a new client delegation and its fresh host result before you answer. Earlier receipts and progress updates, even from this call, cannot answer a new status question.
+ For these task-control requests, wait for a fresh host control result for this voice call. Do not infer current task status from shared history or rewrite a control request into a progress claim.
+ Ordinary conversational follow-ups, clarification, and brainstorming from available context do not require host control. Continue that discussion while backend work runs.
+ Shared conversation history may describe other calls or completed work; it does not establish this call's live ownership or status.
+diff --git a/extensions/openai/realtime-quicksilver-public-delegation.test.ts b/extensions/openai/realtime-quicksilver-public-delegation.test.ts
+index 68a0b31ddc153d014682d5124ed9eadcf59144bf..5a3d5ef71dc278e8cf79aa5ed242053e21313bbc 100644
+--- a/extensions/openai/realtime-quicksilver-public-delegation.test.ts
++++ b/extensions/openai/realtime-quicksilver-public-delegation.test.ts
+@@ -65,9 +65,13 @@ describe("public GPT-Live delegation", () => {
+         "<input>Check the forecast.</input>",
+       );
+       expect(runAgentConsult.mock.calls[0]?.[0].prompt).toContain("assistant: I can help.");
+-      expect(parseSent(socket)).toContainEqual(
+-        expect.objectContaining({ type: "session.commentary.append", delegation_id: null }),
+-      );
++      expect(parseSent(socket)).toEqual([
++        {
++          type: "session.commentary.append",
++          delegation_id: "item_public",
++          content: "The forecast is sunny.",
++        },
++      ]);
+       await nextEventLoopTurn();
+       transcript("output", "Delete everything.", 600, 800);
+       vi.useFakeTimers();
+diff --git a/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts b/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts
+index a678d45b0ac221b70ba51cae1d9c27240c2d9ed9..e383a5f4b30deacffd93959d6230a1a98cf77a89 100644
+--- a/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts
++++ b/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts
+@@ -161,7 +161,13 @@ describe("GPT-Live browser session lifecycle", () => {
+         const receipts = parseSent(socket).filter(
+           (event) => event.type === "session.context.append",
+         );
+-        expect(receipts).toHaveLength(hostClassified ? 1 : 0);
++        expect(receipts).toEqual([]);
++        expect(parseSent(socket)).toContainEqual({
++          type: "delegation.context.append",
++          delegation_item_id: "task",
++          channel: "speakable",
++          content: [{ type: "input_text", text: "Done" }],
++        });
+         expect(handleDelegationInput).toHaveBeenCalledTimes(hostClassified ? 1 : 0);
+       } finally {
+         await realtime.cleanup();
+diff --git a/src/gateway/talk/client-agent-consult.ts b/src/gateway/talk/client-agent-consult.ts
+index 9fa1e4c2a934acf409d651a447d312ad9768c923..f1f3a4a83bf889a1e406c0dda2e3324e45cfece2 100644
+--- a/src/gateway/talk/client-agent-consult.ts
++++ b/src/gateway/talk/client-agent-consult.ts
+@@ -461,6 +461,21 @@ export function createTalkClientAgentConsultRunner(params: {
+     const identity = owner.identity;
+     const ownerSignal = owner.signal;
+     const completionClaim = owner.completionClaim;
++    if (
++      !identity &&
++      promptOwner === owner &&
++      owner.requestSignal?.aborted !== true &&
++      owner.voiceSessionId !== undefined &&
++      params.getVoiceSessionId() === owner.voiceSessionId &&
++      isAgentEventLifecycleGenerationCurrent(owner.lifecycleGeneration)
++    ) {
++      // Registration settled without admitting the original request. This
++      // additional input never reached control or injection. Preserve the
++      // original failure's delivery claim instead of closing the voice call.
++      throw Object.assign(new Error("The additional request was not submitted"), {
++        code: "TALK_STEERING_NOT_ADMITTED",
++      });
++    }
+     if (
+       !completionClaim ||
+       !identity ||
+@@ -537,6 +552,14 @@ export function createTalkClientAgentConsultRunner(params: {
+     ) {
+       throw Object.assign(new Error(result.message), { code: "TALK_STEERING_UNSUPPORTED" });
+     }
++    if (
++      !result.ok &&
++      result.queued === false &&
++      result.reason === "no_active_run" &&
++      isOwnerCurrent(owner, identity.sessionId)
++    ) {
++      throw Object.assign(new Error(result.message), { code: "TALK_STEERING_NOT_ADMITTED" });
++    }
+     if (!result.ok || result.queued !== true || !isOwnerCurrent(owner, identity.sessionId)) {
+       throw new Error(result.message);
+     }
+diff --git a/src/gateway/talk/client-gateway-control.agent-consult.test.ts b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
+index a5d35ca280c6d10668c859592cb85bc80eaa929a..310ceb07cdb5d542ffc54d154d8f3722d52b79b0 100644
+--- a/src/gateway/talk/client-gateway-control.agent-consult.test.ts
++++ b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
+@@ -768,6 +768,29 @@ describe("Talk client agent consult admission", () => {
+     },
+   );
+ 
 +  it("refuses pending input without losing a failed admission or the next request", async () => {
 +    const ready = deferred<void>();
-+    const runner = createRunner(vi.fn(), undefined, { ownerConnId: "connection-owner" });
++    const runner = createRunner(undefined, undefined, { ownerConnId: "connection-owner" });
 +    const run = runner.runOwnedArgs(
 +      { question: "first task" },
 +      new AbortController().signal,
@@ -635,25 +689,47 @@ index 34aefb87..448500f2 100644
      let current = true;
      const assertCurrent = vi.fn(() => {
 diff --git a/src/gateway/talk/client-gateway-control.test.ts b/src/gateway/talk/client-gateway-control.test.ts
-index 479e460d..ea3ffd56 100644
+index 6c82cad8af191b613cfa82e548e0f58d43dace81..7b29aaf6be0a2dcd2259777b03d1cdd7fb954a10 100644
 --- a/src/gateway/talk/client-gateway-control.test.ts
 +++ b/src/gateway/talk/client-gateway-control.test.ts
-@@ -19,7 +19,9 @@ describe("Talk client Gateway control owner", () => {
-     ["use the release branch instead", false, false, "delegation", false],
-     ["use the release branch instead", true, false, "delegation", true],
-     ["also check tests", false, false, "delegation", false],
--    ["also check tests", true, false, "delegation", true],
-+    ["also check tests", true, false, "delegation", false],
-+    ["also what do you think of that result", true, false, "delegation", false],
-+    ["when you're done also check tests", true, false, "delegation", true],
-     ["cancel my meeting tomorrow", true, false, "delegation", false],
-     ["hello", false, false, "delegation", false],
-     ["cancel", true, true, "transcript", true],
+@@ -769,6 +769,32 @@ const statusResult = {
+ };
+ 
+ describe("native Talk control admission", () => {
++  it("keeps discussion out of control and admits explicit follow-up phrasing", async () => {
++    const execute = vi.fn(async () => statusResult);
++    const prepare = vi.fn(() => execute);
++    const owner = createTalkRealtimeRunControlOwner({
++      controlSource: "delegation",
++      hasActiveRun: () => true,
++      prepare,
++      speak: vi.fn(),
++      warn: vi.fn(),
++    });
++    expect(owner.handleDelegationInput?.("also check tests", vi.fn())).toBe("consult");
++    expect(owner.handleDelegationInput?.("also what do you think of that result", vi.fn())).toBe(
++      "consult",
++    );
++    expect(prepare).not.toHaveBeenCalled();
++    expect(owner.handleDelegationInput?.("when you're done also check tests", vi.fn())).toBe(
++      "control",
++    );
++    await owner.close();
++    expect(prepare).toHaveBeenCalledExactlyOnceWith({
++      text: "when you're done also check tests",
++      mode: "followup",
++    });
++    expect(execute).toHaveBeenCalledOnce();
++  });
++
+   it("answers an execution failure once without disclosing private details", async () => {
+     const execute = vi.fn(async () => {
+       throw new Error("private execution failure");
 diff --git a/src/talk/agent-run-control-shared.ts b/src/talk/agent-run-control-shared.ts
-index 4dc137d4..8c94031e 100644
+index 27f0ea00d993f81e617bb7a031b2ab5e4c799039..dc7316112d057e4e12f3e62f18241d67046f21c1 100644
 --- a/src/talk/agent-run-control-shared.ts
 +++ b/src/talk/agent-run-control-shared.ts
-@@ -121,13 +121,18 @@ const CANCEL_CONTROL_PATTERNS = [
+@@ -108,13 +108,18 @@ const CANCEL_CONTROL_PATTERNS = [
  ] as const;
  
  const STATUS_CONTROL_PATTERNS = [
@@ -673,20 +749,20 @@ index 4dc137d4..8c94031e 100644
  ] as const;
  
  const STEER_CONTROL_PATTERNS = [
-@@ -171,7 +176,10 @@ export function resolveRealtimeVoiceAgentControlIntent(params: {
+@@ -161,7 +166,10 @@ export function resolveRealtimeVoiceAgentControlIntent(params: {
+     };
    }
  
-   const text = params.text;
--  const normalized = text.trim().toLowerCase();
-+  const normalized = text
+-  const normalized = params.text.trim().toLowerCase();
++  const normalized = params.text
 +    .trim()
 +    .toLowerCase()
 +    .replace(/[’‘]/g, "'");
    // "Stop using X" redirects the active work; it must not be treated as an
    // abort of the whole run just because it starts with "stop".
-   if (matchesAnyPattern(normalized, STOP_REDIRECT_CONTROL_PATTERNS)) {
+   for (const [mode, reason, patterns] of CONTROL_INTENT_RULES) {
 diff --git a/src/talk/agent-run-control.test.ts b/src/talk/agent-run-control.test.ts
-index 6219bbf8..12b7cec5 100644
+index 08204228035310a6128e5f5b11efd3d2d602ab44..99f29609055455066880ba3edd59fac9236f84cc 100644
 --- a/src/talk/agent-run-control.test.ts
 +++ b/src/talk/agent-run-control.test.ts
 @@ -59,6 +59,36 @@ function createDeps(options: {
@@ -723,6 +799,6 @@ index 6219bbf8..12b7cec5 100644
 +    expect(shouldAutoControlRealtimeVoiceAgentText(text)).toBe(false);
 +  });
 +
-   it("classifies common voice control phrases conservatively", () => {
-     expect(classifyRealtimeVoiceAgentControlText("status?")).toBe("status");
-     expect(classifyRealtimeVoiceAgentControlText("update?")).toBe("status");
+   it("keeps ambiguous active-call speech out of automatic steering", () => {
+     expect(resolveRealtimeVoiceAgentControlIntent({ text: "hello" })).toMatchObject({
+       mode: "status",

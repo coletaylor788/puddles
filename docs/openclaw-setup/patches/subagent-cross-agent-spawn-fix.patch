@@ -1,8 +1,8 @@
 diff --git a/docs/tools/subagents/thread-bound-sessions.md b/docs/tools/subagents/thread-bound-sessions.md
-index 8f04e5d91..3003a9839 100644
+index 7ac94c6750a..d96926e9c98 100644
 --- a/docs/tools/subagents/thread-bound-sessions.md
 +++ b/docs/tools/subagents/thread-bound-sessions.md
-@@ -70,7 +70,7 @@ See [Configuration reference](/gateway/configuration-reference) and
+@@ -76,7 +76,7 @@ See [Configuration reference](/gateway/configuration-reference) and
    Default configured target-agent allowlist used when the requester agent does not set its own `subagents.allowAgents`.
  </ParamField>
  <ParamField path="agents.defaults.subagents.requireAgentId" type="boolean" default="false">
@@ -12,12 +12,23 @@ index 8f04e5d91..3003a9839 100644
  <ParamField path="agents.defaults.subagents.announceTimeoutMs" type="number" default="120000">
    Timeout for gateway `agent` announcement handoff attempts. Once a handoff is accepted, waiting for the parent session's turn does not consume this budget. After execution starts, the requester's normal [runtime timeout and cancellation controls](/concepts/agent-loop#timeouts) apply; the announcement timer does not restart. Values are positive integer milliseconds and are clamped to the platform-safe timer maximum. Queue waits, requester execution, and transient retries can make total delivery time longer than one configured timeout.
 diff --git a/src/agents/subagents/spawn/acp-spawn.test.ts b/src/agents/subagents/spawn/acp-spawn.test.ts
-index 9dd3affd2..9f1e45d85 100644
+index eebb2c9b0e4..6210534510c 100644
 --- a/src/agents/subagents/spawn/acp-spawn.test.ts
 +++ b/src/agents/subagents/spawn/acp-spawn.test.ts
-@@ -3873,5 +3873,374 @@ describe("spawnAcpDirect", () => {
-     expect(hoisted.callGatewayMock).not.toHaveBeenCalled();
-     expect(hoisted.startAcpSpawnParentStreamRelayMock).not.toHaveBeenCalled();
+@@ -309,6 +309,10 @@ function expectGatewayMethodNotCalled(method: string): void {
+   expect(gatewayRequests().some((request) => request.method === method)).toBe(false);
+ }
+ 
++function expectCreatedSessionFields(expected: Record<string, unknown>): void {
++  expectRecordFields(firstMockCall(hoisted.upsertSessionEntryMock, "session create")[1], expected);
++}
++
+ function expectInitializeSessionFields(expected: Record<string, unknown>): Record<string, unknown> {
+   return expectRecordFields(
+     firstMockCall(hoisted.initializeSessionMock, "session initialization")[0],
+@@ -1406,5 +1410,369 @@ describe("spawnAcpDirect", () => {
+       }),
+     );
    });
 +
 +  it("allows cron ACP runs to use a distinct default agent", async () => {
@@ -48,6 +59,7 @@ index 9dd3affd2..9f1e45d85 100644
 +        enabled: true,
 +        backend: "acpx",
 +        defaultAgent: "main",
++        allowedAgents: ["main", "codex"],
 +      },
 +      agents: {
 +        defaults: {
@@ -56,15 +68,10 @@ index 9dd3affd2..9f1e45d85 100644
 +            maxSpawnDepth: 2,
 +          },
 +        },
-+        list: [
-+          {
-+            id: "main",
-+          },
-+          {
-+            id: "reader",
-+          },
-+          {
-+            id: "main-harness",
++        entries: {
++          main: {},
++          reader: {},
++          "main-harness": {
 +            runtime: {
 +              type: "acp",
 +              acp: {
@@ -72,8 +79,7 @@ index 9dd3affd2..9f1e45d85 100644
 +              },
 +            },
 +          },
-+          {
-+            id: "coder",
++          coder: {
 +            runtime: {
 +              type: "acp",
 +              acp: {
@@ -81,7 +87,7 @@ index 9dd3affd2..9f1e45d85 100644
 +              },
 +            },
 +          },
-+        ],
++        },
 +      },
 +    });
 +
@@ -391,27 +397,29 @@ index 9dd3affd2..9f1e45d85 100644
  });
  /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
 diff --git a/src/agents/subagents/spawn/acp-spawn.ts b/src/agents/subagents/spawn/acp-spawn.ts
-index 76b5d3790..586c3f498 100644
+index b6ea2309067..c6b719de69e 100644
 --- a/src/agents/subagents/spawn/acp-spawn.ts
 +++ b/src/agents/subagents/spawn/acp-spawn.ts
-@@ -24,13 +24,15 @@ import {
+@@ -34,11 +34,16 @@ import {
+   type SessionBindingRecord,
  } from "../../../infra/outbound/session-binding-service.js";
  import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
- import {
+-import { isIncognitoSessionKey, normalizeOptionalAgentId } from "../../../routing/session-key.js";
++import {
 +  isCronSessionKey,
++  isIncognitoSessionKey,
 +  normalizeAgentId,
-   normalizeOptionalAgentId,
-   resolveAgentIdFromSessionKey,
- } from "../../../routing/session-key.js";
++  normalizeOptionalAgentId,
++} from "../../../routing/session-key.js";
  import { recordSessionCreated } from "../../../sessions/session-created.js";
+ import { waitForSessionParticipantRecording } from "../../../sessions/session-participant-recording.js";
  import { recordSubagentSpawned } from "../../../sessions/session-state-events.js";
- import { deliveryContextFromSession } from "../../../utils/delivery-context.read.js";
 -import { resolveSessionAgentId } from "../../agent-scope.js";
 +import { resolveAgentConfig, resolveSessionAgentId } from "../../agent-scope.js";
+ import { runWithAgentToolSourceExecutionScope } from "../../agent-tool-source-execution-guard.js";
  import { reserveChildAdmissionSlot } from "../../child-admission.js";
  import {
-   findAcpUnsupportedInheritedToolAllow,
-@@ -97,6 +99,7 @@ import {
+@@ -109,6 +114,7 @@ import { withPreparedSessionCapabilityRead } from "./subagent-session-store.js";
  import { readGatewayRunId } from "./subagent-spawn-gateway.js";
  import { resolveSubagentSpawnOwnership } from "./subagent-spawn-ownership.js";
  import { resolveConfiguredSubagentRunTimeoutSeconds } from "./subagent-spawn-plan.js";
@@ -419,7 +427,7 @@ index 76b5d3790..586c3f498 100644
  
  type SpawnAcpSandboxMode = "inherit" | "require";
  
-@@ -206,6 +209,52 @@ export async function spawnAcpDirect(
+@@ -202,6 +208,48 @@ export async function spawnAcpDirect(
      sessionKey: requesterInternalKey,
      agentId: ctx.requesterAgentIdOverride,
    });
@@ -453,89 +461,80 @@ index 76b5d3790..586c3f498 100644
 +      : undefined;
 +  if (requireAgentId && !params.agentId?.trim()) {
 +    const repair = cronRepair(requesterAgentId);
-+    return createAcpSpawnFailure({
-+      status: "forbidden",
-+      errorCode: "subagent_policy",
-+      error: `sessions_spawn requires explicit agentId for this requester.${repair ? ` ${repair}` : " Set agentId to the configured ACP harness id."}`,
-+    });
++    return buildAcpSpawnError(
++      "subagent_policy",
++      `sessions_spawn requires explicit agentId for this requester.${repair ? ` ${repair}` : " Set agentId to the configured ACP harness id."}`,
++      "forbidden",
++    );
 +  }
 +  const explicitSelfError =
 +    normalizeOptionalAgentId(params.agentId) === requesterAgentId
 +      ? cronRepair(requesterAgentId)
 +      : undefined;
 +  if (explicitSelfError)
-+    return createAcpSpawnFailure({
-+      status: "forbidden",
-+      errorCode: "subagent_policy",
-+      error: explicitSelfError,
-+    });
-   const runtimePolicyError = resolveAcpSpawnRuntimePolicyError({
++    return buildAcpSpawnError("subagent_policy", explicitSelfError, "forbidden");
+   const runtimePolicyError = await resolveAcpSpawnRuntimePolicyError({
      cfg,
      requesterAgentId,
-@@ -220,27 +269,6 @@ export async function spawnAcpDirect(
-       error: runtimePolicyError,
-     });
+@@ -212,27 +260,6 @@ export async function spawnAcpDirect(
+   if (runtimePolicyError) {
+     return buildAcpSpawnError("runtime_policy", runtimePolicyError, "forbidden");
    }
 -  const acpUnsupportedInheritedTool = findAcpUnsupportedInheritedToolDeny(
 -    ctx.inheritedToolDenylist,
 -  );
 -  if (acpUnsupportedInheritedTool) {
--    return createAcpSpawnFailure({
--      status: "forbidden",
--      errorCode: "runtime_policy",
--      error: formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
--    });
+-    return buildAcpSpawnError(
+-      "runtime_policy",
+-      formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
+-      "forbidden",
+-    );
 -  }
 -  const acpUnsupportedInheritedAllow = findAcpUnsupportedInheritedToolAllow(
 -    ctx.inheritedToolAllowlist,
 -  );
 -  if (acpUnsupportedInheritedAllow) {
--    return createAcpSpawnFailure({
--      status: "forbidden",
--      errorCode: "runtime_policy",
--      error: formatAcpInheritedToolAllowError(acpUnsupportedInheritedAllow),
--    });
+-    return buildAcpSpawnError(
+-      "runtime_policy",
+-      formatAcpInheritedToolAllowError(acpUnsupportedInheritedAllow),
+-      "forbidden",
+-    );
 -  }
 -
    const spawnMode = resolveSpawnMode({
      requestedMode: params.mode,
      threadRequested: requestThreadBinding,
-@@ -270,6 +298,31 @@ export async function spawnAcpDirect(
-     });
+@@ -270,6 +297,26 @@ export async function spawnAcpDirect(
+   if (requesterPolicyError) {
+     return buildAcpSpawnError("runtime_policy", requesterPolicyError, "forbidden");
    }
-   const { agentId: targetAgentId, backendId } = targetAgentResult;
 +  const selfError = cronRepair(targetAgentId);
-+  if (selfError)
-+    return createAcpSpawnFailure({
-+      status: "forbidden",
-+      errorCode: "subagent_policy",
-+      error: selfError,
-+    });
++  if (selfError) return buildAcpSpawnError("subagent_policy", selfError, "forbidden");
 +  const acpUnsupportedInheritedTool = findAcpUnsupportedInheritedToolDeny(
 +    ctx.inheritedToolDenylist,
 +  );
 +  if (acpUnsupportedInheritedTool)
-+    return createAcpSpawnFailure({
-+      status: "forbidden",
-+      errorCode: "runtime_policy",
-+      error: formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
-+    });
++    return buildAcpSpawnError(
++      "runtime_policy",
++      formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
++      "forbidden",
++    );
 +  const acpUnsupportedInheritedAllow = findAcpUnsupportedInheritedToolAllow(
 +    ctx.inheritedToolAllowlist,
 +  );
 +  if (acpUnsupportedInheritedAllow)
-+    return createAcpSpawnFailure({
-+      status: "forbidden",
-+      errorCode: "runtime_policy",
-+      error: formatAcpInheritedToolAllowError(acpUnsupportedInheritedAllow),
-+    });
++    return buildAcpSpawnError(
++      "runtime_policy",
++      formatAcpInheritedToolAllowError(acpUnsupportedInheritedAllow),
++      "forbidden",
++    );
    const agentPolicyError = resolveAcpAgentPolicyError(cfg, targetAgentId);
    if (agentPolicyError) {
-     return createAcpSpawnFailure({
-@@ -475,8 +528,12 @@ export async function spawnAcpDirect(
-             parentSessionKey: requesterInternalKey,
-             ...childSessionPatch,
-             inheritedToolPolicyVersion: 1,
+     return buildAcpSpawnError("agent_forbidden", agentPolicyError.message, "forbidden");
+@@ -509,8 +556,12 @@ export async function spawnAcpDirect(
+             ...(ctx.inheritedToolPolicySource
+               ? { inheritedToolPolicySource: ctx.inheritedToolPolicySource }
+               : {}),
 -            ...inheritedToolAllowPatch(ctx.inheritedToolAllowlist),
 -            ...inheritedToolDenyPatch(ctx.inheritedToolDenylist),
 +            ...(targetAgentId === requesterAgentId
@@ -544,16 +543,29 @@ index 76b5d3790..586c3f498 100644
 +            ...(targetAgentId === requesterAgentId
 +              ? inheritedToolDenyPatch(ctx.inheritedToolDenylist)
 +              : {}),
-             ...(params.label ? { label: params.label } : {}),
+             ...(senderRestricted
+               ? {
+                   spawnedWorkspaceDir: ctx.workspaceDir ?? requesterRoot,
+@@ -625,8 +676,10 @@ export async function spawnAcpDirect(
+             maxDepth: admission.maxSpawnDepth,
+             targetAgentId: ownerAgentId,
+             sandbox: params.sandbox === "require" ? "require" : "inherit",
+-            inheritedToolAllowlist: ctx.inheritedToolAllowlist,
+-            inheritedToolDenylist: ctx.inheritedToolDenylist,
++            inheritedToolAllowlist:
++              targetAgentId === requesterAgentId ? ctx.inheritedToolAllowlist : undefined,
++            inheritedToolDenylist:
++              targetAgentId === requesterAgentId ? ctx.inheritedToolDenylist : undefined,
            },
-           { assertCommitAllowed: ctx.assertActive },
+           parentExecutionIdentityToken: readParentExecutionIdentity(ctx),
+           participantStorePath: resolveSessionStorePathCore(cfg.session?.store, {
 diff --git a/src/agents/subagents/spawn/subagent-spawn-request.ts b/src/agents/subagents/spawn/subagent-spawn-request.ts
-index d56894273..0c38138b9 100644
+index 40c61c6d762..05da491973c 100644
 --- a/src/agents/subagents/spawn/subagent-spawn-request.ts
 +++ b/src/agents/subagents/spawn/subagent-spawn-request.ts
-@@ -1,9 +1,13 @@
- import crypto from "node:crypto";
+@@ -2,10 +2,14 @@ import crypto from "node:crypto";
  import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+ import { resolveSessionStorePathCore } from "../../../config/sessions/paths.js";
  import type { SubagentLifecycleHookRunner } from "../../../plugins/hooks.js";
 -import { isValidAgentId, normalizeAgentId } from "../../../routing/session-key.js";
 +import {
@@ -561,21 +573,22 @@ index d56894273..0c38138b9 100644
 +  isValidAgentId,
 +  normalizeAgentId,
 +} from "../../../routing/session-key.js";
+ import { waitForSessionParticipantRecording } from "../../../sessions/session-participant-recording.js";
  import { listAgentIds } from "../../agent-scope-config.js";
 -import { resolveSessionAgentId } from "../../agent-scope.js";
 +import { resolveAgentConfig, resolveSessionAgentId } from "../../agent-scope.js";
  import { reserveChildAdmissionSlot } from "../../child-admission.js";
  import { summarizeSpawnError } from "../../spawn-pipeline.js";
  import { resolveSpawnAdmission, resolveSpawnMode } from "../../spawn-plan.js";
-@@ -27,6 +31,7 @@ import {
-   resolveInternalSessionKey,
-   resolveMainSessionAlias,
+@@ -30,6 +34,7 @@ import {
+   getRuntimeConfig,
+   resolveGatewaySessionStoreTargetInWorker,
  } from "./subagent-spawn.runtime.js";
 +import { resolveCronSelfSpawnPolicyError } from "./subagent-target-policy.js";
  import { normalizeSubagentTaskName } from "./subagent-task-name.js";
  
- function rejectSubagentSpawnRequest(status: "error" | "forbidden", error: string) {
-@@ -204,6 +209,27 @@ export function resolveSubagentSpawnRequest(
+ export async function resolveSubagentSpawnRequest(
+@@ -224,6 +229,27 @@ export async function resolveSubagentSpawnRequest(
      ? normalizeAgentId(effectiveRequestedAgentId)
      : requesterAgentId;
    const configuredAgentIds = listAgentIds(cfg);
@@ -604,33 +617,29 @@ index d56894273..0c38138b9 100644
    const requesterRunId = normalizeOptionalString(ctx.requesterRunId);
    const swarmGroupId = params.collect
 diff --git a/src/agents/subagents/spawn/subagent-spawn.test.ts b/src/agents/subagents/spawn/subagent-spawn.test.ts
-index 7971919d6..2118502f7 100644
+index 05d66fb7aeb..2a1e28f933c 100644
 --- a/src/agents/subagents/spawn/subagent-spawn.test.ts
 +++ b/src/agents/subagents/spawn/subagent-spawn.test.ts
-@@ -2385,5 +2385,279 @@ describe("spawnSubagentDirect seam flow", () => {
+@@ -1080,4 +1080,261 @@ describe("spawnSubagentDirect seam flow", () => {
      expect(hoisted.callGatewayMock).not.toHaveBeenCalled();
      expect(hoisted.emitSessionLifecycleEventMock).not.toHaveBeenCalled();
    });
 +
 +  it("replays cron target repair without falling back to the requester", async () => {
-+    hoisted.configOverride = createConfigOverride({
++    configOverride = createConfigOverride({
 +      agents: {
 +        defaults: {
 +          workspace: os.tmpdir(),
 +        },
-+        list: [
-+          {
-+            id: "main",
++        entries: {
++          main: {
 +            workspace: "/tmp/workspace-main",
 +            subagents: {
 +              allowAgents: ["main", "reader"],
 +            },
 +          },
-+          {
-+            id: "reader",
-+            workspace: "/tmp/workspace-reader",
-+          },
-+        ],
++          reader: { workspace: "/tmp/workspace-reader" },
++        },
 +      },
 +    });
 +
@@ -685,20 +694,19 @@ index 7971919d6..2118502f7 100644
 +  });
 +
 +  it("allows cron runs to opt into implicit same-agent spawns", async () => {
-+    hoisted.configOverride = createConfigOverride({
++    configOverride = createConfigOverride({
 +      agents: {
 +        defaults: {
 +          workspace: os.tmpdir(),
 +        },
-+        list: [
-+          {
-+            id: "main",
++        entries: {
++          main: {
 +            workspace: "/tmp/workspace-main",
 +            subagents: {
 +              requireAgentId: false,
 +            },
 +          },
-+        ],
++        },
 +      },
 +    });
 +
@@ -728,25 +736,21 @@ index 7971919d6..2118502f7 100644
 +  });
 +
 +  it("denies an explicitly targeted cron coordinator self-spawn by default", async () => {
-+    hoisted.configOverride = createConfigOverride({
++    configOverride = createConfigOverride({
 +      agents: {
 +        defaults: {
 +          workspace: os.tmpdir(),
 +        },
-+        list: [
-+          {
-+            id: "main",
++        entries: {
++          main: {
 +            workspace: "/tmp/workspace-main",
 +            subagents: {
 +              allowAgents: ["main", "reader"],
 +              requireAgentId: true,
 +            },
 +          },
-+          {
-+            id: "reader",
-+            workspace: "/tmp/workspace-reader",
-+          },
-+        ],
++          reader: { workspace: "/tmp/workspace-reader" },
++        },
 +      },
 +    });
 +
@@ -793,24 +797,20 @@ index 7971919d6..2118502f7 100644
 +  });
 +
 +  it("does not inherit requester tool policy for cross-agent spawns", async () => {
-+    hoisted.configOverride = createConfigOverride({
++    configOverride = createConfigOverride({
 +      agents: {
 +        defaults: {
 +          workspace: os.tmpdir(),
 +        },
-+        list: [
-+          {
-+            id: "main",
++        entries: {
++          main: {
 +            workspace: "/tmp/workspace-main",
 +            subagents: {
 +              allowAgents: ["worker"],
 +            },
 +          },
-+          {
-+            id: "worker",
-+            workspace: "/tmp/workspace-worker",
-+          },
-+        ],
++          worker: { workspace: "/tmp/workspace-worker" },
++        },
 +      },
 +    });
 +    let persistedStore: Record<string, Record<string, unknown>> | undefined;
@@ -839,24 +839,20 @@ index 7971919d6..2118502f7 100644
 +  });
 +
 +  it("keeps an explicitly targeted cron reader on the reader tool policy", async () => {
-+    hoisted.configOverride = createConfigOverride({
++    configOverride = createConfigOverride({
 +      agents: {
 +        defaults: {
 +          workspace: os.tmpdir(),
 +        },
-+        list: [
-+          {
-+            id: "main",
++        entries: {
++          main: {
 +            workspace: "/tmp/workspace-main",
 +            subagents: {
 +              allowAgents: ["reader"],
 +            },
 +          },
-+          {
-+            id: "reader",
-+            workspace: "/tmp/workspace-reader",
-+          },
-+        ],
++          reader: { workspace: "/tmp/workspace-reader" },
++        },
 +      },
 +    });
 +    let persistedStore: Record<string, Record<string, unknown>> | undefined;
@@ -886,29 +882,41 @@ index 7971919d6..2118502f7 100644
 +    expect(childEntry).not.toHaveProperty("inheritedToolDeny");
 +  });
  });
- /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
 diff --git a/src/agents/subagents/spawn/subagent-spawn.ts b/src/agents/subagents/spawn/subagent-spawn.ts
-index 6e5277b09..49dbe4558 100644
+index 40d6d7b0cc4..3a81ae53a30 100644
 --- a/src/agents/subagents/spawn/subagent-spawn.ts
 +++ b/src/agents/subagents/spawn/subagent-spawn.ts
-@@ -182,8 +182,10 @@ export async function spawnSubagentDirect(
-       spawnedCwd,
-       sessionPermissionPolicy: ctx.sessionPermissionPolicy,
-       admissionPatch: admission.childSessionPatch,
--      inheritedToolAllowlist: ctx.inheritedToolAllowlist,
--      inheritedToolDenylist: ctx.inheritedToolDenylist,
-+      inheritedToolAllowlist:
-+        targetAgentId === requesterAgentId ? ctx.inheritedToolAllowlist : undefined,
-+      inheritedToolDenylist:
-+        targetAgentId === requesterAgentId ? ctx.inheritedToolDenylist : undefined,
-       modelPatch: plan.initialSessionPatch,
-       swarmGroupId,
-       collect: params.collect === true,
+@@ -199,8 +199,10 @@ export async function spawnSubagentDirect(
+         sessionPermissionPolicy: ctx.sessionPermissionPolicy,
+         worktree: params.worktree ? params : undefined,
+         admissionPatch: admission.childSessionPatch,
+-        inheritedToolAllowlist: ctx.inheritedToolAllowlist,
+-        inheritedToolDenylist: ctx.inheritedToolDenylist,
++        inheritedToolAllowlist:
++          targetAgentId === requesterAgentId ? ctx.inheritedToolAllowlist : undefined,
++        inheritedToolDenylist:
++          targetAgentId === requesterAgentId ? ctx.inheritedToolDenylist : undefined,
+         inheritedToolPolicySource: ctx.inheritedToolPolicySource,
+         delegatedToolPolicy,
+         modelPatch: plan.initialSessionPatch,
+@@ -407,8 +409,10 @@ export async function spawnSubagentDirect(
+                 maxDepth: maxSpawnDepth,
+                 targetAgentId,
+                 sandbox: sandboxMode,
+-                inheritedToolAllowlist: ctx.inheritedToolAllowlist,
+-                inheritedToolDenylist: ctx.inheritedToolDenylist,
++                inheritedToolAllowlist:
++                  targetAgentId === requesterAgentId ? ctx.inheritedToolAllowlist : undefined,
++                inheritedToolDenylist:
++                  targetAgentId === requesterAgentId ? ctx.inheritedToolDenylist : undefined,
+               }),
+               parentExecutionIdentityToken: readParentExecutionIdentity(ctx),
+             },
 diff --git a/src/agents/subagents/spawn/subagent-target-policy.ts b/src/agents/subagents/spawn/subagent-target-policy.ts
-index 18da8045f..4a4c3c8bb 100644
+index 64b25f4a953..375f4b1780e 100644
 --- a/src/agents/subagents/spawn/subagent-target-policy.ts
 +++ b/src/agents/subagents/spawn/subagent-target-policy.ts
-@@ -81,6 +81,34 @@ export function resolveSubagentAllowedTargetIds(params: {
+@@ -48,6 +48,34 @@ export function resolveSubagentAllowedTargetIds(params: {
    };
  }
  
@@ -944,94 +952,52 @@ index 18da8045f..4a4c3c8bb 100644
  export function resolveSubagentTargetPolicy(params: {
    requesterAgentId: string;
 diff --git a/src/agents/tools/sessions-spawn-tool.test.ts b/src/agents/tools/sessions-spawn-tool.test.ts
-index 76101da85..e97ff94b8 100644
+index 4d28f42cd43..62fc718da5d 100644
 --- a/src/agents/tools/sessions-spawn-tool.test.ts
 +++ b/src/agents/tools/sessions-spawn-tool.test.ts
-@@ -1777,6 +1777,12 @@ describe("sessions_spawn tool", () => {
-     expect(requireSchemaProperty(schema.properties, "taskName").description).toContain(
-       "starts lowercase letter",
-     );
-+    expect(requireSchemaProperty(schema.properties, "taskName").description).toContain(
-+      "does not select an agent profile",
-+    );
-+    expect(requireSchemaProperty(schema.properties, "agentId").description).toContain(
-+      "ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile",
-+    );
+@@ -841,6 +841,16 @@ describe("sessions_spawn tool", () => {
+       lightContext: true,
+     };
+     const tool = makeTool(structuredClone(caller));
++    expect(tool.parameters).toMatchObject({
++      properties: {
++        taskName: { description: expect.stringContaining("does not select an agent profile") },
++        agentId: {
++          description: expect.stringContaining(
++            "ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile",
++          ),
++        },
++      },
++    });
+     const { result, token } = await captureSessionDecisionWork(() =>
+       tool.execute("native", {
+         ...request,
+@@ -977,9 +987,10 @@ describe("sessions_spawn tool", () => {
+       "requester does not allow apply_patch",
+     ],
+   ] satisfies Array<[SpawnOptions, string]>)(
+-    "rejects ACP when the inherited policy is incompatible: %j",
++    "forwards incompatible ACP policy to target resolution before capability rejection: %j",
+     async (policy, error) => {
+       registerAcpBackendForTest();
++      hoisted.spawnAcpDirectMock.mockResolvedValueOnce({ status: "forbidden", error });
+       const result = await makeTool(policy).execute("acp-policy", {
+         runtime: "acp",
+         task: "inspect",
+@@ -990,7 +1001,10 @@ describe("sessions_spawn tool", () => {
+         role: "codex",
+         error: expect.stringContaining(error),
+       });
+-      expect(hoisted.spawnAcpDirectMock).not.toHaveBeenCalled();
++      expect(hoisted.spawnAcpDirectMock).toHaveBeenCalledWith(
++        expect.objectContaining({ agentId: "codex" }),
++        expect.objectContaining(policy),
++      );
+     },
+   );
  
-     const result = await tool.execute("call-task-name", {
-       task: "review subagent handling",
-@@ -2084,69 +2090,6 @@ describe("sessions_spawn tool", () => {
-     expect(spawnContext.inheritedToolDenylist).toEqual(["custom_control_tool"]);
-   });
- 
--  it("rejects ACP spawns when inherited denies include command tools", async () => {
--    registerAcpBackendForTest();
--    const tool = createSessionsSpawnTool({
--      agentSessionKey: "agent:main:main",
--      inheritedToolDenylist: ["exec"],
--    });
--
--    const result = await tool.execute("call-acp-inherited-command-deny", {
--      runtime: "acp",
--      task: "investigate",
--      agentId: "codex",
--    });
--
--    expectDetailFields(result.details, { status: "forbidden", role: "codex" });
--    expect(JSON.stringify(result.details)).toContain("requester denies exec");
--    expect(hoisted.spawnAcpDirectMock).not.toHaveBeenCalled();
--  });
--
--  it("rejects ACP spawns when inherited deny groups or patterns include command tools", async () => {
--    registerAcpBackendForTest();
--    const cases = [
--      { inheritedToolDenylist: ["group:fs"], expected: "requester denies apply_patch" },
--      { inheritedToolDenylist: ["group:runtime"], expected: "requester denies exec" },
--      { inheritedToolDenylist: ["exec*"], expected: "requester denies exec" },
--      { inheritedToolDenylist: ["*"], expected: "requester denies apply_patch" },
--    ];
--
--    for (const testCase of cases) {
--      const tool = createSessionsSpawnTool({
--        agentSessionKey: "agent:main:main",
--        inheritedToolDenylist: testCase.inheritedToolDenylist,
--      });
--
--      const result = await tool.execute("call-acp-inherited-command-group-deny", {
--        runtime: "acp",
--        task: "investigate",
--        agentId: "codex",
--      });
--
--      expectDetailFields(result.details, { status: "forbidden", role: "codex" });
--      expect(JSON.stringify(result.details)).toContain(testCase.expected);
--    }
--    expect(hoisted.spawnAcpDirectMock).not.toHaveBeenCalled();
--  });
--
--  it("rejects ACP spawns when inherited allows omit command tools", async () => {
--    registerAcpBackendForTest();
--    const tool = createSessionsSpawnTool({
--      agentSessionKey: "agent:main:main",
--      inheritedToolAllowlist: ["sessions_spawn", "custom_plugin_tool"],
--    });
--
--    const result = await tool.execute("call-acp-inherited-command-allow", {
--      runtime: "acp",
--      task: "investigate",
--      agentId: "codex",
--    });
--
--    expectDetailFields(result.details, { status: "forbidden", role: "codex" });
--    expect(JSON.stringify(result.details)).toContain("requester does not allow apply_patch");
--    expect(hoisted.spawnAcpDirectMock).not.toHaveBeenCalled();
--  });
--
-   it("accepts ACP spawns when inherited allows include OpenClaw command tools", async () => {
-     registerAcpBackendForTest();
-     const tool = createSessionsSpawnTool({
 diff --git a/src/agents/tools/sessions-spawn-tool.ts b/src/agents/tools/sessions-spawn-tool.ts
-index 60d7caa10..2d8210297 100644
+index 894a3944bbe..82aef11fc1a 100644
 --- a/src/agents/tools/sessions-spawn-tool.ts
 +++ b/src/agents/tools/sessions-spawn-tool.ts
 @@ -17,12 +17,6 @@ import {
@@ -1044,10 +1010,10 @@ index 60d7caa10..2d8210297 100644
 -  formatAcpInheritedToolAllowError,
 -  formatAcpInheritedToolDenyError,
 -} from "../inherited-tool-deny.js";
- import { optionalStringEnum } from "../schema/typebox.js";
- import type { SpawnedToolContext } from "../spawned-context.js";
- import { withParentExecutionIdentity } from "../subagents/spawn/execution-identity-spawn-context.js";
-@@ -175,7 +169,7 @@ function createSessionsSpawnToolSchema(params: {
+ import { createCachedToolSchema } from "../schema/cached-schema.js";
+ import { optionalStringEnum, requesterProfileSchema } from "../schema/typebox.js";
+ import { resolveSenderRestrictedSpawnError } from "../spawn-requester-policy.js";
+@@ -162,7 +156,7 @@ function buildSessionsSpawnToolSchema(params: {
      taskName: Type.Optional(
        Type.String({
          description:
@@ -1056,9 +1022,9 @@ index 60d7caa10..2d8210297 100644
        }),
      ),
      label: Type.Optional(
-@@ -187,7 +181,12 @@ function createSessionsSpawnToolSchema(params: {
+@@ -174,7 +168,12 @@ function buildSessionsSpawnToolSchema(params: {
        params.acpAvailable ? SESSIONS_SPAWN_RUNTIMES : (["subagent"] as const),
-       { description: 'Runtime; visible=true requires "subagent".' },
+       { description: 'Runtime; visible=true and managed worktrees require "subagent".' },
      ),
 -    agentId: Type.Optional(Type.String()),
 +    agentId: Type.Optional(
@@ -1070,8 +1036,8 @@ index 60d7caa10..2d8210297 100644
      model: Type.Optional(Type.String()),
      runTimeoutSeconds: Type.Optional(
        Type.Integer({
-@@ -534,28 +533,6 @@ export function createSessionsSpawnTool(
-             ...roleContext,
+@@ -532,26 +531,6 @@ export function createSessionsSpawnTool(
+             }),
            });
          }
 -        const acpUnsupportedInheritedTool =
@@ -1079,10 +1045,9 @@ index 60d7caa10..2d8210297 100644
 -            ? findAcpUnsupportedInheritedToolDeny(opts?.inheritedToolDenylist)
 -            : undefined;
 -        if (acpUnsupportedInheritedTool) {
--          return jsonResult({
+-          return spawnResult({
 -            status: "forbidden",
 -            error: formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
--            ...roleContext,
 -          });
 -        }
 -        const acpUnsupportedInheritedAllow =
@@ -1090,20 +1055,19 @@ index 60d7caa10..2d8210297 100644
 -            ? findAcpUnsupportedInheritedToolAllow(opts?.inheritedToolAllowlist)
 -            : undefined;
 -        if (acpUnsupportedInheritedAllow) {
--          return jsonResult({
+-          return spawnResult({
 -            status: "forbidden",
 -            error: formatAcpInheritedToolAllowError(acpUnsupportedInheritedAllow),
--            ...roleContext,
 -          });
 -        }
          if (runtime === "acp" && lightContext) {
            throw new Error("lightContext is only supported for runtime='subagent'.");
          }
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
-index 3ea9de6e6..3ef19ca3e 100644
+index 67cb83ae241..3e5996df28f 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
-@@ -159,6 +159,7 @@
+@@ -168,6 +168,7 @@
      "inputSchema": {
        "properties": {
          "agentId": {
@@ -1111,7 +1075,7 @@ index 3ea9de6e6..3ef19ca3e 100644
            "type": "string"
          },
          "attachAs": {
-@@ -320,7 +321,7 @@
+@@ -359,7 +360,7 @@
            "type": "string"
          },
          "taskName": {
@@ -1121,96 +1085,97 @@ index 3ea9de6e6..3ef19ca3e 100644
          },
          "thinking": {
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff
-index 3da4ebc0e..0068a9db3 100644
+index 53e48c1bb4c..abb335e225c 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff
 @@ -1,5 +1,5 @@
----- telegram-direct-codex-message-tool.md	sha256=3e5f992c149bb62ac26c3e05ed52eb4a26710f7d236350371547af4d02a05c0e
--+++ discord-group-codex-message-tool.md	sha256=7a0996f4a14b673c008a92c43a345e498bf89cdaceb233bc20349830d576652e
-+--- telegram-direct-codex-message-tool.md	sha256=1661758bc1afc4fd4de642f3300f4a843ee89e542fe0bdb84790b26fabf18b3a
-++++ discord-group-codex-message-tool.md	sha256=41e8511ff46704390241af7fddbbfb188bdde0d664d7b3ba37b353b83d0988d8
+---- telegram-direct-codex-message-tool.md	sha256=aa3d5b380fd2f94b36d10af368f157a40b8bd17b5beccca95347f412f700e5e0
+-+++ discord-group-codex-message-tool.md	sha256=f5fe3a3aab6d6755960d77621ed1a222ba9aa4edb36c7473071766f36465a81f
++--- telegram-direct-codex-message-tool.md	sha256=9709fb1c6b8cd8f6d3a5e51624d01e9e74155e3448eeb0b21607430b4b99d1b5
+++++ discord-group-codex-message-tool.md	sha256=cacf6a789b27ec236c667251709feffef32cc5b89c03141aab34f3b02d8ab822
  @@ -1,1 +1,1 @@
  -# Telegram Direct Codex Message Tool Turn
  +# Discord Group Codex Message Tool Turn
-@@ -44,10 +44,10 @@
- +    "chars": 28125,
- +    "roughTokens": 7032
- @@ -277,2 +277,2 @@
---    "chars": 93905,
---    "roughTokens": 23477
--+    "chars": 95222,
--+    "roughTokens": 23806
-+-    "chars": 94182,
-+-    "roughTokens": 23546
-++    "chars": 95499,
-++    "roughTokens": 23875
- @@ -281,2 +281,2 @@
+@@ -32,10 +32,10 @@
+ -    "chars": 1338,
+ +    "chars": 1337,
+ @@ -262,2 +262,2 @@
+--    "chars": 74699,
+--    "roughTokens": 18675
+-+    "chars": 75297,
+-+    "roughTokens": 18825
++-    "chars": 74976,
++-    "roughTokens": 18744
+++    "chars": 75574,
+++    "roughTokens": 18894
+ @@ -266,2 +266,2 @@
+ -    "chars": 3194,
+ -    "roughTokens": 799
+@@ -47,10 +47,10 @@
+ +    "chars": 28887,
+ +    "roughTokens": 7222
+ @@ -278,2 +278,2 @@
+--    "chars": 102271,
+--    "roughTokens": 25568
+-+    "chars": 104186,
+-+    "roughTokens": 26047
++-    "chars": 102548,
++-    "roughTokens": 25637
+++    "chars": 104463,
+++    "roughTokens": 26116
+ @@ -282,2 +282,2 @@
  -    "chars": 879,
  -    "roughTokens": 220
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
-index 444033580..9ba6c2a61 100644
+index 2d9634d3220..0d3964f810c 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
-@@ -258,8 +258,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
+@@ -259,8 +259,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
      "roughTokens": 0
    },
    "dynamicToolsJson": {
--    "chars": 67095,
--    "roughTokens": 16774
-+    "chars": 67372,
-+    "roughTokens": 16843
+-    "chars": 74699,
+-    "roughTokens": 18675
++    "chars": 74976,
++    "roughTokens": 18744
    },
    "openClawDeveloperInstructions": {
-     "chars": 2745,
-@@ -274,8 +274,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
-     "roughTokens": 6702
+     "chars": 3194,
+@@ -275,8 +275,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
+     "roughTokens": 6893
    },
    "totalWithDynamicToolsJson": {
--    "chars": 93905,
--    "roughTokens": 23477
-+    "chars": 94182,
-+    "roughTokens": 23546
+-    "chars": 102271,
+-    "roughTokens": 25568
++    "chars": 102548,
++    "roughTokens": 25637
    },
    "userInputText": {
      "chars": 879,
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md.diff b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md.diff
-index 6f63acf04..d75d28648 100644
+index 9ab3002dac0..341669ad490 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md.diff
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md.diff
 @@ -1,5 +1,5 @@
----- telegram-direct-codex-message-tool.md	sha256=3e5f992c149bb62ac26c3e05ed52eb4a26710f7d236350371547af4d02a05c0e
--+++ telegram-heartbeat-codex-tool.md	sha256=8b505e3bec31e596beb3d0990a5a6c0a4c6d55d28edef40350cffea26c4a13df
-+--- telegram-direct-codex-message-tool.md	sha256=1661758bc1afc4fd4de642f3300f4a843ee89e542fe0bdb84790b26fabf18b3a
-++++ telegram-heartbeat-codex-tool.md	sha256=de3c40172efa9d6373dbeb34f78250c4e1648555c6e878ee67a707fa0e06ac5c
+---- telegram-direct-codex-message-tool.md	sha256=aa3d5b380fd2f94b36d10af368f157a40b8bd17b5beccca95347f412f700e5e0
+-+++ telegram-heartbeat-codex-tool.md	sha256=e09d337e1afbf4282c708d52ee8bd7c707a04a88ddd3a52b53d93fccd21282ae
++--- telegram-direct-codex-message-tool.md	sha256=9709fb1c6b8cd8f6d3a5e51624d01e9e74155e3448eeb0b21607430b4b99d1b5
+++++ telegram-heartbeat-codex-tool.md	sha256=3f65488e801b34e7b35fdbb7a4abc3efa64e13e28e9104ee8cc6b8c1e1831fa6
  @@ -1,1 +1,1 @@
  -# Telegram Direct Codex Message Tool Turn
  +# Telegram Direct Codex Heartbeat Tool Turn
-@@ -37,20 +37,20 @@
- +    "chars": 895,
- +    "roughTokens": 224
- @@ -261,2 +258,2 @@
---    "chars": 67095,
---    "roughTokens": 16774
--+    "chars": 68588,
--+    "roughTokens": 17147
-+-    "chars": 67372,
-+-    "roughTokens": 16843
-++    "chars": 68865,
-++    "roughTokens": 17217
- @@ -273,2 +270,2 @@
- -    "chars": 26808,
- -    "roughTokens": 6702
- +    "chars": 27145,
- +    "roughTokens": 6787
- @@ -277,2 +274,2 @@
---    "chars": 93905,
---    "roughTokens": 23477
--+    "chars": 95735,
--+    "roughTokens": 23934
-+-    "chars": 94182,
-+-    "roughTokens": 23546
-++    "chars": 96012,
-++    "roughTokens": 24003
- @@ -281,2 +278,2 @@
+@@ -40,10 +40,10 @@
+ +    "chars": 27907,
+ +    "roughTokens": 6977
+ @@ -278,2 +274,2 @@
+--    "chars": 102271,
+--    "roughTokens": 25568
+-+    "chars": 102608,
+-+    "roughTokens": 25652
++-    "chars": 102548,
++-    "roughTokens": 25637
+++    "chars": 102885,
+++    "roughTokens": 25722
+ @@ -282,2 +278,2 @@
  -    "chars": 879,
  -    "roughTokens": 220

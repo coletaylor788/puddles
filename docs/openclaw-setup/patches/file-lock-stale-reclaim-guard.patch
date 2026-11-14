@@ -1,11 +1,11 @@
-diff --git a/patches/@openclaw__fs-safe@0.18.1.patch b/patches/@openclaw__fs-safe@0.18.1.patch
+diff --git a/patches/@openclaw__fs-safe@0.26.5.patch b/patches/@openclaw__fs-safe@0.26.5.patch
 new file mode 100644
-index 000000000..50c9f2116
+index 00000000000..fb983025d8a
 --- /dev/null
-+++ b/patches/@openclaw__fs-safe@0.18.1.patch
++++ b/patches/@openclaw__fs-safe@0.26.5.patch
 @@ -0,0 +1,152 @@
 +diff --git a/dist/file-lock-sync-admission.js b/dist/file-lock-sync-admission.js
-+index ec3595ac1d026f211955d44b983e19bf89764ef4..98dfd57cc4a4070b89042d4a16d95d3929c5a99b 100644
++index c388e099..0f1d7caa 100644
 +--- a/dist/file-lock-sync-admission.js
 ++++ b/dist/file-lock-sync-admission.js
 +@@ -1,3 +1,4 @@
@@ -13,16 +13,16 @@ index 000000000..50c9f2116
 + import fs from "node:fs";
 + import { sidecarLockPayloadCreatedAtMs, sidecarLockTimeout } from "./sidecar-lock-policy.js";
 + import { ensureSidecarLockCleanupRegistered } from "./sidecar-lock-registration.js";
-+@@ -33,6 +34,7 @@ export function defaultSyncShouldReclaim(snapshot, staleMs, nowMs) {
-+     return !snapshot.stat || nowMs - snapshot.stat.mtimeMs > staleMs;
++@@ -37,6 +38,7 @@ export function defaultSyncShouldReclaim(snapshot, staleMs, nowMs) {
++     return nowMs - mtimeMs > staleMs;
 + }
 + export function syncReclaimGuardExists(reclaimGuardPath) {
 ++    if (process.platform === "darwin") return kernelReclaimGuardExists(reclaimGuardPath);
 +     try {
-+         fs.lstatSync(reclaimGuardPath);
-+         return true;
++         return fs.lstatSync(reclaimGuardPath, { throwIfNoEntry: false }) !== undefined;
++     }
 +diff --git a/dist/file-lock-sync-stale-admission.js b/dist/file-lock-sync-stale-admission.js
-+index da84a68fbbd7b89ca9dfd1b29790d9dd2843ba03..deeeb091032898dff39621187a2f5d387efe6de6 100644
++index 891e88f4..673f32a8 100644
 +--- a/dist/file-lock-sync-stale-admission.js
 ++++ b/dist/file-lock-sync-stale-admission.js
 +@@ -1,3 +1,4 @@
@@ -56,7 +56,7 @@ index 000000000..50c9f2116
 +                 // A surviving reclaim guard fails closed.
 +diff --git a/dist/reclaim-kernel-guard.js b/dist/reclaim-kernel-guard.js
 +new file mode 100644
-+index 0000000000000000000000000000000000000000..053747764b1f662309c7146a010e7d0a34278205
++index 00000000..05374776
 +--- /dev/null
 ++++ b/dist/reclaim-kernel-guard.js
 +@@ -0,0 +1,42 @@
@@ -103,7 +103,7 @@ index 000000000..50c9f2116
 ++    return false;
 ++}
 +diff --git a/dist/sidecar-lock-reclaim.js b/dist/sidecar-lock-reclaim.js
-+index a69e9bad2d257c6b42be6b0ca693890dd571e858..76554b624a8714263c9a28fd5337c49ff7c8792e 100644
++index 887f9740..05331f94 100644
 +--- a/dist/sidecar-lock-reclaim.js
 ++++ b/dist/sidecar-lock-reclaim.js
 +@@ -1,3 +1,4 @@
@@ -111,7 +111,7 @@ index 000000000..50c9f2116
 + import { randomBytes } from "node:crypto";
 + import fsSync, {} from "node:fs";
 + import fs from "node:fs/promises";
-+@@ -261,6 +262,7 @@ export async function sidecarLockSnapshotStillPresent(lockPath, observed, option
++@@ -243,6 +244,7 @@ export async function sidecarLockSnapshotStillPresent(lockPath, observed, option
 +     return !!current && !!observed && sidecarLockSnapshotMatches(current, observed);
 + }
 + export async function sidecarReclaimGuardExists(pathname, lockRoot) {
@@ -119,7 +119,7 @@ index 000000000..50c9f2116
 +     try {
 +         if (lockRoot)
 +             await lockRoot.stat(relativeSidecarLockPath(lockRoot, pathname));
-+@@ -311,6 +313,17 @@ export async function tryAcquireSidecarReclaimGuard(reclaimGuards, pathname, loc
++@@ -293,6 +295,17 @@ export async function tryAcquireSidecarReclaimGuard(reclaimGuards, pathname, loc
 +             },
 +         };
 +     }
@@ -138,15 +138,15 @@ index 000000000..50c9f2116
 +         await fs.mkdir(pathname);
 +     }
 +diff --git a/dist/sidecar-lock.js b/dist/sidecar-lock.js
-+index 3c45e42c544143fe0d77d9317d62aba3c487bf9e..a54c259b96e473a3fb85813c662f5355d02ef82f 100644
++index 41272607..456b7829 100644
 +--- a/dist/sidecar-lock.js
 ++++ b/dist/sidecar-lock.js
 +@@ -1,3 +1,4 @@
 ++import { kernelReclaimGuardExists, releaseKernelReclaimGuard, tryAcquireKernelReclaimGuard } from "./reclaim-kernel-guard.js";
 + import fsSync from "node:fs";
 + import { FsSafeError } from "./errors.js";
-+ import { sameFileIdentity } from "./file-identity.js";
-+@@ -92,7 +93,8 @@ function releaseAllReclaimGuardsSync(state) {
++ import { sameFileIdentityForCleanup } from "./file-identity.js";
++@@ -94,7 +95,8 @@ function releaseAllReclaimGuardsSync(state) {
 +     // Exit cleanup also visits managers created by older copies and never reopened here.
 +     for (const reclaimGuardPath of state.reclaimGuards ?? []) {
 +         try {
@@ -157,101 +157,312 @@ index 000000000..50c9f2116
 +         }
 +         catch {
 diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
-index c53f56e71..9c5671f6c 100644
+index 6e7deef33e9..deb45e5b6eb 100644
 --- a/pnpm-lock.yaml
 +++ b/pnpm-lock.yaml
-@@ -209,6 +209,7 @@ packageExtensionsChecksum: sha256-zZ8fyodhMTumshonC7kktCqTPsiHL3UAyS9vltFAlMo=
- patchedDependencies:
-   '@awesome.me/webawesome@3.12.0': e30830e3b67d6b834f2257eb85dd252dcf225ed935fb69646e6c90433c85d99c
+@@ -218,6 +218,7 @@ patchedDependencies:
+   '@awesome.me/webawesome@3.13.0': 9b35bfc2e23b45e47ac3e6a669b8bf7df0c4ca89423e8a78d6fb921faa686208
+   '@discord/embedded-app-sdk@2.5.0': 016b529034315344702f9c7ac79ce5538b0934cf55381229946597b54343fdfd
    '@novnc/novnc@1.7.0': bfde0e1bda172da3525f9f5014d85ad28073325b74f09609084598a65d2f412d
-+  '@openclaw/fs-safe@0.18.1': 3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c
-   chrome-devtools-mcp@1.8.0: c9e9590160eb099415e7ff6e705b0e0f725e364419f91153a0207e31a71f8547
-   matrix-js-sdk@42.3.0: 79bea7a0ca1c3c98635b2da6957539ab04386a2fe0ffec5498b5e9abc18b8b97
-   vitest@5.0.0: 5e7c1655044613ad5d71751e82ea0e6448f7bf5a7445b86114f495866c9a3bcf
-@@ -261,7 +262,7 @@ importers:
++  '@openclaw/fs-safe@0.26.5': 67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de
+   baileys@7.0.0-rc14: c3c4601486630c689ffd1a0e7a34f4b8cf8e7231e41c312ad33afdf4487d8ded
+   chrome-devtools-mcp@1.10.1: d31d6e7e187ea9fd4dad87ed3ad08073c77ffcfddd52bc4761b39a2dfce0ac1e
+   ghostty-web@0.4.0: d4c6598b6840564dac4a469f3aa9b8df24fe6eab48a6744302707017e095a524
+@@ -279,7 +280,7 @@ importers:
          version: link:packages/ai
        '@openclaw/fs-safe':
-         specifier: 0.18.1
--        version: 0.18.1
-+        version: 0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)
-       '@openclaw/proxyline':
-         specifier: 0.3.12
-         version: 0.3.12(undici@8.10.2)
-@@ -1196,7 +1197,7 @@ importers:
+         specifier: 0.26.5
+-        version: 0.26.5
++        version: 0.26.5(patch_hash=67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de)
+       '@openclaw/proc-safe':
+         specifier: 0.4.2
+         version: 0.4.2
+@@ -657,7 +658,7 @@ importers:
+         version: 2.1.1
+       '@openclaw/fs-safe':
+         specifier: 0.26.5
+-        version: 0.26.5
++        version: 0.26.5(patch_hash=67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de)
+       acpx:
+         specifier: 0.19.4
+         version: 0.19.4
+@@ -974,7 +975,7 @@ importers:
+         version: 0.164.0
+       '@openclaw/fs-safe':
+         specifier: 0.26.5
+-        version: 0.26.5
++        version: 0.26.5(patch_hash=67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de)
+       semver:
+         specifier: 7.8.5
+         version: 7.8.5
+@@ -1033,7 +1034,7 @@ importers:
      dependencies:
        '@openclaw/fs-safe':
-         specifier: 0.18.1
--        version: 0.18.1
-+        version: 0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)
+         specifier: 0.26.5
+-        version: 0.26.5
++        version: 0.26.5(patch_hash=67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de)
+       '@trycua/cua-driver':
+         specifier: 0.33.4
+         version: 0.33.4
+@@ -1246,7 +1247,7 @@ importers:
+         version: 1.74.0(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)
+       '@openclaw/fs-safe':
+         specifier: 0.26.5
+-        version: 0.26.5
++        version: 0.26.5(patch_hash=67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de)
+       mdast-util-from-markdown:
+         specifier: 2.1.0
+         version: 2.1.0(supports-color@10.2.2)
+@@ -1274,7 +1275,7 @@ importers:
+     dependencies:
+       '@openclaw/fs-safe':
+         specifier: 0.26.5
+-        version: 0.26.5
++        version: 0.26.5(patch_hash=67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de)
        minimatch:
          specifier: 10.2.6
          version: 10.2.6
-@@ -1435,7 +1436,7 @@ importers:
+@@ -1516,7 +1517,7 @@ importers:
      dependencies:
        '@openclaw/fs-safe':
-         specifier: 0.18.1
--        version: 0.18.1
-+        version: 0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)
+         specifier: 0.26.5
+-        version: 0.26.5
++        version: 0.26.5(patch_hash=67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de)
      devDependencies:
        '@openclaw/plugin-sdk':
          specifier: workspace:*
-@@ -1642,7 +1643,7 @@ importers:
+@@ -1572,7 +1573,7 @@ importers:
+         version: 18.9.0
+       '@openclaw/fs-safe':
+         specifier: 0.26.5
+-        version: 0.26.5
++        version: 0.26.5(patch_hash=67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de)
+       fake-indexeddb:
+         specifier: 6.2.5
+         version: 6.2.5
+@@ -1628,7 +1629,7 @@ importers:
      dependencies:
        '@openclaw/fs-safe':
-         specifier: 0.18.1
--        version: 0.18.1
-+        version: 0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)
+         specifier: 0.26.5
+-        version: 0.26.5
++        version: 0.26.5(patch_hash=67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de)
+       json5:
+         specifier: 2.2.3
+         version: 2.2.3
+@@ -1738,7 +1739,7 @@ importers:
+     dependencies:
+       '@openclaw/fs-safe':
+         specifier: 0.26.5
+-        version: 0.26.5
++        version: 0.26.5(patch_hash=67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de)
      devDependencies:
        '@openclaw/plugin-sdk':
          specifier: workspace:*
-@@ -1809,7 +1810,7 @@ importers:
+@@ -1978,7 +1979,7 @@ importers:
      dependencies:
        '@openclaw/fs-safe':
-         specifier: 0.18.1
--        version: 0.18.1
-+        version: 0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)
-     devDependencies:
-       '@openclaw/plugin-sdk':
-         specifier: workspace:*
-@@ -1873,7 +1874,7 @@ importers:
-     dependencies:
-       '@openclaw/fs-safe':
-         specifier: 0.18.1
--        version: 0.18.1
-+        version: 0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)
+         specifier: 0.26.5
+-        version: 0.26.5
++        version: 0.26.5(patch_hash=67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de)
        p-limit:
-         specifier: 7.3.2
-         version: 7.3.2
-@@ -2074,7 +2075,7 @@ importers:
+         specifier: 7.3.3
+         version: 7.3.3
+@@ -2059,7 +2060,7 @@ importers:
+         version: 0.1.29
+       '@openclaw/fs-safe':
+         specifier: 0.26.5
+-        version: 0.26.5
++        version: 0.26.5(patch_hash=67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de)
+       json5:
+         specifier: 2.2.3
+         version: 2.2.3
+@@ -2191,7 +2192,7 @@ importers:
      dependencies:
        '@openclaw/fs-safe':
-         specifier: 0.18.1
--        version: 0.18.1
-+        version: 0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)
+         specifier: 0.26.5
+-        version: 0.26.5
++        version: 0.26.5(patch_hash=67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de)
        ws:
-         specifier: 8.21.3
-         version: 8.21.3
-@@ -11927,7 +11928,7 @@ snapshots:
-       '@openclaw/fs-safe-win32-x64-msvc': 0.12.0
+         specifier: 8.22.0
+         version: 8.22.0
+@@ -5207,6 +5208,7 @@ packages:
+   '@opentelemetry/propagator-jaeger@2.11.0':
+     resolution: {integrity: sha512-RUOqgoIqXOPQTOhpBrs07Y8sBlxVoLY5Fka6ueZ0prW+k6fWQsba/nHDY4gm+gmfuwtRqbX5Y9YKhDvktjbIqQ==}
+     engines: {node: ^18.19.0 || >=20.6.0}
++    deprecated: Package no longer supported. See https://github.com/open-telemetry/opentelemetry-js/pull/7077
+     peerDependencies:
+       '@opentelemetry/api': '>=1.0.0 <1.10.0'
+ 
+@@ -5244,6 +5246,7 @@ packages:
+   '@opentelemetry/sdk-trace-node@2.11.0':
+     resolution: {integrity: sha512-CuvCMJmZxswhNLlM2LfuLOW3h3fZujA4hsG4B+Sz4dX2zvaXO8Ng74cnDHWD64gLszTlhiG3c0iNUjj4g+0/sA==}
+     engines: {node: ^18.19.0 || >=20.6.0}
++    deprecated: Use @opentelemetry/sdk-trace package
+     peerDependencies:
+       '@opentelemetry/api': '>=1.0.0 <1.10.0'
+ 
+@@ -5989,6 +5992,9 @@ packages:
+   '@smithy/core@3.35.1':
+     resolution: {integrity: sha512-i4YPS4B6ts7bjn7UwLnGjiZdprOvHvgGobFZsYK3GIY3E5hIqtj0rReU69BcTpGp+fvtraSNXeG1l+jtJvF55w==}
+     engines: {node: '>=18.0.0'}
++    deprecated: |-
++      Deprecated due to a bug in custom logger data redaction. Upgrade to the latest version. If you used a custom logger with this
++        version, review your logs and rotate any credentials or other secrets. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
+ 
+   '@smithy/credential-provider-imds@4.5.2':
+     resolution: {integrity: sha512-A9uSdn72ozbRUSit0eib0TW7nXuNPlaeM0zcGkJ+nE6tFcSDbnmtwoxbTCFBukVQcszDAyvsd7+rTduPTXpygg==}
+@@ -7005,11 +7011,6 @@ packages:
+     peerDependencies:
+       acorn: ^6.0.0 || ^7.0.0 || ^8.0.0
+ 
+-  acorn@8.18.0:
+-    resolution: {integrity: sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ==}
+-    engines: {node: '>=0.4.0'}
+-    hasBin: true
+-
+   acorn@8.19.0:
+     resolution: {integrity: sha512-oJlA3XiRm7Cyk6qFD2Jn8ak9B7jSy0qy00ADO3+8dpT0LSjFihQYv4C02LFCSYJV3Q37xYwwRy5m+IpIiUzqWw==}
+     engines: {node: '>=0.4.0'}
+@@ -7042,6 +7043,11 @@ packages:
+ 
+   ajv-formats@3.0.1:
+     resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
++    peerDependencies:
++      ajv: ^8.0.0
++    peerDependenciesMeta:
++      ajv:
++        optional: true
+ 
+   ajv@6.15.0:
+     resolution: {integrity: sha512-fgFx7Hfoq60ytK2c7DhnF8jIvzYgOMxfugjLOSMHjLIPgenqa7S7oaagATUq99mV6IYvN2tRmC0wnTYX6iPbMw==}
+@@ -9146,9 +9152,6 @@ packages:
+   md5@2.3.0:
+     resolution: {integrity: sha512-T1GITYmFaKuO91vxyoQMFETst+O71VUPEU3ze5GNzDm0OWdP8v1ziTaAEPUr/3kLsY3Sftgz242A1SetQiDL7g==}
+ 
+-  mdast-util-from-markdown@2.0.3:
+-    resolution: {integrity: sha512-W4mAWTvSlKvf8L6J+VN9yLSqQ9AOAAvHuoDAmPkz4dHf553m5gVj2ejadHJhoJmcmxEnOv6Pa8XJhpxE93kb8Q==}
+-
+   mdast-util-from-markdown@2.1.0:
+     resolution: {integrity: sha512-KRLgmPaP2H1ul2bpoJkOS+9pAcDAAj9Nu1mqLnh8NLeJG5tlvj42TH80PIGBpROWlRXLk0lDrWNuZCFy/tsB4A==}
+ 
+@@ -13401,7 +13404,7 @@ snapshots:
+       '@openclaw/fs-safe-win32-x64-msvc': 0.21.3
        jszip: 3.10.2
  
--  '@openclaw/fs-safe@0.18.1':
-+  '@openclaw/fs-safe@0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)':
+-  '@openclaw/fs-safe@0.26.5':
++  '@openclaw/fs-safe@0.26.5(patch_hash=67a80e620431116282466d57554a9cf6a3bf8e71cb3e122a40eee86b8659d0de)':
      optionalDependencies:
-       '@openclaw/fs-safe-darwin-arm64': 0.18.1
-       '@openclaw/fs-safe-darwin-x64': 0.18.1
+       '@openclaw/fs-safe-darwin-arm64': 0.26.5
+       '@openclaw/fs-safe-darwin-x64': 0.26.5
+@@ -15344,16 +15347,10 @@ snapshots:
+       mime-types: 3.0.2
+       negotiator: 1.1.0
+ 
+-  acorn-jsx@5.3.2(acorn@8.18.0):
+-    dependencies:
+-      acorn: 8.18.0
+-
+   acorn-jsx@5.3.2(acorn@8.19.0):
+     dependencies:
+       acorn: 8.19.0
+ 
+-  acorn@8.18.0: {}
+-
+   acorn@8.19.0: {}
+ 
+   acpx@0.19.4:
+@@ -16332,8 +16329,8 @@ snapshots:
+ 
+   espree@11.2.0:
+     dependencies:
+-      acorn: 8.18.0
+-      acorn-jsx: 5.3.2(acorn@8.18.0)
++      acorn: 8.19.0
++      acorn-jsx: 5.3.2(acorn@8.19.0)
+       eslint-visitor-keys: 5.0.1
+ 
+   esquery@1.7.0:
+@@ -17658,23 +17655,6 @@ snapshots:
+       is-buffer: 1.1.6
+     optional: true
+ 
+-  mdast-util-from-markdown@2.0.3(supports-color@10.2.2):
+-    dependencies:
+-      '@types/mdast': 4.0.4
+-      '@types/unist': 3.0.3
+-      decode-named-character-reference: 1.3.0
+-      devlop: 1.1.0
+-      mdast-util-to-string: 4.0.0
+-      micromark: 4.0.3(supports-color@10.2.2)
+-      micromark-util-decode-numeric-character-reference: 2.0.2
+-      micromark-util-decode-string: 2.0.1
+-      micromark-util-normalize-identifier: 2.0.1
+-      micromark-util-symbol: 2.0.1
+-      micromark-util-types: 2.0.3
+-      unist-util-stringify-position: 4.0.0
+-    transitivePeerDependencies:
+-      - supports-color
+-
+   mdast-util-from-markdown@2.1.0(supports-color@10.2.2):
+     dependencies:
+       '@types/mdast': 4.0.4
+@@ -17708,7 +17688,7 @@ snapshots:
+       '@types/hast': 3.0.5
+       '@types/mdast': 4.0.4
+       devlop: 1.1.0
+-      mdast-util-from-markdown: 2.0.3(supports-color@10.2.2)
++      mdast-util-from-markdown: 2.1.0(supports-color@10.2.2)
+       mdast-util-to-markdown: 2.1.3
+     transitivePeerDependencies:
+       - supports-color
+@@ -17721,7 +17701,7 @@ snapshots:
+       '@types/unist': 3.0.3
+       ccount: 2.0.1
+       devlop: 1.1.0
+-      mdast-util-from-markdown: 2.0.3(supports-color@10.2.2)
++      mdast-util-from-markdown: 2.1.0(supports-color@10.2.2)
+       mdast-util-to-markdown: 2.1.3
+       parse-entities: 4.0.2
+       stringify-entities: 4.0.4
+@@ -17732,7 +17712,7 @@ snapshots:
+ 
+   mdast-util-mdx@3.0.0(supports-color@10.2.2):
+     dependencies:
+-      mdast-util-from-markdown: 2.0.3(supports-color@10.2.2)
++      mdast-util-from-markdown: 2.1.0(supports-color@10.2.2)
+       mdast-util-mdx-expression: 2.0.1(supports-color@10.2.2)
+       mdast-util-mdx-jsx: 3.2.0(supports-color@10.2.2)
+       mdast-util-mdxjs-esm: 2.0.1(supports-color@10.2.2)
+@@ -17746,7 +17726,7 @@ snapshots:
+       '@types/hast': 3.0.5
+       '@types/mdast': 4.0.4
+       devlop: 1.1.0
+-      mdast-util-from-markdown: 2.0.3(supports-color@10.2.2)
++      mdast-util-from-markdown: 2.1.0(supports-color@10.2.2)
+       mdast-util-to-markdown: 2.1.3
+     transitivePeerDependencies:
+       - supports-color
+@@ -18805,7 +18785,7 @@ snapshots:
+   remark-parse@11.0.0(supports-color@10.2.2):
+     dependencies:
+       '@types/mdast': 4.0.4
+-      mdast-util-from-markdown: 2.0.3(supports-color@10.2.2)
++      mdast-util-from-markdown: 2.1.0(supports-color@10.2.2)
+       micromark-util-types: 2.0.3
+       unified: 11.0.5
+     transitivePeerDependencies:
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
-index 41e43d2cb..2f64eeccf 100644
+index e92a7bd9580..c381f645cc7 100644
 --- a/pnpm-workspace.yaml
 +++ b/pnpm-workspace.yaml
-@@ -143,3 +143,4 @@ patchedDependencies:
-   "matrix-js-sdk@42.3.0": patches/matrix-js-sdk@42.3.0.patch
-   "@novnc/novnc@1.7.0": patches/@novnc__novnc@1.7.0.patch
-   vitest@5.0.0: patches/vitest@5.0.0.patch
-+  '@openclaw/fs-safe@0.18.1': patches/@openclaw__fs-safe@0.18.1.patch
+@@ -158,3 +158,4 @@ patchedDependencies:
+   ghostty-web@0.4.0: patches/ghostty-web@0.4.0.patch
+   chrome-devtools-mcp@1.10.1: patches/chrome-devtools-mcp@1.10.1.patch
+   zod@3.25.76: patches/zod@3.25.76.patch
++  "@openclaw/fs-safe@0.26.5": patches/@openclaw__fs-safe@0.26.5.patch
 diff --git a/src/plugin-sdk/file-lock.stale-contention.test.ts b/src/plugin-sdk/file-lock.stale-contention.test.ts
 new file mode 100644
-index 000000000..6efc52ab3
+index 00000000000..6efc52ab3a7
 --- /dev/null
 +++ b/src/plugin-sdk/file-lock.stale-contention.test.ts
 @@ -0,0 +1,232 @@
@@ -487,3 +698,26 @@ index 000000000..6efc52ab3
 +  }
 +  throw new Error("test barrier timed out");
 +}
+diff --git a/src/auto-reply/reply/session-hooks-context.test.ts b/src/auto-reply/reply/session-hooks-context.test.ts
+index 5e179e809b84300c4d865d4050b0845cd643a833..2a8a99234a1b35757823f9831cdb7272dba4293b 100644
+--- a/src/auto-reply/reply/session-hooks-context.test.ts
++++ b/src/auto-reply/reply/session-hooks-context.test.ts
+@@ -299,8 +299,16 @@ describe("session hook context wiring", () => {
+         await flushSessionMemoryWritesForTest();
+         const memoryDir = path.join(workspaceDir, "memory");
+         const files = await fs.readdir(memoryDir);
+-        expect(files).toHaveLength(1);
+-        const content = await fs.readFile(path.join(memoryDir, files[0]!), "utf8");
++        const notes = files.filter((filename) => filename.endsWith(".md"));
++        expect(notes).toHaveLength(1);
++        const guard = ".session-memory.lock.reclaim";
++        expect(files.toSorted()).toEqual(
++          [...notes, ...(process.platform === "darwin" ? [guard] : [])].toSorted(),
++        );
++        if (process.platform === "darwin") {
++          expect((await fs.lstat(path.join(memoryDir, guard))).isFile()).toBe(true);
++        }
++        const content = await fs.readFile(path.join(memoryDir, notes[0]!), "utf8");
+         expect(content).toContain('assistant: "retiring-memory-5"');
+         expect(content).toContain('assistant: "retiring-memory-19"');
+         expect(content).not.toContain('"retiring-memory-4"');

@@ -1,5 +1,5 @@
 diff --git a/src/agents/harness/host-capability.test.ts b/src/agents/harness/host-capability.test.ts
-index 99a12c0e..61d05b52 100644
+index ee7fe8d..0dd6530 100644
 --- a/src/agents/harness/host-capability.test.ts
 +++ b/src/agents/harness/host-capability.test.ts
 @@ -1,3 +1,4 @@
@@ -7,7 +7,7 @@ index 99a12c0e..61d05b52 100644
  import fs from "node:fs";
  import os from "node:os";
  import path from "node:path";
-@@ -18,7 +19,12 @@ import {
+@@ -17,7 +18,12 @@ import {
    bindGatewayContextResolver,
    withPluginRuntimeGatewayRequestScope,
  } from "../../plugins/runtime/gateway-request-scope.js";
@@ -21,7 +21,7 @@ index 99a12c0e..61d05b52 100644
  import {
    closeAdmittedRunDelegatedAuthority,
    createOperationalRunInstanceRef,
-@@ -158,6 +164,115 @@ afterEach(() => {
+@@ -132,6 +138,115 @@ afterEach(() => {
  });
  
  describe("agent harness host capability", () => {
@@ -135,15 +135,15 @@ index 99a12c0e..61d05b52 100644
 +  });
 +
    it.each([
-     { available: undefined, expected: [] },
-     { available: false, expected: ["github_identity_status"] },
+     "host close",
+     "run replacement",
 diff --git a/src/agents/harness/host-capability.ts b/src/agents/harness/host-capability.ts
-index 2b10c2bb..3ecd8009 100644
+index 33d2517..7d5cfb3 100644
 --- a/src/agents/harness/host-capability.ts
 +++ b/src/agents/harness/host-capability.ts
 @@ -17,7 +17,11 @@ import {
  } from "../../plugins/runtime/gateway-request-scope.js";
- import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
+ import { warnPluginSdkDeprecation } from "../../plugins/sdk-deprecation.js";
  import { bindUserTurnTranscriptAnnotation } from "../../sessions/user-turn-transcript-annotation.js";
 -import { getAsyncWorkSignal } from "../../shared/async-work-scope.js";
 +import {
@@ -151,64 +151,86 @@ index 2b10c2bb..3ecd8009 100644
 +  getAsyncWorkSignal,
 +  runOutsideAsyncWorkScope,
 +} from "../../shared/async-work-scope.js";
+ import { loadSkillLibrarySelection } from "../../skills/library/selection.js";
  import { resolveSkillResourceCandidates } from "../../skills/runtime/resource-candidates.js";
- import {
-   getAdmittedRunDelegatedAuthority,
-@@ -117,6 +121,7 @@ function gateBoundTool(
-   tool: AnyAgentTool,
-   assertActive: () => void,
-   observeResult: (result: unknown) => void,
-+  trackOwner: ReturnType<typeof captureAsyncWorkTracker>,
- ): AnyAgentTool {
-   const execute = tool.execute;
-   const sourcePreparer = getInternalToolExecutionPreparer(tool);
-@@ -135,7 +140,7 @@ function gateBoundTool(
-               // a tool that started and failed in downstream terminal evidence.
-               throw registerTrustedToolNoStartError(error);
-             }
--            const result = await execute(...args);
-+            const result = await runOutsideAsyncWorkScope(() => trackOwner(() => execute(...args)));
-             assertActive();
-             observeResult(result);
-             return result;
-@@ -147,7 +152,9 @@ function gateBoundTool(
-   if (sourcePreparer) {
-     attachInternalToolExecutionPreparer(gated, async (preparationParams) => {
-       assertActive();
--      const prepared = await sourcePreparer(preparationParams);
-+      const prepared = await runOutsideAsyncWorkScope(() =>
-+        trackOwner(() => sourcePreparer(preparationParams)),
-+      );
-       try {
-         assertActive();
-       } catch (error) {
-@@ -164,7 +171,9 @@ function gateBoundTool(
-         ...prepared,
-         execute: async (onImplementationStart) => {
-           assertActive();
--          const result = await prepared.execute(onImplementationStart);
-+          const result = await runOutsideAsyncWorkScope(() =>
-+            trackOwner(() => prepared.execute(onImplementationStart)),
-+          );
-           assertActive();
-           observeResult(result);
-           return result;
-@@ -188,6 +197,9 @@ export function createAgentHarnessHostCapabilities(params: {
-   const attempt = params.attempt;
+ import type { SkillEntry } from "../../skills/types.js";
+@@ -111,6 +115,7 @@ export function createAgentHarnessHostCapabilities(params: {
+     : undefined;
    const githubPublicationAvailable = attempt.githubPublicationAvailable;
    const workSignal = getAsyncWorkSignal();
-+  // A pooled transport can dispatch later turns from its first, closed scope.
-+  // Tools belong to this host attempt, regardless of the callback transport.
 +  const trackOwner = captureAsyncWorkTracker();
    const attemptSignal = attempt.abortSignal;
    const installationTarget = getInstallationTarget();
-   const localProcessEnv = installationTargetEnv(installationTarget);
-@@ -463,7 +475,7 @@ export function createAgentHarnessHostCapabilities(params: {
-         callerIdentity ? wrapToolWithGatewayCallerIdentity(tool, callerIdentity) : tool,
-       )
-       .map((tool) => wrapToolWithAbortSignal(tool, boundAbortSignal))
--      .map((tool) => gateBoundTool(tool, assertActive, observeResult));
-+      .map((tool) => gateBoundTool(tool, assertActive, observeResult, trackOwner));
-   };
+   const { sessionKey, onAgentEvent } = attempt;
+@@ -388,6 +393,7 @@ export function createAgentHarnessHostCapabilities(params: {
+       hookContext: hookContextForOperation(options),
+       abortSignal: bindAbortSignal(attempt.abortSignal),
+       workspaceReadiness: workspaceReadiness.readiness,
++      runWithToolScope: (run) => runOutsideAsyncWorkScope(() => trackOwner(run)),
+     });
    const bindToolSurface: AgentHarnessHostCapabilities["bindToolSurface"] = (tools, options) =>
      bindTools(tools, options, () => {});
+diff --git a/src/agents/harness/host-bound-tool.ts b/src/agents/harness/host-bound-tool.ts
+index 1c2c7bf9..eab24d31 100644
+--- a/src/agents/harness/host-bound-tool.ts
++++ b/src/agents/harness/host-bound-tool.ts
+@@ -26,6 +26,7 @@ export function bindHostToolSurface(
+     callerIdentity: Parameters<typeof wrapToolWithGatewayCallerIdentity>[1] | undefined;
+     abortSignal: AbortSignal;
+     workspaceReadiness?: AgentWorkspaceReadiness;
++    runWithToolScope?: <T>(run: () => Promise<T>) => Promise<T>;
+   },
+ ): AnyAgentTool[] {
+   params.assertActive();
+@@ -42,6 +43,7 @@ export function bindHostToolSurface(
+         params.assertActive,
+         params.observeResult,
+         isWorkspaceTool(tool) ? params.workspaceReadiness : undefined,
++        params.runWithToolScope,
+       ),
+     );
+ }
+@@ -51,6 +53,7 @@ export function gateBoundTool(
+   assertActive: SessionSourceAssertion,
+   observeResult: (result: unknown) => void,
+   workspaceReadiness?: AgentWorkspaceReadiness,
++  runWithToolScope: <T>(run: () => Promise<T>) => Promise<T> = (run) => run(),
+ ): AnyAgentTool {
+   const execute = tool.execute;
+   const sourcePreparer = getInternalToolExecutionPreparer(tool);
+@@ -92,13 +95,13 @@ export function gateBoundTool(
+               // a tool that started and failed in downstream terminal evidence.
+               throw registerTrustedToolNoStartError(error);
+             }
+-            return acceptResult(await execute(...args));
++            return acceptResult(await runWithToolScope(() => execute(...args)));
+           },
+         }
+       : {}),
+   };
+   copyAgentToolMetadata(tool, gated, (source) =>
+-    gateBoundTool(source, assertActive, observeResult, workspaceReadiness),
++    gateBoundTool(source, assertActive, observeResult, workspaceReadiness, runWithToolScope),
+   );
+   if (sourcePreparer) {
+     attachInternalToolExecutionPreparer(gated, async (preparationParams) => {
+@@ -107,7 +110,7 @@ export function gateBoundTool(
+       } else {
+         await assertCurrent();
+       }
+-      const prepared = await sourcePreparer(preparationParams);
++      const prepared = await runWithToolScope(() => sourcePreparer(preparationParams));
+       try {
+         await assertCurrent();
+       } catch (error) {
+@@ -128,7 +131,9 @@ export function gateBoundTool(
+           } else {
+             await assertCurrent();
+           }
+-          return acceptResult(await prepared.execute(onImplementationStart));
++          return acceptResult(
++            await runWithToolScope(() => prepared.execute(onImplementationStart)),
++          );
+         },
+       };
+     });

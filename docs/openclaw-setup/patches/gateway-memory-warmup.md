@@ -30,6 +30,12 @@ shared deadline, vector validation, startup ordering, restart acquisition,
 lease cleanup, managed transport confinement, and embedding-only native
 residency.
 
-The 2026.9.6 port uses the current memory schema and the gateway's existing
-sidecar lifetime owner. Provider acquisition still forwards readiness phases
-to the search deadline owner. The startup warmup does not extend that deadline.
+The 2026.11.3 port uses the current memory schema, the gateway's existing
+sidecar lifetime owner, and the relocated llama.cpp embedding preparation and
+inspection modules. Provider acquisition still forwards readiness phases to
+the search deadline owner. The startup warmup does not extend that deadline.
+
+The preceding local-service lifecycle patch already supplies the owned-lease
+result and the final readiness check. This patch consumes that contract without
+reapplying it. Its runtime warmup owner and complete gateway fixture remain
+explicit files in this patch.

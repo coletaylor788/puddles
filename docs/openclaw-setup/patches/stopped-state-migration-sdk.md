@@ -1,6 +1,6 @@
 # Offline state migration through maintained SDK helpers
 
-OpenClaw 2026.9.6 already has a readonly cron snapshot reader and a targeted
+OpenClaw 2026.11.3 already has a readonly cron snapshot reader and a targeted
 writer that checks the selected job's configuration revision. Its public SDK
 exposes only the older mutating loader and whole-store writer. This patch
 exports the existing narrow helpers instead of adding another storage path.
@@ -17,7 +17,7 @@ without hardcoding private plugin policy or deleting unknown keys. Cron
 partition resolution can request the existing
 `artifactPreservingReadOnly` path, which inspects a private SQLite snapshot
 instead of creating WAL or SHM files beside an older database. Existing callers
-retain their current default behavior. The 2026.9.6 reader delegates to the
+retain their current default behavior. The stable reader delegates to the
 maintained database worker. Migration callers explicitly request raw-row
 fingerprints for the stopped copy checks; ordinary readers do not compute them.
 
@@ -53,9 +53,9 @@ set must remain unchanged.
 The stopped config repair calls the same core and plugin migration contracts,
 plugin validation, include ownership, metadata stamping, and config writer used
 by doctor. It rejects
-partial validation instead of persisting a half-migrated file. It also
-canonicalizes a legacy markerless multi-agent roster and stamps explicit
-ownership before private compare-and-swap writes. It does not select a default
+partial validation instead of persisting a half-migrated file. Stable Doctor also canonicalizes a legacy markerless multi-agent roster and
+stamps explicit ownership before private compare-and-swap writes. The port
+removes the older duplicate roster repair and retains its regression. It does not select a default
 agent or grant access to an unowned surface. Private selected
 config writes run next, followed by ordinary doctor and the revision-bound cron
 write. None of the bounded pre-doctor steps compile memory or start a gateway,
@@ -93,8 +93,17 @@ cover the supported private fields, attempted forgery, private-row drift and
 rejected generation changes. Recovery's activity witness still binds the full
 raw node before all writes and at commit admission.
 
+Stable session patches commit through the native database worker. The port
+carries the existing repair options through that worker and its commit owner,
+including its actor state and cache publication. It reuses stable's unchanged
+conversation handling. The repair guard still refuses generation, delivery, or
+conversation changes, and recovery still needs an explicit caller admission
+check. Window and transcript clocks remain separate. The four repair options
+stay on the existing SDK entrypoint used by release migration; the newer public
+patch helpers do not advertise options they do not forward.
+
 The patch targets stable source
-`eb377ac59e6c9fd6c7705028034812becf00271b`. Its registered SDK tests use real
+`847611dcaa3bf0e2783335f961dd1fd0580e4d9f`. Its registered SDK tests use real
 SQLite, including the maintained compressed 2026.7.1-2 fixture. They cover
 readonly absent-state behavior, old-schema ordering, legacy config repair,
 markerless multi-agent ownership, Active Memory QMD retirement, Canvas host
@@ -109,3 +118,11 @@ activity. Wrapper fixtures cover failures and interrupted rollback.
 Apply this patch through the native runner. Remove exports only when the
 upstream facade exposes equivalent maintained helpers. Do not substitute
 distribution-file imports or direct SQLite writes in the release helper.
+
+The stable preview retains the original roster owner through native migration
+provenance and uses native authentication-owner preparation with the normalized
+current configuration. This matches the writer while keeping the original shared
+authentication owner separate from Talk, heartbeat and system-agent ownership.
+Both preview and repair retain the authored include boundary. Six native Doctor
+cases prove exact persisted equality, fixed-store and workspace behavior, explicit
+owners, and byte-preserving refusal across included configuration files.

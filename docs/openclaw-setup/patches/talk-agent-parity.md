@@ -1,42 +1,19 @@
-# Talk authorization and consultation lifetime
+# Talk parity now provided by OpenClaw
 
-This patch targets OpenClaw 2026.9.6. It adds an optional way to use ordinary
-agent authorization in Talk and fixes reader delegation after voice setup ends.
+The runtime patch is retired on OpenClaw `v2026.11.3`. Native Talk now uses the
+ordinary agent permission and approval chain. It also starts consultation work
+under independent admission with detached work, so closing the offer request
+does not close an accepted consultation's work scope.
 
-## Authorization
+This matches the former `talk.realtime.confirmationPolicy: standard` behavior.
+Remove that retired setting through an exact, reviewed configuration transition.
+The former `high-impact` selection is a different behavior and must not be
+silently mapped to the native default.
 
-Set `talk.realtime.confirmationPolicy` to `standard` to use the same tool
-permissions and approval chain as text. This skips only the additional spoken
-confirmation check. Ordinary tool policies, approval requirements, caller
-identity, delegation restrictions and execution guards still apply. Tool calls
-are checked before hooks and again after tool-owned parameter finalization.
+The cumulative application suite retains native permission, owner, revocation,
+relay readiness, consultation, cancellation and work-admission regressions. The
+remaining Talk overlap patch retains the two integration cases that prepare a
+real context engine after the offer scope closes before or during consultation.
 
-Omitting the setting or choosing `high-impact` preserves upstream behavior.
-The setting belongs to trusted Gateway configuration, not tool arguments or
-client session requests. This patch does not grant additional tools to a child
-agent or treat a read-only task description as an enforced permission.
-
-## Consultation lifetime
-
-Provider callbacks can retain the async context of the request that created
-the voice session. That request can finish while a consultation is still using
-the callback. Context-engine initialization then fails with
-`Async work scope is closed`, before the delegated reader can access a tool.
-
-Start consultation work outside the setup request's async work scope. Preserve
-the other async context, including authenticated caller identity. The existing
-consultation Gateway admission, embedded agent and completion owners retain
-responsibility for cancellation, shutdown and accepted work after hangup.
-Closed-scope checks remain unchanged elsewhere.
-
-## Validation and rollback
-
-Registered regressions prepare a real context engine after setup closes before
-or during a consultation, preserve caller context, check ordinary tool denial
-in standard mode, and retain existing confirmation, cancellation and hangup
-coverage. Tests use synthetic requests and mocked tool execution, without live
-model calls or external writes.
-
-Configuration migration selects the policy only with a runtime that understands
-it. Roll back the runtime and matching configuration through the normal managed
-activation recovery path.
+Retiring this patch does not prove the separate native CLI voice repair. That
+repair follows the stable upgrade's complete production lifecycle.

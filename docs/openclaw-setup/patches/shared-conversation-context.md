@@ -1,9 +1,9 @@
 # Shared conversation context
 
-The native transcript includes finalized Talk speech, but a persistent harness
-can resume its own model session without reading those new entries. A recorded
-SDK test reproduced this: a spoken detail existed in main history but never
-reached the next text request.
+The OpenClaw 2026.11.3 native transcript includes finalized Talk speech, but a
+persistent harness can resume its own model session without reading those new
+entries. A recorded SDK test reproduced this: a spoken detail existed in main
+history but never reached the next text request.
 
 This patch exposes a bounded conversation reader through the transcript SDK and
 uses it in the bundled Copilot harness before ordinary turns. It reuses Talk's
@@ -19,8 +19,8 @@ does not import the full historical conversation or refresh an open voice
 connection.
 
 The cumulative patch manifest includes transcript and harness integration
-regressions. `candidate.main-conversation.test.ts` checks installed native
-routing and speech persistence using synthetic state and blocked network access.
+regressions. The installed candidate conversation test checks native routing
+and speech persistence using synthetic state and blocked network access.
 Plan [053](../../plans/053-unified-owner-conversation.md) tracks routing, the
 history handoff, and release acceptance. Roll back through the normal matching
 runtime and configuration transaction.

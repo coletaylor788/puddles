@@ -54,6 +54,36 @@ it('refuses an uncollected historical regression before running any project', as
   await expect(runMappedTests(root, [{ tests: ['old.test.ts'], testProjects: { 'old.test.ts': 'unit' } }], async (_: string, args: string[]) => { calls.push(args); return ''; })).rejects.toThrow('was not collected');
   expect(calls.every(args => args[1] === 'list')).toBe(true);
 });
+it('preserves native child projects while limiting execution to mapped regressions', async () => {
+  const root = source(['serial.test.ts', 'parallel.test.ts', 'ordinary.test.ts']);
+  const calls: string[][] = [];
+  const result = await runMappedTests(root, [{ tests: ['serial.test.ts', 'parallel.test.ts', 'ordinary.test.ts'],
+    testProjects: { 'serial.test.ts': 'gateway-server', 'parallel.test.ts': 'gateway-server', 'ordinary.test.ts': 'unit' } }],
+  async (_: string, args: string[]) => {
+    calls.push(args);
+    return combinedListing(args) ?? (args.includes('test/vitest/vitest.gateway-server.config.ts')
+      ? `[gateway-server (gateway-server-native)] ${root}/serial.test.ts\n[gateway-server (gateway-server-parallel)] parallel.test.ts`
+      : '[unit] ordinary.test.ts');
+  });
+  expect(result).toEqual({ projects: 2, tests: 3 });
+  const runs = calls.filter(args => args[1] === 'run');
+  expect(runs).toHaveLength(2);
+  expect(runs[0].filter(arg => arg.endsWith('.test.ts'))).toEqual(['ordinary.test.ts']);
+  expect(runs[1]).toEqual(['scripts/run-vitest.mjs', 'run', '--config', 'test/vitest/vitest.gateway-server.config.ts',
+    '--maxWorkers', '4', 'serial.test.ts', 'parallel.test.ts']);
+});
+it('refuses extra or reassigned files in native container discovery', async () => {
+  const root = source(['owned.test.ts']);
+  for (const unexpected of ['[gateway-server (parallel)] extra.test.ts', '[other] owned.test.ts']) {
+    const calls: string[][] = [];
+    await expect(runMappedTests(root, [{ tests: ['owned.test.ts'], testProjects: { 'owned.test.ts': 'gateway-server' } }],
+      async (_: string, args: string[]) => {
+        calls.push(args);
+        return `[gateway-server (parallel)] owned.test.ts\n${unexpected}`;
+      })).rejects.toThrow('Native container discovery differs');
+    expect(calls.every(args => args[1] === 'list')).toBe(true);
+  }
+});
 it('collects Vitest project-prefixed filenames with optional terminal color', async () => {
   const root = source(['old.test.ts', 'new.test.ts']);
   expect(await runMappedTests(root, [{ tests: ['old.test.ts', 'new.test.ts'], testProjects: { 'old.test.ts': 'unit', 'new.test.ts': 'unit' } }], async (_: string, args: string[]) => combinedListing(args) ??

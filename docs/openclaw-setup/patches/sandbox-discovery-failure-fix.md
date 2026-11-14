@@ -10,8 +10,10 @@ so it can restart the gateway with stale sandbox containers.
 
 ## Change
 
-OpenClaw 2026.9.6 already propagates discovery errors. The retained source patch
-keeps discovery scoped to the selected runtime type. Container discovery runs only for normal sandbox recreation;
+OpenClaw 2026.11.3 natively propagates discovery errors and scopes discovery to
+the selected runtime type. Its local-state owner also guards inspection and
+removal. The runtime hunk is retired; the retained patch contains regressions
+only. Container discovery runs only for normal sandbox recreation;
 browser discovery runs only for `--browser`. Rejections propagate to the CLI,
 which exits nonzero and triggers deployment rollback.
 
@@ -22,7 +24,8 @@ The ordinary `sandbox list` command is unchanged.
 The patch adds focused OpenClaw tests for normal-container and browser discovery
 rejections. Both assert that the error propagates and no removal is attempted. Additional
 cases prove that the unselected registry is not queried. Both selection cases
-fail against unpatched 9.6 and pass with the two retained discovery conditions.
+failed against unpatched 9.6. Stable now provides the two discovery conditions
+natively. The retained tests still require execution on the composed candidate.
 The tests are registered in `packages/e2e/openclaw-patch-suite.json` and run by:
 
 ```bash

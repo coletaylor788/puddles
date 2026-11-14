@@ -1,23 +1,29 @@
 # Configured MCP in restricted CLI runs
 
-Restricted Claude runs expose only OpenClaw's loopback tool server. Their catalog
-previously omitted configured MCP tools, so an allowed tool could be unavailable
-to the model. Link's installed browser qualification exposed this gap.
+OpenClaw 2026.11.3 natively prepares configured MCP tools through the session
+runtime and serves them through its loopback bridge. Its host-only grant stores
+the tools, preserves server instructions, applies ordinary agent and requester
+policy, and owns cleanup. Ordinary HTTP callers do not receive the extra tools.
+Native catalog and grant checks also fence retired or transferred authority.
+The old custom grant fields and tool resolver are no longer needed.
 
-CLI preparation now acquires configured tools through the existing session MCP
-runtime and effective policy. The run owns the lease. Its grant retains the tools
-only on the host, alongside the existing prepared capabilities. The gateway adds
-them before the ordinary policy pipeline and exact grant filter. Execution keeps
-the existing hooks, approval handling, grant lifetime checks, and contained
-scripting surface. Ordinary HTTP callers do not receive these tools.
+The remaining compatibility change propagates exceptional acquisition or tool
+materialization failures after native cleanup. The previous patch rejected these
+failures; silently proceeding without the tools would hide them. Ordinary server
+connection failures remain native catalog diagnostics, including last-good
+catalog retention and retry behavior.
 
-The child still receives only the loopback server and no native tools. Raw MCP
-server settings are not merged into restricted client configuration. Name
-collisions preserve the existing host tool. Failure and normal cleanup await
-lease release; grant replacement fences previously cached tools.
+The explicit Claude profiles retain exact MCP preauthorization names. Wildcards,
+permission expressions and non-MCP names are rejected. Tighter per-run tool caps
+still replace native profile permissions, and host tool policy remains active.
 
-Regressions cover allowed and denied roles, sandbox and empty grant limits,
-exclusive client configuration, preparation failures, awaited cleanup, warm
-grant transfer, and revocation during execution hooks. Remove this patch when
-upstream supplies equivalent policy and lifecycle behavior. Roll back through
-the normal application release path.
+Regressions retain policy, sandbox, empty-cap, ordinary-HTTP, name collision,
+cleanup, warm-grant transfer and hook-time revocation coverage using native
+bundled-tool APIs. Additional failures cover cancelled or retired acquisition and
+materialization errors, proving lease release and joined cleanup before rejection.
+Native preparation tests continue to exercise a synthetic MCP server across
+ordinary and completion turns. No external service or account writes are used.
+
+Apply after the profile patch. Remove the remaining compatibility delta when
+native behavior and these regressions agree. Use the normal application release
+path for deployment and recovery.
