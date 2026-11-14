@@ -1670,7 +1670,7 @@ index 2d08924d5540a7a10814438a1963b9932e8e873e..3a03dafa051beb904579036b83d72a64
        workspaceDir,
        agentDir,
 diff --git a/src/agents/cli-runner/prepare.web-search.test.ts b/src/agents/cli-runner/prepare.web-search.test.ts
-index 877279a308a60d6d785dabc5738f87150acd2c95..203eeca91aa59f1d8190eec3f431adbdd01d3d55 100644
+index 877279a308a60d6d785dabc5738f87150acd2c95..1750287435d46bca367f87f02227864f8cad8505 100644
 --- a/src/agents/cli-runner/prepare.web-search.test.ts
 +++ b/src/agents/cli-runner/prepare.web-search.test.ts
 @@ -9,13 +9,14 @@ import {
@@ -1760,7 +1760,7 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..203eeca91aa59f1d8190eec3f431adbd
          }
        } finally {
          await context.preparedBackend.cleanup?.();
-@@ -269,86 +283,238 @@ describe("Claude additive Code Mode preparation", () => {
+@@ -269,86 +283,266 @@ describe("Claude additive Code Mode preparation", () => {
  });
  
  describe("Code Mode preserves the original CLI execution surface", () => {
@@ -1894,7 +1894,9 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..203eeca91aa59f1d8190eec3f431adbd
 +              }
 +              return tool.execute(toolCallId, input, signal, onUpdate);
 +            },
-+          });
+           });
+-          expect(JSON.stringify(refused)).toContain("exec host not allowed");
+-          expect(nodeExecution).toHaveBeenCalledTimes(2);
 +          try {
 +            const codeExec = surface.tools.find((tool) => tool.name === "code_exec")!;
 +            const result = await codeExec.execute("script-node", {
@@ -1903,18 +1905,34 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..203eeca91aa59f1d8190eec3f431adbd
 +            expect(result.details, JSON.stringify(result)).toMatchObject({ status: "completed" });
 +            expect(nodeExecution.mock.calls.map((call) => call[1])).toEqual([
 +              { command: "direct-proof" },
-+              { command: "nested-proof", host: "node" },
++              { command: "nested-proof", host: "node", yieldMs: expect.any(Number) },
 +            ]);
++            const nestedYieldMs = (nodeExecution.mock.calls[1]?.[1] as { yieldMs?: unknown })
++              ?.yieldMs;
++            expect(nestedYieldMs).toEqual(expect.any(Number));
++            expect(nestedYieldMs).toBeGreaterThan(0);
++            expect(nestedYieldMs).toBeLessThanOrEqual(10_000);
 +            for (const call of nodeExecution.mock.calls)
 +              expect(call[0]).toMatchObject({ host: "auto" });
-+            const refused = await codeExec.execute("script-sandbox", {
-+              code: 'return await exec({command:"forbidden",host:"sandbox"});',
++            const sandbox = await codeExec.execute("script-sandbox", {
++              code: 'return await exec({command:"sandbox-proof",host:"sandbox"});',
 +            });
-+            expect(JSON.stringify(refused)).toContain("Invalid input");
-+            expect(nodeExecution).toHaveBeenCalledTimes(2);
++            expect(sandbox.details, JSON.stringify(sandbox)).toMatchObject({ status: "completed" });
++            expect(nodeExecution.mock.calls[2]?.[1]).toEqual({
++              command: "sandbox-proof",
++              host: "sandbox",
++              yieldMs: expect.any(Number),
++            });
++            const sandboxYieldMs = (nodeExecution.mock.calls[2]?.[1] as { yieldMs?: unknown })
++              ?.yieldMs;
++            expect(sandboxYieldMs).toEqual(expect.any(Number));
++            expect(sandboxYieldMs).toBeGreaterThan(0);
++            expect(sandboxYieldMs).toBeLessThanOrEqual(10_000);
++            expect(nodeExecution).toHaveBeenCalledTimes(3);
 +            expect(resolvedExecTarget.mock.calls.map((call) => call[0].effectiveHost)).toEqual([
 +              "gateway",
 +              "node",
++              "sandbox",
 +            ]);
 +          } finally {
 +            surface.cleanup();
@@ -1924,9 +1942,7 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..203eeca91aa59f1d8190eec3f431adbd
 +            cfg,
 +            context,
 +            isGrantCurrent: () => true,
-           });
--          expect(JSON.stringify(refused)).toContain("exec host not allowed");
--          expect(nodeExecution).toHaveBeenCalledTimes(2);
++          });
 +          expect(disconnected.tools.some((tool) => tool.name === "exec")).toBe(true);
          } finally {
 -          surface.cleanup();
@@ -1941,7 +1957,7 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..203eeca91aa59f1d8190eec3f431adbd
 +    },
 +  );
 +
-+  it("keeps a mediated node-host constructor narrow after node disconnect", async () => {
++  it("keeps the supplemental node-host constructor narrow and withdraws it on disconnect", async () => {
 +    const cfg: OpenClawConfig = {
 +      tools: {
 +        codeMode: { enabled: true, surface: "additive", executor: "quickjs" },
@@ -1957,13 +1973,15 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..203eeca91aa59f1d8190eec3f431adbd
 +    });
 +    try {
 +      const context = mintMcpLoopbackClientGrant.mock.calls[0]![0].context;
++      expect(context.codeModeMediatedTools).not.toContain("exec");
++      expect(context.nodeExecAllowed).toBe(true);
 +      const scoped = await resolveMcpLoopbackScopedTools({
 +        cfg,
 +        context,
 +        isGrantCurrent: () => true,
 +      });
 +      const exec = scoped.tools.find((tool) => tool.name === "exec")!;
-+      expect(exec.parameters).toMatchObject({ properties: { host: { enum: ["auto", "node"] } } });
++      expect(exec.parameters).toMatchObject({ properties: { host: { enum: ["node"] } } });
 +      const direct = await exec.execute("direct-node-only", { command: "direct-proof" });
 +      expect(direct).toEqual({ content: [{ type: "text", text: "node execution" }] });
 +      const surface = createMcpCodeModeToolSurface({
@@ -1980,20 +1998,30 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..203eeca91aa59f1d8190eec3f431adbd
 +        const codeExec = surface.tools.find((tool) => tool.name === "code_exec")!;
 +        const nested = await codeExec.execute("script-node-only", {
 +          code: 'return await exec({command:"nested-proof"});',
-         });
--        expect(disconnected.tools.some((tool) => tool.name === "exec")).toBe(false);
++        });
 +        expect(nested.details, JSON.stringify(nested)).toMatchObject({ status: "completed" });
 +        const refused = await codeExec.execute("script-gateway-refused", {
 +          code: 'return await exec({command:"forbidden",host:"gateway"});',
-+        });
-+        expect(JSON.stringify(refused)).toContain("Invalid input");
+         });
+-        expect(disconnected.tools.some((tool) => tool.name === "exec")).toBe(false);
++        expect(JSON.stringify(refused)).toContain(
++          "exec host not allowed (requested gateway; configured host is node",
++        );
        } finally {
 -        await prepared.preparedBackend.cleanup?.();
 +        surface.cleanup();
 +      }
 +      expect(nodeExecution.mock.calls.map((call) => call[1])).toEqual([
 +        { command: "direct-proof" },
-+        { command: "nested-proof" },
++        { command: "nested-proof", yieldMs: expect.any(Number) },
++      ]);
++      const nestedYieldMs = (nodeExecution.mock.calls[1]?.[1] as { yieldMs?: unknown })?.yieldMs;
++      expect(nestedYieldMs).toEqual(expect.any(Number));
++      expect(nestedYieldMs).toBeGreaterThan(0);
++      expect(nestedYieldMs).toBeLessThanOrEqual(10_000);
++      expect(resolvedExecTarget.mock.calls.map((call) => call[0].effectiveHost)).toEqual([
++        "node",
++        "node",
 +      ]);
 +      nodeConnected = false;
 +      const disconnected = await resolveMcpLoopbackScopedTools({
@@ -2001,7 +2029,7 @@ index 877279a308a60d6d785dabc5738f87150acd2c95..203eeca91aa59f1d8190eec3f431adbd
 +        context,
 +        isGrantCurrent: () => true,
 +      });
-+      expect(disconnected.tools.some((tool) => tool.name === "exec")).toBe(true);
++      expect(disconnected.tools.some((tool) => tool.name === "exec")).toBe(false);
 +    } finally {
 +      await prepared.preparedBackend.cleanup?.();
 +    }

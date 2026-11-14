@@ -20,7 +20,7 @@ index 5edd8707d1dd9b98d77d86b049b0edacdfafdfa5..b53b1bbd305c4f237a1b5978f41c1438
      requestApproval: async () => undefined,
      waitForApproval: async () => undefined,
 diff --git a/extensions/copilot/src/tool-bridge.test.ts b/extensions/copilot/src/tool-bridge.test.ts
-index a3b75bf3249edb8ec026c53f93c886795868e2ab..563728bf0c54ccd699b4d31ace397c35c1e2177f 100644
+index a3b75bf3249edb8ec026c53f93c886795868e2ab..22c91bb079b7c14b48622e8edd8e0d6e38a3b769 100644
 --- a/extensions/copilot/src/tool-bridge.test.ts
 +++ b/extensions/copilot/src/tool-bridge.test.ts
 @@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
@@ -44,7 +44,7 @@ index a3b75bf3249edb8ec026c53f93c886795868e2ab..563728bf0c54ccd699b4d31ace397c35
  import { afterEach, describe, expect, it, vi } from "vitest";
  import { createCopilotTestHostCapabilities } from "./host-capability.test-support.js";
  import { createCopilotToolBridge as createCopilotToolBridgeImpl } from "./tool-bridge.js";
-@@ -409,6 +413,301 @@ describe("createCopilotToolBridge", () => {
+@@ -409,6 +413,304 @@ describe("createCopilotToolBridge", () => {
    });
  
    describe("tool-surface gating (PR #86155 [P1] round-6)", () => {
@@ -298,7 +298,10 @@ index a3b75bf3249edb8ec026c53f93c886795868e2ab..563728bf0c54ccd699b4d31ace397c35
 +                  `,
 +            })) as ToolResultObject;
 +            expect(result.resultType, JSON.stringify(result)).toBe("success");
-+            const location = source === "sandbox" ? deliveredPath : sourcePath;
++            const location =
++              source === "sandbox"
++                ? deliveredPath
++                : "workspace-skill://workspace/selected/SKILL.md";
 +            expect(JSON.parse(result.textResultForLlm)).toMatchObject({
 +              status: "completed",
 +              value: denyRead
@@ -346,7 +349,7 @@ index a3b75bf3249edb8ec026c53f93c886795868e2ab..563728bf0c54ccd699b4d31ace397c35
      it("submits the exact conversation-policy-filtered catalog to the SDK", async () => {
        await withTempDir("openclaw-copilot-policy-", async (workspaceDir) => {
          const result = await createCopilotToolBridge({
-@@ -694,6 +993,52 @@ describe("createCopilotToolBridge tool conversion", () => {
+@@ -694,6 +996,52 @@ describe("createCopilotToolBridge tool conversion", () => {
      });
    });
  
@@ -399,7 +402,7 @@ index a3b75bf3249edb8ec026c53f93c886795868e2ab..563728bf0c54ccd699b4d31ace397c35
    it("drains earlier calls after rejection and resumes parallel work after an exclusive call", async () => {
      const started = Array.from({ length: 5 }, () => createDeferred<void>());
      const gates = Array.from({ length: 5 }, () => createDeferred<void>());
-@@ -757,31 +1102,34 @@ describe("createCopilotToolBridge tool conversion", () => {
+@@ -757,31 +1105,34 @@ describe("createCopilotToolBridge tool conversion", () => {
      );
    });
  
