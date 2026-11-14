@@ -1,5 +1,5 @@
 diff --git a/extensions/anthropic/cli-profile.test.ts b/extensions/anthropic/cli-profile.test.ts
-index 0637a40..2833af3 100644
+index 0637a40b..2833af3f 100644
 --- a/extensions/anthropic/cli-profile.test.ts
 +++ b/extensions/anthropic/cli-profile.test.ts
 @@ -80,6 +80,53 @@ describe("explicit Claude agent profiles", () => {
@@ -57,7 +57,7 @@ index 0637a40..2833af3 100644
      vi.stubEnv("NEUTRAL_CONFIG_VALUE", "synthetic-not-a-secret");
      try {
 diff --git a/extensions/anthropic/cli-profile.ts b/extensions/anthropic/cli-profile.ts
-index 9cc6b4c..43899c7 100644
+index 9cc6b4ca..43899c75 100644
 --- a/extensions/anthropic/cli-profile.ts
 +++ b/extensions/anthropic/cli-profile.ts
 @@ -10,6 +10,7 @@ import type {
@@ -91,7 +91,7 @@ index 9cc6b4c..43899c7 100644
          `Read(/${entry})`,
          `Read(/${entry}/**)`,
 diff --git a/extensions/anthropic/openclaw.plugin.json b/extensions/anthropic/openclaw.plugin.json
-index 69b773f..8114c0c 100644
+index 69b773fd..8114c0c9 100644
 --- a/extensions/anthropic/openclaw.plugin.json
 +++ b/extensions/anthropic/openclaw.plugin.json
 @@ -421,6 +421,14 @@
@@ -111,10 +111,10 @@ index 69b773f..8114c0c 100644
                "items": {
 diff --git a/src/agents/cli-runner/loopback-bundle-mcp.test.ts b/src/agents/cli-runner/loopback-bundle-mcp.test.ts
 new file mode 100644
-index 0000000..4dac0c1
+index 00000000..76fdf653
 --- /dev/null
 +++ b/src/agents/cli-runner/loopback-bundle-mcp.test.ts
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,102 @@
 +import fs from "node:fs/promises";
 +import os from "node:os";
 +import path from "node:path";
@@ -144,6 +144,7 @@ index 0000000..4dac0c1
 +      run: {
 +        sessionId: "synthetic-session",
 +        sessionKey: "agent:main:main",
++        sessionFile: "agent:main:main",
 +        prompt: "synthetic",
 +        provider: "claude-cli",
 +        model: "synthetic",
@@ -217,7 +218,7 @@ index 0000000..4dac0c1
 +  );
 +});
 diff --git a/src/agents/cli-runner/loopback-bundle-mcp.ts b/src/agents/cli-runner/loopback-bundle-mcp.ts
-index 663364b..0871054 100644
+index 663364ba..08710548 100644
 --- a/src/agents/cli-runner/loopback-bundle-mcp.ts
 +++ b/src/agents/cli-runner/loopback-bundle-mcp.ts
 @@ -7,7 +7,6 @@ import {
@@ -291,7 +292,7 @@ index 663364b..0871054 100644
    if (materialized.restrictAppTools) {
      // MCP app views outlive one call; bind them to this run's complete policy now.
 diff --git a/src/agents/cli-runner/prepare.configured-mcp.test.ts b/src/agents/cli-runner/prepare.configured-mcp.test.ts
-index 8d95948334a92b7e8f3060b798d7b9098ed46996..b4bdccc99819518ee32a9c2216f0b241a48d7afb 100644
+index 8d959483..b4bdccc9 100644
 --- a/src/agents/cli-runner/prepare.configured-mcp.test.ts
 +++ b/src/agents/cli-runner/prepare.configured-mcp.test.ts
 @@ -32,6 +32,26 @@ import {
@@ -445,10 +446,10 @@ index 8d95948334a92b7e8f3060b798d7b9098ed46996..b4bdccc99819518ee32a9c2216f0b241
  });
 diff --git a/src/gateway/mcp-http.configured-tools.test.ts b/src/gateway/mcp-http.configured-tools.test.ts
 new file mode 100644
-index 0000000..27c5162
+index 00000000..c0314420
 --- /dev/null
 +++ b/src/gateway/mcp-http.configured-tools.test.ts
-@@ -0,0 +1,260 @@
+@@ -0,0 +1,263 @@
 +import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 +import { createOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 +import { buildMcpToolSchema } from "./mcp-http.schema.js";
@@ -487,7 +488,10 @@ index 0000000..27c5162
 +    label: name,
 +    description: "Synthetic configured tool",
 +    parameters: Type.Object({}),
-+    execute: vi.fn(async () => ({ content: [{ type: "text", text: "ready" }] })),
++    execute: vi.fn(async () => ({
++      content: [{ type: "text" as const, text: "ready" }],
++      details: undefined,
++    })),
 +  };
 +}
 +const payment = makeTool("payments__auth_status"),
@@ -710,7 +714,7 @@ index 0000000..27c5162
 +  });
 +});
 diff --git a/test/vitest/vitest.gateway-server-paths.mjs b/test/vitest/vitest.gateway-server-paths.mjs
-index cd88e35d7812c8d1255d04edadd392433d1aa812..86927f02bd596020496d6df5e71a4de2df9d3c22 100644
+index cd88e35d..86927f02 100644
 --- a/test/vitest/vitest.gateway-server-paths.mjs
 +++ b/test/vitest/vitest.gateway-server-paths.mjs
 @@ -115,6 +115,7 @@ export const gatewayDatabaseWorkerTestFiles = [
