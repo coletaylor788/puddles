@@ -71,6 +71,8 @@ channels are disabled. PROD metadata inspection must reject missing or ambiguous
 plugins, wrong enablement/origin and discovery errors. It must not claim that
 metadata alone proves a plugin is active. The same immutable artifact must pass
 full authenticated runtime acceptance in TEST before reaching PROD.
+The metadata check does not prove production-bound runtime initialization or
+credential-dependent plugin behavior.
 
 **Direction approved on 2026-11-14:** “No, fix CI to work with the new version if
 required. Not the other way around.” The proposed candidate profile-initialization
@@ -187,8 +189,11 @@ The versioned DEV and TEST held jobs use normal mode with their existing
 isolated state and recording fixtures. Preserve authenticated `plugins.list`
 and runtime-state assertions there. The PROD held job retains native canary
 mode. Its baseline control uses supported `plugins list --json` metadata,
-asserts exact installation/enablement/origin and rejects diagnostics, while
-startup health still requires native readiness. Never assert runtime-active
+asserts exact installation/enablement/origin and rejects plugin errors and
+unexpected diagnostics. Supported native registry-fallback notices remain in
+the receipt. This metadata check cannot establish production-bound runtime
+initialization or credential-dependent plugin behavior. Startup health still
+requires native readiness. Never assert runtime-active
 from metadata. Keep all artifact/configuration/preserved-file bindings and the
 same-artifact TEST gate. Do not move failure-prone application acceptance after
 PROD resume, when new live writes may make restoration unsafe.
