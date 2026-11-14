@@ -50,34 +50,33 @@ allowed to use Workshop. Native authoring grants cover authenticated Gateway
 human turns, but do not cover all existing channel and background callers.
 Skill writes, version history, undo and migration remain native.
 
-#### Proposed Phase 1 compatibility addition: candidate request readiness
+#### Phase 1 CI compatibility
 
-The first installed DEV run exposed a native candidate-mode limitation. This
-mode starts the new Gateway with autonomous work suppressed. It reports ready,
-but skips the profile catalog needed to authenticate ordinary Gateway requests.
-Our installed `plugins.list` check therefore fails. The current stable release
-is still v2026.11.3, and upstream main retains the same behavior.
+The first installed DEV run exposed a mismatch between our acceptance checks
+and native candidate mode. This mode is a startup probe with autonomous work
+suppressed; it does not initialize the profiles needed by ordinary authenticated
+Gateway requests. CI must use the new release's supported lifecycle and checks.
+Do not patch OpenClaw to make candidate mode support our previous check sequence.
+Preserve installed runtime, authentication and plugin qualification, and keep
+production intake held until acceptance and merge.
 
-**Proposed, awaiting explicit patch approval:** in the native request-runtime
-initializer, prepare and retain the existing user-profile catalog for candidate
-mode. Reuse the normal owner-profile decision and creation path, then release
-the catalog through the existing Gateway shutdown lifecycle. Fresh state may
-receive the normal canonical owner record. This enables ordinary authenticated
-request dispatch, not just plugin listing; held acceptance calls remain explicitly
-read-only and retain native token and profile authority.
+| Environment | Native startup | Required evidence |
+|---|---|---|
+| DEV and TEST | Normal Gateway, with isolated state, held configuration and recording fixtures | Real authenticated Gateway plugin inventory and runtime loading, plus installed integration checks. |
+| PROD before activation | Native startup canary | Startup readiness and supported installed plugin metadata, bound to the same artifact, production configuration and preserved files. |
 
-Keep session projection, recovery, maintenance, schedulers and autonomous
-services suppressed. Normal Gateway startup and message routing stay unchanged.
-There is no native catalog-only option. Dropping candidate mode would restart
-the deferred work, while replacing the Gateway check with a readiness probe
-would no longer verify its installed request path and loaded plugin registry.
+Make the launcher mode explicit. Keep native candidate mode in PROD because
+normal startup can recover sessions and start background work even when known
+channels are disabled. PROD metadata inspection must reject missing or ambiguous
+plugins, wrong enablement/origin and discovery errors. It must not claim that
+metadata alone proves a plugin is active. The same immutable artifact must pass
+full authenticated runtime acceptance in TEST before reaching PROD.
 
-Before release, prove a real fresh-state token-authenticated `plugins.list`
-request, wrong-token rejection, preservation of an existing owner, and catalog
-release on shutdown, startup failure and close racing initialization. Retain
-all native tests that assert deferred session and autonomous work stays stopped.
-This addition belongs to Phase 1's normal DEV and production lifecycle. It does
-not start the Phase 2 voice repair.
+**Direction approved on 2026-11-14:** “No, fix CI to work with the new version if
+required. Not the other way around.” The proposed candidate profile-initialization
+patch is rejected and was never implemented. Adapt CI within the approved upgrade
+scope. Any material change to production acceptance or isolation needs review;
+passing only readiness cannot substitute for required installed behavior proof.
 
 #### Phase 2: repair native CLI voice coordination
 
@@ -103,7 +102,7 @@ The complete repair still must prove one continuous scenario: delegate research,
 
 **Workshop approval:** Production approved on 2026-11-14. The requester answered “Yes I like that better anyways” to adopting native immediate, versioned skill edits with undo, preserving existing access limits and exporting pending drafts without activation. This lifts the prior Workshop design hold; the two independent release phases remain unchanged.
 
-**Progress:** The upgraded application built successfully and required hosted checks passed. Installed DEV failed when candidate-mode authentication could not access its profile catalog. CI then encountered the new native Doctor capture directory during cleanup. Guarded recovery preserved that capture in the same run's scratch, and CI completed target teardown and source-queue closure. The durable private cleanup correction is reviewed with 13 focused cases passing. The additional candidate-readiness patch above is Proposed and has not been implemented. Existing phase approvals remain valid; Phase 2 has not started.
+**Progress:** The upgraded application built successfully and required hosted checks passed. Installed DEV failed when candidate-mode authentication could not access its profile catalog. CI then encountered the new native Doctor capture directory during cleanup. Guarded recovery preserved that capture in the same run's scratch, and CI completed target teardown and source-queue closure. The durable private cleanup correction is reviewed with 13 focused cases passing. The proposed candidate-readiness patch was rejected without implementation. CI compatibility is being revised to follow the supported native lifecycle. Existing phase approvals remain valid; Phase 2 has not started.
 
 ## Agent section
 
@@ -176,23 +175,29 @@ setting, with exact before/after validation.
 
 DEV `gh-43628324374-1`, candidate `8edd6b30b99f4283140d70e3e319ab0852f7bca493ac81bffa67795f58733cf8`, passed preparation and reached native readiness. Its authenticated `plugins.list` failed about 18 seconds later with `User profile catalog is not ready`. This is missing initialization, not delayed startup. The original diagnostic is separate from the later cleanup failure. Recovery ended with target `failed`, `phase=complete`, `child=null`, and source `queueClosedAt` populated.
 
-The proposed change is in `src/gateway/server-kernel-request-runtime.ts`.
-`updateCanary` skips `SessionRowProjection`, which owns the native catalog lease
-and the canonical owner creation used by token/password authentication. Prepare
-only that catalog for candidate mode, reuse the existing
-`shouldUseGatewayOwnerProfile` and `ensureCanonicalGatewayOwnerProfile` flow,
-and join/release it through request-runtime shutdown. Cover initializer and
-transport failure and close racing pending preparation. Do not create a session
-projection or activate deferred owners to obtain a catalog. Do not implement
-until explicit approval for this additional patch is recorded.
-
-Upstream [startup-only canary PR #154548](https://github.com/openclaw/openclaw/pull/154548)
+Native `updateCanary` skips `SessionRowProjection`, including its profile
+catalog and canonical owner initialization. Upstream
+[startup-only canary PR #154548](https://github.com/openclaw/openclaw/pull/154548)
 and [stable request runtime](https://github.com/openclaw/openclaw/blob/847611dcaa3bf0e2783335f961dd1fd0580e4d9f/src/gateway/server-kernel-request-runtime.ts)
-confirm the behavior is native, rather than caused by a retained patch. Official
-stable and current main have no catalog-only option or later fix. The existing
-canary regression checks startup/readiness endpoints; extend it with real
-fresh-state owner authentication, plugin RPC, wrong-token refusal, existing-owner
-preservation and catalog lifetime failures, retaining all deferred-work spies.
+confirm this is deliberate native behavior. The requester rejected adding a
+catalog/owner initialization patch. No such patch was implemented.
+
+Require explicit `normal` or `canary` mode in the private held-Gateway launcher.
+The versioned DEV and TEST held jobs use normal mode with their existing
+isolated state and recording fixtures. Preserve authenticated `plugins.list`
+and runtime-state assertions there. The PROD held job retains native canary
+mode. Its baseline control uses supported `plugins list --json` metadata,
+asserts exact installation/enablement/origin and rejects diagnostics, while
+startup health still requires native readiness. Never assert runtime-active
+from metadata. Keep all artifact/configuration/preserved-file bindings and the
+same-artifact TEST gate. Do not move failure-prone application acceptance after
+PROD resume, when new live writes may make restoration unsafe.
+
+Test both launcher modes and invalid/missing mode, exact environment-to-mode
+selection, real DEV/TEST RPC requirements, PROD metadata failures, and unchanged
+hold/backup/merge/resume ordering. Review normal DEV/TEST startup against all
+recording-fixture bindings before dispatch. This is CI-only compatibility; no
+OpenClaw source or patch composition changes are required.
 
 The independent private cleanup correction recognizes only the native
 `state.update-captures` directory beneath the journal-owned DEV/TEST slot. It
