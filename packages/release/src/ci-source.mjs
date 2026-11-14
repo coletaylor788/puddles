@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { validateCandidate } from './ci-candidate.mjs';
 
 const execute = args => JSON.parse(execFileSync('gh', ['api', ...args], { encoding: 'utf8', timeout: 30_000 }));
+const comparisonProjection = '{merge_base_commit: {sha: .merge_base_commit.sha}, behind_by: .behind_by}';
 async function verifyMerge(source, pr, main, api, expectedMerge) {
   if (!pr.merged || !pr.merge_commit_sha || main.object.sha !== pr.merge_commit_sha ||
       expectedMerge && expectedMerge !== pr.merge_commit_sha) throw new Error('Partial merge needs reconciliation: main differs from PR merge');
@@ -34,8 +35,14 @@ export async function inspectSources(manifest, api = execute, { allowMerged = fa
     if (pr.state !== 'open' || main.object.sha !== source.base) throw new Error('needs-refresh: main changed; update, rebuild, and rejoin');
     const head = await api([`${prefix}/git/commits/${source.head}`]);
     if (head.tree.sha !== source.tree) throw new Error('Source tree changed');
-    const comparison = await api([`${prefix}/compare/${source.base}...${source.head}`]);
-    if (comparison.merge_base_commit.sha !== source.base || comparison.behind_by !== 0) throw new Error('Feature must incorporate main before queueing');
+    // GitHub comparison payloads include commits and file diffs that can exceed
+    // Node's synchronous child-process buffer. Project the two fields used by
+    // this gate in gh before stdout reaches this process.
+    const comparison = await api([
+      `${prefix}/compare/${source.base}...${source.head}`,
+      '--jq', comparisonProjection,
+    ]);
+    if (comparison?.merge_base_commit?.sha !== source.base || comparison?.behind_by !== 0) throw new Error('Feature must incorporate main before queueing');
     if (pr.mergeable === false || pr.mergeable_state === 'dirty') throw new Error('Pull request conflicts');
     // The single-owner pipeline carries its expected checks in frozen inputs.
     // Human authorization and retained agent review belong to the owning task;

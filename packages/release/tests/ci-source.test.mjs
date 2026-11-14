@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { digest } from '../src/ci-candidate.mjs';
 import { inspectSources, mergeSources } from '../src/ci-source.mjs';
@@ -34,6 +37,48 @@ test('single-owner preflight needs current source and explicit checks without Gi
   await assert.rejects(inspectSources(f.manifest, f.api), /checks have not passed/);
   f.checks.check_runs = []; f.checks.total_count = 0;
   await assert.rejects(inspectSources(f.manifest, f.api), /checks have not passed/);
+});
+test('large comparisons are projected before the default gh subprocess buffers them', async t => {
+  const f = fixture();
+  const directory = mkdtempSync(join(tmpdir(), 'release-source-gh-'));
+  const gh = join(directory, 'gh');
+  const script = `#!${process.execPath}
+const args = process.argv.slice(2), endpoint = args[1];
+const source = ${JSON.stringify(f.source)};
+const projection = '{merge_base_commit: {sha: .merge_base_commit.sha}, behind_by: .behind_by}';
+let result;
+if (endpoint.endsWith('/git/ref/heads/main')) result = { object: { sha: source.base } };
+else if (endpoint.endsWith('/pulls/1')) result = { head: { sha: source.head }, base: { ref: 'main', repo: { full_name: source.repository } }, draft: false, merged: false, state: 'open', mergeable: true };
+else if (endpoint.includes('/git/commits/')) result = { tree: { sha: source.tree } };
+else if (endpoint.includes('/compare/')) {
+  const jq = args.indexOf('--jq');
+  result = jq >= 0 && args[jq + 1] === projection
+    ? { merge_base_commit: { sha: source.base }, behind_by: 0 }
+    : { merge_base_commit: { sha: source.base }, behind_by: 0, files: [{ patch: 'x'.repeat(1_178_302) }] };
+} else if (endpoint.includes('/check-runs?')) result = { total_count: 1, check_runs: [{ name: 'checks', status: 'completed', conclusion: 'success' }] };
+else if (endpoint.endsWith('/status?per_page=100')) result = { total_count: 0, statuses: [] };
+else throw new Error('Unexpected API: ' + endpoint);
+process.stdout.write(JSON.stringify(result));
+`;
+  writeFileSync(gh, script, { mode: 0o755 }); chmodSync(gh, 0o755);
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${directory}:${originalPath}`;
+  t.after(() => { process.env.PATH = originalPath; rmSync(directory, { recursive: true, force: true }); });
+  assert.equal((await inspectSources(f.manifest)).length, 1);
+});
+
+test('wrong or missing projected ancestry metadata blocks release', async () => {
+  const f = fixture();
+  for (const comparison of [
+    {},
+    { merge_base_commit: {}, behind_by: 0 },
+    { merge_base_commit: { sha: '5'.repeat(40) }, behind_by: 0 },
+    { merge_base_commit: { sha: f.source.base } },
+    { merge_base_commit: { sha: f.source.base }, behind_by: 1 },
+  ]) {
+    await assert.rejects(inspectSources(f.manifest, async args =>
+      args[0].includes('/compare/') ? comparison : f.api(args)), /Feature must incorporate main/);
+  }
 });
 test('missing check policy, pending or failed checks, and incomplete inventories block production', async () => {
   for (const requiredChecks of [undefined, null, '', ['checks', 'checks']]) {
