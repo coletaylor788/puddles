@@ -38,6 +38,7 @@ export async function runMappedTests(source, manifests, run, workers = 4, scratc
     requests.set(JSON.stringify([target, projects]), { target, projects, index: 0 });
   }
   const selected = new Map();
+  const containers = new Map();
   let pending = [...requests.values()];
   const flags = ['--maxWorkers', String(workers)];
   while (pending.length) {
@@ -53,6 +54,19 @@ export async function runMappedTests(source, manifests, run, workers = 4, scratc
       const targets = [...new Set(items.map(item => item.target))];
       const config = `test/vitest/vitest.${project}.config.ts`;
       const output = await run(process.execPath, ['scripts/run-vitest.mjs', 'list', '--filesOnly', '--passWithNoTests', '--config', config, ...flags, ...targets], { cwd: source, capture: true });
+      const listing = output.split('\n').flatMap(line => {
+        const match = line.replace(/\x1b\[[0-9;]*m/g, '').trim().match(/^\[([^\]]+)\]\s+(.+)$/);
+        return match ? [{ project: match[1], path: match[2].replace(source + '/', '') }] : [];
+      });
+      if (listing.some(row => row.project.startsWith(project + ' ('))) {
+        // Native containers own child pools, serial phases and shared fixtures.
+        // Execute their original config instead of nesting it in our combined project.
+        if (listing.some(row => !targets.includes(row.path) ||
+          !(row.project === project || row.project.startsWith(project + ' (') && row.project.endsWith(')')))) {
+          throw new Error('Native container discovery differs from mapped regressions');
+        }
+        containers.set(project, true);
+      }
       for (const item of items) {
         if (!collected(output, item.target)) { pending.push({ ...item, index: item.index + 1 }); continue; }
         if (!selected.has(project)) selected.set(project, new Set());
@@ -60,8 +74,11 @@ export async function runMappedTests(source, manifests, run, workers = 4, scratc
       }
     }
   }
-  const ordinary = new Map([...selected].filter(([project]) => project !== 'e2e'));
+  const ordinary = new Map([...selected].filter(([project]) => project !== 'e2e' && !containers.has(project)));
   if (ordinary.size) await runCombinedProjects(source, ordinary, run, flags, scratch);
+  for (const [project, files] of selected) if (project !== 'e2e' && containers.has(project)) {
+    await run(process.execPath, ['scripts/run-vitest.mjs', 'run', '--config', `test/vitest/vitest.${project}.config.ts`, ...flags, ...files], { cwd: source });
+  }
   // The upstream e2e entrypoint deliberately runs distinct transport modes.
   if (selected.has('e2e')) await run(process.execPath, ['scripts/run-vitest.mjs', 'run', '--config', 'test/vitest/vitest.e2e.config.ts', ...flags, ...selected.get('e2e')], { cwd: source });
   return { projects: selected.size, tests: [...selected.values()].reduce((count, files) => count + files.size, 0) };

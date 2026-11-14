@@ -291,18 +291,54 @@ index 663364b..0871054 100644
    if (materialized.restrictAppTools) {
      // MCP app views outlive one call; bind them to this run's complete policy now.
 diff --git a/src/agents/cli-runner/prepare.configured-mcp.test.ts b/src/agents/cli-runner/prepare.configured-mcp.test.ts
-index 8d95948..e73ff0d 100644
+index 8d95948334a92b7e8f3060b798d7b9098ed46996..b4bdccc99819518ee32a9c2216f0b241a48d7afb 100644
 --- a/src/agents/cli-runner/prepare.configured-mcp.test.ts
 +++ b/src/agents/cli-runner/prepare.configured-mcp.test.ts
-@@ -18,6 +18,7 @@ import type { CliBackendPlugin } from "../../plugins/cli-backend.types.js";
- import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
- import { resolveBundleMcpServerInstructions } from "../agent-bundle-mcp-instructions.js";
- import { setSessionMcpRuntimeScheduler } from "../agent-bundle-mcp-manager-api.js";
-+import * as bundleMcpTools from "../agent-bundle-mcp-tools.js";
- import { disposeAllSessionMcpRuntimes } from "../agent-bundle-mcp-tools.js";
- import { testing as cliBackendsTesting } from "../cli-backends.test-support.js";
- import {
-@@ -299,4 +300,96 @@ describe("configured MCP servers on exclusive CLI turns", () => {
+@@ -32,6 +32,26 @@ import {
+   setCliRunnerPrepareTestDeps,
+ } from "./prepare.test-support.js";
+ 
++type MaterializedBundleMcp = Awaited<
++  ReturnType<typeof import("../agent-bundle-mcp-materialize.js").materializeBundleMcpToolsForRun>
++>;
++const leaseObserver = vi.hoisted(() => ({
++  wrap: undefined as ((lease: MaterializedBundleMcp) => MaterializedBundleMcp) | undefined,
++}));
++vi.mock("../agent-bundle-mcp-materialize.js", async (importOriginal) => {
++  const actual = await importOriginal<typeof import("../agent-bundle-mcp-materialize.js")>();
++  return {
++    ...actual,
++    // Forward real materialization and observe the returned lease.
++    materializeBundleMcpToolsForRun: async (
++      ...args: Parameters<typeof actual.materializeBundleMcpToolsForRun>
++    ) => {
++      const materialized = await actual.materializeBundleMcpToolsForRun(...args);
++      return leaseObserver.wrap?.(materialized) ?? materialized;
++    },
++  };
++});
++
+ const claudeBackend: CliBackendPlugin & { pluginId: string } = {
+   id: "claude-cli",
+   pluginId: "anthropic",
+@@ -39,6 +59,8 @@ const claudeBackend: CliBackendPlugin & { pluginId: string } = {
+   bundleMcpMode: "claude-config-file",
+   nativeToolMode: "selectable",
+   toolAvailabilityEnforcement: "execution-args",
++  // This synthetic backend has no stored account and its preparation hook only injects failures.
++  autoSelectAuthProfile: false,
+   resolveExecutionArgs: ({ baseArgs }) => [...baseArgs],
+   config: {
+     command: "claude",
+@@ -127,6 +149,7 @@ describe("configured MCP servers on exclusive CLI turns", () => {
+   const mintGrant = vi.fn<typeof MintMcpLoopbackClientGrant>();
+ 
+   beforeEach(() => {
++    leaseObserver.wrap = undefined;
+     mintGrant.mockReset().mockImplementation(createTestMcpLoopbackClientGrant);
+     cliBackendsTesting.setDepsForTest({
+       resolvePluginSetupCliBackend: () => undefined,
+@@ -299,4 +322,104 @@ describe("configured MCP servers on exclusive CLI turns", () => {
        expect(probeServer.calls).toBe(deny.length > 0 ? 0 : childAllow ? 2 : 3);
      },
    );
@@ -312,7 +348,6 @@ index 8d95948..e73ff0d 100644
 +      const server = await startProbeServer();
 +      const scheduler = createTestGatewayScheduler();
 +      const failure = new Error("synthetic preparation failure");
-+      const originalMaterialize = bundleMcpTools.materializeBundleMcpToolsForRun;
 +      let release!: () => void;
 +      const gate = new Promise<void>((resolve) => {
 +        release = resolve;
@@ -320,20 +355,24 @@ index 8d95948..e73ff0d 100644
 +      const dispose = vi.fn(async () => {
 +        await gate;
 +      });
-+      const materialize = vi
-+        .spyOn(bundleMcpTools, "materializeBundleMcpToolsForRun")
-+        .mockImplementation(async (params) => {
-+          const materialized = await originalMaterialize(params);
-+          const originalDispose = materialized.dispose;
-+          return {
-+            ...materialized,
-+            dispose: async () => {
-+              await dispose();
-+              await originalDispose();
-+            },
-+          };
-+        });
-+      const args = vi.spyOn(claudeBackend, "resolveExecutionArgs");
++      const materialize = vi.fn((materialized: MaterializedBundleMcp) => {
++        const originalDispose = materialized.dispose;
++        return {
++          ...materialized,
++          dispose: async () => {
++            await dispose();
++            await originalDispose();
++          },
++        };
++      });
++      const originalPrepareExecution = claudeBackend.prepareExecution;
++      const prepareExecution = vi.fn<NonNullable<CliBackendPlugin["prepareExecution"]>>(
++        async () => {
++          expect(materialize).toHaveBeenCalledOnce();
++          expect(dispose).not.toHaveBeenCalled();
++          throw failure;
++        },
++      );
 +      const config: OpenClawConfig = {
 +        session: { store: fixture.session.sessionTarget.storePath },
 +        plugins: { enabled: false },
@@ -345,17 +384,17 @@ index 8d95948..e73ff0d 100644
 +        },
 +      };
 +      let cleanup: (() => Promise<void>) | undefined;
++      let preparing: ReturnType<typeof fixture.prepare> | undefined;
++      let completion: Promise<unknown> | undefined;
 +      try {
++        leaseObserver.wrap = materialize;
 +        await setSessionMcpRuntimeScheduler(scheduler);
 +        if (stage === "before-mint")
 +          mintGrant.mockImplementationOnce(() => {
 +            throw failure;
 +          });
-+        if (stage === "backend")
-+          args.mockImplementationOnce(() => {
-+            throw failure;
-+          });
-+        const preparing = fixture.prepare({
++        if (stage === "backend") claudeBackend.prepareExecution = prepareExecution;
++        preparing = fixture.prepare({
 +          config,
 +          provider: "claude-cli",
 +          model: "opus",
@@ -364,7 +403,6 @@ index 8d95948..e73ff0d 100644
 +          sessionId: fixture.session.sessionTarget.sessionId,
 +        });
 +        let settled = false;
-+        let completion: Promise<unknown>;
 +        if (stage === "normal") {
 +          const prepared = await preparing;
 +          cleanup = prepared.preparedBackend.cleanup;
@@ -382,16 +420,22 @@ index 8d95948..e73ff0d 100644
 +            },
 +          );
 +        }
-+        await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
++        // Observe rejection immediately; finally joins it even if a gate assertion fails.
++        void completion.catch(() => undefined);
++        // Real native setup can take several seconds before entering the held disposal.
++        await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce(), { timeout: 10_000 });
 +        expect(settled).toBe(false);
 +        release();
 +        await completion;
 +        expect(materialize).toHaveBeenCalledOnce();
++        if (stage === "backend") expect(prepareExecution).toHaveBeenCalledOnce();
 +      } finally {
 +        release();
++        await Promise.allSettled([preparing, completion]);
 +        await cleanup?.();
-+        materialize.mockRestore();
-+        args.mockRestore();
++        leaseObserver.wrap = undefined;
++        if (originalPrepareExecution) claudeBackend.prepareExecution = originalPrepareExecution;
++        else delete claudeBackend.prepareExecution;
 +        await disposeAllSessionMcpRuntimes();
 +        await scheduler.stop();
 +        await server.close();
@@ -665,3 +709,15 @@ index 0000000..27c5162
 +    }
 +  });
 +});
+diff --git a/test/vitest/vitest.gateway-server-paths.mjs b/test/vitest/vitest.gateway-server-paths.mjs
+index cd88e35d7812c8d1255d04edadd392433d1aa812..86927f02bd596020496d6df5e71a4de2df9d3c22 100644
+--- a/test/vitest/vitest.gateway-server-paths.mjs
++++ b/test/vitest/vitest.gateway-server-paths.mjs
+@@ -115,6 +115,7 @@ export const gatewayDatabaseWorkerTestFiles = [
+   "src/gateway/managed-outgoing-gc-availability.test.ts",
+   "src/gateway/mcp-http.completion-lineage.test.ts",
+   "src/gateway/mcp-http.configured-mcp-authority.test.ts",
++  "src/gateway/mcp-http.configured-tools.test.ts",
+   "src/gateway/mcp-http.exec-completion.test.ts",
+   "src/gateway/mcp-http.exec-egress.test.ts",
+   "src/gateway/mcp-http.loopback-real-recovery.test.ts",

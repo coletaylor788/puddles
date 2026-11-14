@@ -40,7 +40,7 @@
     "src/commands/doctor/shared/legacy-config-migrations.memory-isolation.test.ts": "commands",
     "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.memory-qmd.test.ts": "unit-fast",
     "src/gateway/server-memory-warmup.test.ts": "gateway-server",
-    "src/gateway/server-startup-post-attach.test.ts": "gateway",
+    "src/gateway/server-startup-post-attach.test.ts": "gateway-server-isolated",
     "src/plugins/openai-compatible-embedding-provider.test.ts": "plugins",
     "extensions/llama-cpp/index.test.ts": "extensions",
     "extensions/llama-cpp/src/managed-server.test.ts": "extensions",
@@ -57,7 +57,7 @@
     "extensions/imessage/src/monitor/inbound-processing.route.test.ts": "extension-database-workers",
     "src/channels/inbound-event/classification.test.ts": "unit-fast",
     "src/gateway/talk/client-gateway-control.agent-consult.test.ts": "gateway-database-workers",
-    "src/gateway/talk/client-gateway-control.close.test.ts": "gateway",
+    "src/gateway/talk/client-gateway-control.close.test.ts": "gateway-client",
     "src/agents/agent-tools.before-tool-call.integration.e2e.test.ts": "e2e",
     "src/config/talk.normalize.test.ts": "runtime-config",
     "extensions/facetime/tests/config.test.ts": "extensions",
@@ -107,7 +107,7 @@
     "src/gateway/talk/client-gateway-control.native.test.ts": "gateway-client",
     "extensions/openai/realtime-quicksilver-progress.test.ts": "extension-provider-openai",
     "src/talk/agent-consult-runtime.test.ts": "infra",
-    "src/gateway/talk/client-gateway-control.test.ts": "gateway",
+    "src/gateway/talk/client-gateway-control.test.ts": "gateway-client",
     "src/agents/embedded-agent-subscribe.handlers.messages.update-stream-items.test.ts": "agents-core",
     "extensions/copilot/src/event-bridge.test.ts": "extensions",
     "extensions/openai/realtime-quicksilver-copilot-progress.test.ts": "extension-provider-openai",
@@ -189,15 +189,15 @@
     "src/agents/embedded-agent-runner/skill-runtime.library-read.test.ts": "infra",
     "src/agents/embedded-agent-runner/skill-runtime.workspace.test.ts": "agents-embedded-agent",
     "src/gateway/mcp-http.test.ts": "gateway-database-workers",
-    "src/gateway/mcp-http.runtime.test.ts": "gateway",
-    "src/gateway/mcp-http.handlers.network-error.test.ts": "gateway",
+    "src/gateway/mcp-http.runtime.test.ts": "gateway-core",
+    "src/gateway/mcp-http.handlers.network-error.test.ts": "gateway-core",
     "src/agents/cli-runner/prepare.web-search.test.ts": "agents-support",
     "src/agents/cli-runner/code-mode-skills.test.ts": "agents-support",
     "src/agents/code-mode.scheduling.test.ts": "agents-core",
     "src/agents/tool-search-scheduling.test.ts": "agents-core",
     "src/agents/embedded-agent-runner/run/attempt-stream-prepare.test.ts": "infra",
     "src/agents/embedded-agent-runner/run.plugin-runtime-refresh.integration.test.ts": "infra",
-    "src/gateway/mcp-grant-store.test.ts": "gateway",
+    "src/gateway/mcp-grant-store.test.ts": "gateway-core",
     "src/agents/session-maintenance/native-idle.test.ts": "unit-fast",
     "src/agents/session-maintenance/run.native-idle.test.ts": "agents-support",
     "src/auto-reply/reply/agent-runner-maintenance.test.ts": "auto-reply",
@@ -211,17 +211,17 @@
     "src/agents/cli-runner/execute-plugin.policy.test.ts": "agents-support",
     "src/agents/exec-defaults.test.ts": "agents-core",
     "src/gateway/cli-session-history.profile-dir.test.ts": "gateway-core",
-    "src/gateway/cli-session-history.test.ts": "gateway",
-    "src/gateway/cli-session-history.claude-snapshot.test.ts": "gateway",
+    "src/gateway/cli-session-history.test.ts": "gateway-core",
+    "src/gateway/cli-session-history.claude-snapshot.test.ts": "gateway-core",
     "src/agents/cli-runner/history-boundary.test.ts": "infra",
     "src/tui/embedded-backend.test.ts": "tui",
     "src/agents/tools/embedded-gateway-stub.history.test.ts": "agents-tools",
     "src/commands/doctor-claude-cli.test.ts": "commands",
-    "src/gateway/mcp-http.code-mode.test.ts": "gateway",
+    "src/gateway/mcp-http.code-mode.test.ts": "gateway-core",
     "src/agents/agent-bundle-mcp-harness.test.ts": "agents-core",
     "extensions/copilot/src/tool-bridge.host-surface.test.ts": "extensions",
     "src/agents/cli-runner/prepare.configured-mcp.test.ts": "agents-support",
-    "src/gateway/mcp-http.configured-tools.test.ts": "gateway-core",
+    "src/gateway/mcp-http.configured-tools.test.ts": "gateway-database-workers",
     "src/commands/doctor-service-repair-policy.test.ts": "commands",
     "src/commands/doctor-schema-migrations.test.ts": "commands",
     "src/commands/doctor-maintenance.agent-schema.test.ts": "commands",
@@ -232,12 +232,16 @@
     "src/process/gateway-work-admission.test.ts": "process",
     "src/process/gateway-work-admission.continuation.test.ts": "process",
     "src/config/config.talk-validation.test.ts": "runtime-config",
-    "src/gateway/mcp-http.memory-flush.test.ts": "gateway",
+    "src/gateway/mcp-http.memory-flush.test.ts": "gateway-core",
     "src/agents/cli-runner/loopback-bundle-mcp.test.ts": "agents-support",
     "src/gateway/talk/carrier-provider.test.ts": "gateway-core",
     "test/scripts/service-child-ownership-bundle.test.ts": "tooling",
     "extensions/openai/realtime-quicksilver-gateway-consult-race.test.ts": "extension-provider-openai",
-    "src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts": "agents-core"
+    "src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts": "unit-fast",
+    "src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts": "agents-embedded-agent-run",
+    "src/auto-reply/reply/session-hooks-context.test.ts": "infra",
+    "src/agents/harness/host-skills.test.ts": "agents-support",
+    "src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts": "agents-embedded-agent-run"
   },
   "patches": [
     {
@@ -266,7 +270,8 @@
     {
       "name": "file-lock-stale-reclaim-guard",
       "tests": [
-        "src/plugin-sdk/file-lock.stale-contention.test.ts"
+        "src/plugin-sdk/file-lock.stale-contention.test.ts",
+        "src/auto-reply/reply/session-hooks-context.test.ts"
       ],
       "candidateTests": [
         "tests/candidate.file-lock-reclaim-guard.test.ts"
@@ -600,7 +605,10 @@
         "src/agents/code-mode.scheduling.test.ts",
         "src/agents/tool-search-scheduling.test.ts",
         "src/agents/embedded-agent-runner/run/attempt-stream-prepare.test.ts",
-        "src/agents/embedded-agent-runner/run.plugin-runtime-refresh.integration.test.ts"
+        "src/agents/embedded-agent-runner/run.plugin-runtime-refresh.integration.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts",
+        "src/agents/harness/host-skills.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts"
       ]
     },
     {

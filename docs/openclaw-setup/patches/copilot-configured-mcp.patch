@@ -1,5 +1,5 @@
 diff --git a/extensions/copilot/src/attempt-cleanup.ts b/extensions/copilot/src/attempt-cleanup.ts
-index 1d97d2c..43ed02a 100644
+index 1d97d2c8efa70b85962b1f2f8b8bd2ad737c7939..43ed02a62981e8864406cc5a0c6a27461b038aaf 100644
 --- a/extensions/copilot/src/attempt-cleanup.ts
 +++ b/extensions/copilot/src/attempt-cleanup.ts
 @@ -54,7 +54,7 @@ export async function deferBackgroundCompactionCleanup(params: {
@@ -39,7 +39,7 @@ index 1d97d2c..43ed02a 100644
    return outcome;
  }
 diff --git a/extensions/copilot/src/attempt-execution.ts b/extensions/copilot/src/attempt-execution.ts
-index 2986398..602cdea 100644
+index c40758dd5bd2ef8c55bc695cf65341fc9b946635..66fc737f003ca50d826d0345fdc7461ed1b5770e 100644
 --- a/extensions/copilot/src/attempt-execution.ts
 +++ b/extensions/copilot/src/attempt-execution.ts
 @@ -111,7 +111,7 @@ export async function runCopilotExecution(context: {
@@ -51,7 +51,7 @@ index 2986398..602cdea 100644
    let releaseError: Error | undefined;
    let downgradedFromResume = false;
    let resumeFailureRecovered = false;
-@@ -596,8 +596,15 @@ export async function runCopilotExecution(context: {
+@@ -597,8 +597,15 @@ export async function runCopilotExecution(context: {
        await bridge?.awaitCompactionChain();
        bridge?.detach();
        await bridge?.awaitAgentEventChain();
@@ -70,7 +70,7 @@ index 2986398..602cdea 100644
        if (session) {
          try {
 diff --git a/extensions/copilot/src/attempt.test.ts b/extensions/copilot/src/attempt.test.ts
-index 129f8bd..72d3058 100644
+index bdc1060177ad794b17fc093c95bd13d46a1ebe2c..ae19e6f198602d6fef19780b5aed9f5c25117232 100644
 --- a/extensions/copilot/src/attempt.test.ts
 +++ b/extensions/copilot/src/attempt.test.ts
 @@ -175,7 +175,7 @@ function makeSdkTool(name: string): SdkTool {
@@ -82,7 +82,7 @@ index 129f8bd..72d3058 100644
  ) {
    return {
      ...extras,
-@@ -2681,6 +2681,25 @@ describe("runCopilotAttempt", () => {
+@@ -2725,6 +2725,25 @@ describe("runCopilotAttempt", () => {
      );
      expect(requireCreateSessionConfig(sdk).availableTools).toEqual(expected);
    });
@@ -109,10 +109,16 @@ index 129f8bd..72d3058 100644
  
  /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
 diff --git a/extensions/copilot/src/tool-bridge.host-surface.test.ts b/extensions/copilot/src/tool-bridge.host-surface.test.ts
-index 9dce6d8..9dd5780 100644
+index 9dce6d8e0bcf2688a0ce0950744b7db940dfa2f3..eac8143a3f4147bbd08220139b2c2ee9cc61d55f 100644
 --- a/extensions/copilot/src/tool-bridge.host-surface.test.ts
 +++ b/extensions/copilot/src/tool-bridge.host-surface.test.ts
-@@ -7,11 +7,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
+@@ -1,4 +1,5 @@
+ import { expectDefined } from "@openclaw/normalization-core";
++import type { AnyAgentTool } from "openclaw/plugin-sdk/agent-harness-runtime";
+ import {
+   createOwnerBackedContractTool,
+   textToolResult,
+@@ -7,11 +8,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  import { createCopilotTestHostCapabilities } from "./host-capability.test-support.js";
  import { createCopilotToolBridge, makeInvocation, runSdkTool } from "./tool-bridge.test-support.js";
  
@@ -131,7 +137,7 @@ index 9dce6d8..9dd5780 100644
  afterEach(() => vi.clearAllMocks());
  
  describe("Copilot host-owned tool construction", () => {
-@@ -161,3 +167,113 @@ describe("Copilot host-owned tool construction", () => {
+@@ -161,3 +168,113 @@ describe("Copilot host-owned tool construction", () => {
      expect(mocks.publicFactory).not.toHaveBeenCalled();
    });
  });
@@ -175,7 +181,7 @@ index 9dce6d8..9dd5780 100644
 +    );
 +    mocks.materializeMcp.mockResolvedValue({ tools: [source], dispose });
 +    let active = true;
-+    const bind = vi.fn((tools: (typeof source)[]) =>
++    const bind = vi.fn((tools: AnyAgentTool[]) =>
 +      tools.map((tool) => ({
 +        ...tool,
 +        execute: async (...args: Parameters<typeof tool.execute>) => {
@@ -246,10 +252,10 @@ index 9dce6d8..9dd5780 100644
 +  });
 +});
 diff --git a/extensions/copilot/src/tool-bridge.ts b/extensions/copilot/src/tool-bridge.ts
-index 91387c142f1094ff2b3182bdda0cdef9cc9d06da..5d0e68506e4fe1bd28554921a96a8e42c63be2cd 100644
+index 60856a2921b21427e3b52d16f3153df176e43527..488cfe57e549046a016af807e1d629be7833e097 100644
 --- a/extensions/copilot/src/tool-bridge.ts
 +++ b/extensions/copilot/src/tool-bridge.ts
-@@ -24,6 +24,7 @@
+@@ -24,6 +24,7 @@ import {
  } from "openclaw/plugin-sdk/agent-harness-runtime";
  import {
    createAgentHarnessToolSurfaceRuntimeAsync,
@@ -257,7 +263,7 @@ index 91387c142f1094ff2b3182bdda0cdef9cc9d06da..5d0e68506e4fe1bd28554921a96a8e42
    resolveScheduledDirectToolSource,
    type AgentHarnessToolSurfaceRuntime,
  } from "openclaw/plugin-sdk/agent-harness-tool-runtime";
-@@ -92,7 +93,7 @@
+@@ -92,7 +93,7 @@ interface CopilotToolBridgeInput {
  }
  
  interface CopilotToolBridge {
@@ -266,13 +272,58 @@ index 91387c142f1094ff2b3182bdda0cdef9cc9d06da..5d0e68506e4fe1bd28554921a96a8e42
    codeModeEngaged?: boolean;
    promptToolPolicy: {
      requireExplicitMessageTarget?: boolean;
-@@ -181,93 +182,147 @@
+@@ -181,95 +182,148 @@ export async function createCopilotToolBridge(
    if (!createToolSurfaceAsync) {
      throw new Error("Copilot tool construction requires a current host capability");
    }
 -  const sourceTools = await createToolSurfaceAsync(toolOptions, bindingOptions);
++  let configuredMcp:
++    | Awaited<ReturnType<typeof materializeConfiguredMcpToolsForHarnessRun>>
++    | undefined;
++  let cleaned = false;
++  const cleanup = async () => {
++    if (cleaned) return;
++    cleaned = true;
++    try {
++      await toolSurfaceRuntime.cleanup();
++    } finally {
++      await configuredMcp?.dispose();
++    }
++  };
++  try {
++    const sourceTools = await createToolSurfaceAsync(toolOptions, bindingOptions);
+     const codeModeSkills = hostCapabilities.prepareInstalledSkills?.(toolOptions) ?? [];
 -  const boundSourceTools = new Set(sourceTools);
--
++    if (
++      !attemptParams.forceRestartSafeTools &&
++      Object.keys(attemptParams.config?.mcp?.servers ?? {}).length
++    ) {
++      const workspaceDir = toolOptions.workspaceDir ?? input.workspaceDir ?? bindingCwd;
++      if (!workspaceDir) throw new Error("Configured MCP requires an explicit workspace");
++      configuredMcp = await materializeConfiguredMcpToolsForHarnessRun({
++        sessionId: input.sessionId,
++        sessionKey: attemptParams.sandboxSessionKey ?? attemptParams.sessionKey,
++        agentId: attemptParams.sandboxAgentId ?? input.agentId,
++        workspaceDir,
++        agentDir: input.agentDir,
++        cfg: attemptParams.config,
++        toolOverrides: attemptParams.toolOverrides,
++        toolsAllow: toolSurfaceRuntime.runtimeToolAllowlist,
++        reservedToolNames: sourceTools.map((tool) => tool.name),
++        policyContext: {
++          ...toolOptions,
++          config: attemptParams.config,
++          agentId: attemptParams.sandboxAgentId ?? input.agentId,
++          workspaceDir,
++          sandboxToolPolicy: input.sandbox?.tools,
++          modelProvider: input.modelProvider,
++          modelId: input.modelId,
++        },
++      });
++      sourceTools.push(...hostCapabilities.bindToolSurface(configuredMcp.tools, bindingOptions));
++    }
++    const boundSourceTools = new Set(sourceTools);
+ 
 -  const allowedSourceTools = applyEmbeddedAttemptToolsAllow(
 -    sourceTools,
 -    toolSurfaceRuntime.runtimeToolAllowlist,
@@ -280,6 +331,14 @@ index 91387c142f1094ff2b3182bdda0cdef9cc9d06da..5d0e68506e4fe1bd28554921a96a8e42
 -  );
 -  const compactedTools = toolSurfaceRuntime.compactTools(allowedSourceTools, {
 -    localModelLeanApplied: true,
++    const allowedSourceTools = applyEmbeddedAttemptToolsAllow(
++      sourceTools,
++      toolSurfaceRuntime.runtimeToolAllowlist,
++      { toolMeta: getPluginToolMeta },
++    );
++    const compactedTools = toolSurfaceRuntime.compactTools(allowedSourceTools, {
++      localModelLeanApplied: true,
+       codeModeSkills,
 -  });
 -  // The constructor output is bound before catalog compaction so hidden tools
 -  // cannot outlive the attempt. Bind only controls created by compaction here;
@@ -321,62 +380,24 @@ index 91387c142f1094ff2b3182bdda0cdef9cc9d06da..5d0e68506e4fe1bd28554921a96a8e42
 -    const settled = run.then(
 -      () => undefined,
 -      () => undefined,
-+  let configuredMcp:
-+    | Awaited<ReturnType<typeof materializeConfiguredMcpToolsForHarnessRun>>
-+    | undefined;
-+  let cleaned = false;
-+  const cleanup = async () => {
-+    if (cleaned) return;
-+    cleaned = true;
-+    try {
-+      await toolSurfaceRuntime.cleanup();
-+    } finally {
-+      await configuredMcp?.dispose();
-+    }
-+  };
-+  try {
-+    const sourceTools = await createToolSurfaceAsync(toolOptions, bindingOptions);
-+    if (
-+      !attemptParams.forceRestartSafeTools &&
-+      Object.keys(attemptParams.config?.mcp?.servers ?? {}).length
-+    ) {
-+      const workspaceDir = toolOptions.workspaceDir ?? input.workspaceDir ?? bindingCwd;
-+      if (!workspaceDir) throw new Error("Configured MCP requires an explicit workspace");
-+      configuredMcp = await materializeConfiguredMcpToolsForHarnessRun({
-+        sessionId: input.sessionId,
-+        sessionKey: attemptParams.sandboxSessionKey ?? attemptParams.sessionKey,
-+        agentId: attemptParams.sandboxAgentId ?? input.agentId,
-+        workspaceDir,
-+        agentDir: input.agentDir,
-+        cfg: attemptParams.config,
-+        toolOverrides: attemptParams.toolOverrides,
-+        toolsAllow: toolSurfaceRuntime.runtimeToolAllowlist,
-+        reservedToolNames: sourceTools.map((tool) => tool.name),
-+        policyContext: {
-+          ...toolOptions,
-+          config: attemptParams.config,
-+          agentId: attemptParams.sandboxAgentId ?? input.agentId,
-+          agentDir: input.agentDir,
-+          workspaceDir,
-+          sandboxToolPolicy: input.sandbox?.tools,
-+          modelProvider: input.modelProvider,
-+          modelId: input.modelId,
-+        },
-+      });
-+      sourceTools.push(...hostCapabilities.bindToolSurface(configuredMcp.tools, bindingOptions));
-+    }
-+    const boundSourceTools = new Set(sourceTools);
-+
-+    const allowedSourceTools = applyEmbeddedAttemptToolsAllow(
-+      sourceTools,
-+      toolSurfaceRuntime.runtimeToolAllowlist,
-+      { toolMeta: getPluginToolMeta },
++    });
++    // The constructor output is bound before catalog compaction so hidden tools
++    // cannot outlive the attempt. Bind only controls created by compaction here;
++    // rebinding retained tools would stack the before-tool hook.
++    const newlyConstructedTools = compactedTools.tools.filter(
++      (tool) => !boundSourceTools.has(resolveScheduledDirectToolSource(tool) as AnyAgentTool),
      );
 -    pendingCalls.add(settled);
 -    void settled.then(() => pendingCalls.delete(settled));
 -    if (executionMode === "sequential") {
 -      sequentialBarrier = settled;
--    }
++    const boundNewlyConstructedTools =
++      newlyConstructedTools.length > 0
++        ? hostCapabilities.bindToolSurface(newlyConstructedTools, bindingOptions)
++        : newlyConstructedTools;
++    if (boundNewlyConstructedTools.length !== newlyConstructedTools.length) {
++      throw new Error("Copilot host capability changed the tool surface length.");
+     }
 -    return run;
 -  };
 -  const sdkTools = exposedTools.map((sourceTool) =>
@@ -403,22 +424,6 @@ index 91387c142f1094ff2b3182bdda0cdef9cc9d06da..5d0e68506e4fe1bd28554921a96a8e42
 -          callableToolNames: result.callableToolNames,
 -          toolSchemaDirectoryPrompt: result.toolSchemaDirectoryPrompt,
 -        };
-+    const compactedTools = toolSurfaceRuntime.compactTools(allowedSourceTools, {
-+      localModelLeanApplied: true,
-+    });
-+    // The constructor output is bound before catalog compaction so hidden tools
-+    // cannot outlive the attempt. Bind only controls created by compaction here;
-+    // rebinding retained tools would stack the before-tool hook.
-+    const newlyConstructedTools = compactedTools.tools.filter(
-+      (tool) => !boundSourceTools.has(resolveScheduledDirectToolSource(tool) as AnyAgentTool),
-+    );
-+    const boundNewlyConstructedTools =
-+      newlyConstructedTools.length > 0
-+        ? hostCapabilities.bindToolSurface(newlyConstructedTools, bindingOptions)
-+        : newlyConstructedTools;
-+    if (boundNewlyConstructedTools.length !== newlyConstructedTools.length) {
-+      throw new Error("Copilot host capability changed the tool surface length.");
-+    }
 +    const newlyBoundTools = new Map<AnyAgentTool, AnyAgentTool>();
 +    for (let index = 0; index < newlyConstructedTools.length; index += 1) {
 +      newlyBoundTools.set(newlyConstructedTools[index]!, boundNewlyConstructedTools[index]!);
@@ -500,7 +505,7 @@ index 91387c142f1094ff2b3182bdda0cdef9cc9d06da..5d0e68506e4fe1bd28554921a96a8e42
  
  /**
 diff --git a/src/agents/agent-bundle-mcp-harness.test.ts b/src/agents/agent-bundle-mcp-harness.test.ts
-index c27441e..99603e4 100644
+index c27441edf39feb722b16c4f0d289848afc9b6b0e..99603e45390b81dd33804786306cd0a33cf06354 100644
 --- a/src/agents/agent-bundle-mcp-harness.test.ts
 +++ b/src/agents/agent-bundle-mcp-harness.test.ts
 @@ -96,6 +96,7 @@ vi.mock("./mcp-oauth.js", async (importOriginal) => {
@@ -575,7 +580,7 @@ index c27441e..99603e4 100644
 +  });
 +});
 diff --git a/src/agents/agent-bundle-mcp-harness.ts b/src/agents/agent-bundle-mcp-harness.ts
-index 909c303..9abbef5 100644
+index 909c303c11f3903add277ecc4afde3865f417b28..9abbef553a7a8c8f44cd30aebe62211f14a9e3e2 100644
 --- a/src/agents/agent-bundle-mcp-harness.ts
 +++ b/src/agents/agent-bundle-mcp-harness.ts
 @@ -241,6 +241,50 @@ function applyHarnessToolPolicy(
@@ -630,10 +635,10 @@ index 909c303..9abbef5 100644
   * Materialize static configured MCP for a Codex harness turn.
   * No requester identity is accepted here, so requester resolvers stay unreachable.
 diff --git a/src/plugin-sdk/agent-harness-tool-runtime.ts b/src/plugin-sdk/agent-harness-tool-runtime.ts
-index a62cf1b..e86a87f 100644
+index 55a4b8875fbea6d54e3fa852fcb188909236b300..09b65ebaa4e5e5441845c3a3643b35bc8656d047 100644
 --- a/src/plugin-sdk/agent-harness-tool-runtime.ts
 +++ b/src/plugin-sdk/agent-harness-tool-runtime.ts
-@@ -133,3 +133,14 @@ function projectToolSurfaceRuntime(
+@@ -134,3 +134,14 @@ function projectToolSurfaceRuntime(
      },
    };
  }
