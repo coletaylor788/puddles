@@ -1,5 +1,5 @@
 diff --git a/extensions/copilot/src/host-capability.test-support.ts b/extensions/copilot/src/host-capability.test-support.ts
-index 5edd8707..b53b1bbd 100644
+index 5edd8707d1dd9b98d77d86b049b0edacdfafdfa5..b53b1bbd305c4f237a1b5978f41c14382eefdb17 100644
 --- a/extensions/copilot/src/host-capability.test-support.ts
 +++ b/extensions/copilot/src/host-capability.test-support.ts
 @@ -6,6 +6,8 @@ type HostCapabilities = AgentHarnessAttemptParamsV2["hostCapabilities"];
@@ -20,7 +20,7 @@ index 5edd8707..b53b1bbd 100644
      requestApproval: async () => undefined,
      waitForApproval: async () => undefined,
 diff --git a/extensions/copilot/src/tool-bridge.test.ts b/extensions/copilot/src/tool-bridge.test.ts
-index a3b75bf3..7713ef5a 100644
+index a3b75bf3249edb8ec026c53f93c886795868e2ab..563728bf0c54ccd699b4d31ace397c35c1e2177f 100644
 --- a/extensions/copilot/src/tool-bridge.test.ts
 +++ b/extensions/copilot/src/tool-bridge.test.ts
 @@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
@@ -31,15 +31,20 @@ index a3b75bf3..7713ef5a 100644
  import { expectDefined } from "@openclaw/normalization-core";
  import { createOpenClawCodingTools as createRealOpenClawCodingTools } from "openclaw/plugin-sdk/agent-harness";
  import {
-@@ -14,6 +15,7 @@ import {
+@@ -14,9 +15,12 @@ import {
    createOwnerBackedContractTool,
    textToolResult,
  } from "openclaw/plugin-sdk/agent-runtime-test-contracts";
 +import { registerAgentWorkspaceAccess } from "openclaw/plugin-sdk/agent-workspace-runtime";
  import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
  import { readMemoryArtifactProvenance } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
++import { createAdmittedHostCapabilityTestFixture } from "openclaw/plugin-sdk/plugin-test-runtime";
  import { withTempDir } from "openclaw/plugin-sdk/test-env";
-@@ -409,6 +411,239 @@ describe("createCopilotToolBridge", () => {
++import { createSandboxTestContext } from "openclaw/plugin-sdk/test-fixtures";
+ import { afterEach, describe, expect, it, vi } from "vitest";
+ import { createCopilotTestHostCapabilities } from "./host-capability.test-support.js";
+ import { createCopilotToolBridge as createCopilotToolBridgeImpl } from "./tool-bridge.js";
+@@ -409,6 +413,301 @@ describe("createCopilotToolBridge", () => {
    });
  
    describe("tool-surface gating (PR #86155 [P1] round-6)", () => {
@@ -150,136 +155,198 @@ index a3b75bf3..7713ef5a 100644
 +      }
 +    });
 +
-+    it.each(["sandbox", "remote"] as const)(
-+      "reads only the selected Copilot skill through its %s source in additive scripts",
-+      async (source) => {
-+        const workspaceDir = `/tmp/copilot-skill-${source}`;
-+        const sourcePath = "/gateway/library/selected/SKILL.md";
-+        const deliveredPath = "/workspace/.openclaw/sandbox-skills/selected/SKILL.md";
-+        const readInstructions = vi.fn(
-+          async (_filePath?: string, _options?: unknown) => "selected remote instructions",
-+        );
-+        const readFile = vi.fn(async (_params?: unknown) =>
-+          Buffer.from("selected sandbox instructions"),
-+        );
-+        const release =
-+          source === "remote"
-+            ? registerAgentWorkspaceAccess(workspaceDir, {
-+                bridge: {} as never,
-+                loadSkills: vi.fn(),
-+                skillResources: { readInstructions } as never,
-+              })
-+            : () => {};
-+        const selected = {
-+          name: "selected",
-+          description: "Selected fixture",
-+          filePath: sourcePath,
-+          fileHost: source === "remote" ? "workspace" : "gateway",
-+        };
-+        const snapshot = {
-+          prompt: `<available_skills><skill><name>selected</name><description>Selected fixture</description><location>${sourcePath}</location></skill></available_skills>`,
-+          skills: [{ name: "selected" }, { name: "hidden" }],
-+          resolvedSkills: [
-+            selected,
-+            { ...selected, name: "hidden", filePath: "/not-authorized/SKILL.md" },
-+          ],
-+          librarySelections: [{ name: "selected" }],
-+        };
-+        const installedSkills = [
-+          {
-+            name: "selected",
-+            promptListed: true,
-+            description: "Selected fixture",
-+            location: deliveredPath,
-+            source: { filePath: sourcePath },
-+            reader: async () =>
-+              source === "sandbox"
-+                ? (
-+                    await readFile({
-+                      filePath: deliveredPath,
-+                      cwd: "/workspace",
-+                    })
-+                  ).toString("utf8")
-+                : await readInstructions(sourcePath, {}),
-+          },
-+        ];
-+        const bridge = await createCopilotToolBridge({
-+          workspaceDir,
-+          sandbox:
-+            source === "sandbox"
-+              ? ({
-+                  enabled: true,
-+                  workspaceAccess: "rw",
-+                  workspaceDir,
-+                  skillsWorkspaceDir: `${workspaceDir}/materialized`,
-+                  containerWorkdir: "/workspace",
-+                  skillUsagePaths: [
-+                    {
-+                      skillName: "selected",
-+                      skillFile: sourcePath,
-+                      readPath: `${workspaceDir}/materialized/selected/SKILL.md`,
-+                      skillSource: "workspace",
-+                    },
-+                    {
-+                      skillName: "hidden",
-+                      skillFile: "/not-authorized/SKILL.md",
-+                      readPath: `${workspaceDir}/materialized/hidden/SKILL.md`,
-+                      skillSource: "workspace",
-+                    },
-+                  ],
-+                  fsBridge: { readFile },
-+                } as never)
-+              : null,
-+          attemptParams: {
-+            config: { tools: { codeMode: { enabled: true, surface: "additive" } } },
-+            hostCapabilities: createCopilotTestHostCapabilities(
-+              () => [makeTool({ name: "read" })],
-+              undefined,
-+              () => installedSkills,
-+            ),
-+            skillsSnapshot: snapshot as never,
-+            runId: `copilot-skill-${source}`,
-+            sessionKey: `agent:agent-1:skill-${source}`,
-+          },
-+          createOpenClawCodingTools: () => [makeTool({ name: "read" })],
-+        });
-+        try {
-+          const result = (await runSdkTool(sdkToolNamed(bridge, "code_exec"), {
-+            code: `
-+              const listed = await skills.list();
-+              const content = await skills.read("selected");
-+              let hiddenDenied = false;
-+              try { await skills.read("hidden"); } catch { hiddenDenied = true; }
-+              return { listed, content, hiddenDenied };
-+            `,
-+          })) as ToolResultObject;
-+          expect(result.resultType, JSON.stringify(result)).toBe("success");
-+          expect(JSON.parse(result.textResultForLlm)).toMatchObject({
-+            status: "completed",
-+            value: { content: `selected ${source} instructions`, hiddenDenied: true },
++    it.each([
++      ["sandbox", false],
++      ["remote", false],
++      ["sandbox", true],
++      ["remote", true],
++    ] as const)(
++      "uses the admitted %s skill source with configured read denial %s",
++      async (source, denyRead) => {
++        await withTempDir(`openclaw-copilot-skill-${source}-`, async (workspaceDir) => {
++          const sourcePath = "/gateway/library/selected/SKILL.md";
++          const deliveredPath = "/workspace/.openclaw/sandbox-skills/selected/SKILL.md";
++          const unexpectedAccess = vi.fn(async () => {
++            throw new Error("Unexpected fixture filesystem operation");
 +          });
-+          expect(result.textResultForLlm).not.toContain("not-authorized");
-+          if (source === "sandbox") {
-+            expect(readFile).toHaveBeenCalledExactlyOnceWith(
-+              expect.objectContaining({ filePath: deliveredPath, cwd: "/workspace" }),
-+            );
-+          } else {
-+            expect(readInstructions).toHaveBeenCalledExactlyOnceWith(
-+              sourcePath,
-+              expect.any(Object),
-+            );
++          const readInstructions = vi.fn(async (filePath: string, _options: unknown) => {
++            expect(filePath).toBe(sourcePath);
++            return "selected remote instructions";
++          });
++          const readFile = vi.fn(async (params: { filePath: string }) => {
++            expect(params.filePath).toBe(deliveredPath);
++            return Buffer.from("selected sandbox instructions");
++          });
++          const release =
++            source === "remote"
++              ? registerAgentWorkspaceAccess(workspaceDir, {
++                  bridge: {
++                    readFile: unexpectedAccess,
++                    writeFile: unexpectedAccess,
++                    stat: unexpectedAccess,
++                  },
++                  loadSkills: unexpectedAccess,
++                  skillResources: {
++                    readInstructions,
++                    resolveExplicitSkill: unexpectedAccess,
++                    readSkillFiles: unexpectedAccess,
++                  },
++                })
++              : () => {};
++          const selected = {
++            name: "selected",
++            description: "Selected fixture",
++            filePath: sourcePath,
++            baseDir: path.dirname(sourcePath),
++            fileHost: source === "remote" ? ("workspace" as const) : ("gateway" as const),
++            source: "workspace",
++            sourceInfo: {
++              path: sourcePath,
++              source: "workspace",
++              scope: "project" as const,
++              origin: "top-level" as const,
++            },
++            disableModelInvocation: false,
++          };
++          const hidden = {
++            ...selected,
++            name: "hidden",
++            filePath: "/not-authorized/SKILL.md",
++            disableModelInvocation: true,
++          };
++          const snapshot = {
++            prompt: `<available_skills><skill><name>selected</name><description>Selected fixture</description><location>${sourcePath}</location></skill></available_skills>`,
++            skills: [{ name: "selected" }, { name: "hidden" }],
++            resolvedSkills: [selected],
++            discoverySkills: [selected, hidden],
++          };
++          const sandbox =
++            source === "sandbox"
++              ? createSandboxTestContext({
++                  overrides: {
++                    workspaceDir,
++                    skillsWorkspaceDir: `${workspaceDir}/materialized`,
++                    skillUsagePaths: [
++                      {
++                        skillName: "selected",
++                        skillFile: sourcePath,
++                        readPath: `${workspaceDir}/materialized/selected/SKILL.md`,
++                        skillSource: "workspace",
++                      },
++                    ],
++                    fsBridge: {
++                      readFile,
++                      resolvePath: vi.fn(),
++                      writeFile: unexpectedAccess,
++                      mkdirp: unexpectedAccess,
++                      remove: unexpectedAccess,
++                      rename: unexpectedAccess,
++                      stat: unexpectedAccess,
++                    },
++                  },
++                })
++              : null;
++          const config = {
++            plugins: { enabled: false },
++            tools: {
++              codeMode: { enabled: true, surface: "additive" as const },
++              toolSearch: false,
++              ...(denyRead ? { deny: ["skills_read"] } : {}),
++            },
++          };
++          const runId = `copilot-skill-${source}-${denyRead}`;
++          const sessionKey = `agent:agent-1:skill-${source}-${denyRead}`;
++          let host: Awaited<ReturnType<typeof createAdmittedHostCapabilityTestFixture>> | undefined;
++          let bridge: Awaited<ReturnType<typeof createCopilotToolBridge>> | undefined;
++          try {
++            host = await createAdmittedHostCapabilityTestFixture({
++              runId,
++              agentId: "agent-1",
++              workspaceDir,
++              config,
++              skillsSnapshot: snapshot,
++              sandbox,
++              sessionKey,
++            });
++            bridge = await createCopilotToolBridge({
++              workspaceDir,
++              sandbox,
++              attemptParams: {
++                config,
++                hostCapabilities: host.hostCapabilities,
++                skillsSnapshot: snapshot,
++                runId,
++                sessionKey,
++              },
++            });
++            const sourceNames = bridge.sourceTools.map((tool) => tool.name);
++            expect(sourceNames).toContain("skills_search");
++            expect(sourceNames.includes("skills_read")).toBe(!denyRead);
++            const result = (await runSdkTool(sdkToolNamed(bridge, "code_exec"), {
++              code: denyRead
++                ? `
++                    let denied;
++                    try { await skills.read("selected"); } catch (error) { denied = error.message; }
++                    return { denied };
++                  `
++                : `
++                    const listed = await skills.list();
++                    const content = await skills.read("selected");
++                    let hiddenDenied = false;
++                    try { await skills.read("hidden"); } catch { hiddenDenied = true; }
++                    return { listed, content, hiddenDenied };
++                  `,
++            })) as ToolResultObject;
++            expect(result.resultType, JSON.stringify(result)).toBe("success");
++            const location = source === "sandbox" ? deliveredPath : sourcePath;
++            expect(JSON.parse(result.textResultForLlm)).toMatchObject({
++              status: "completed",
++              value: denyRead
++                ? { denied: "skills_read is not available in this run." }
++                : {
++                    listed: [{ name: "selected", description: "Selected fixture", location }],
++                    content:
++                      `Skill location: ${location}\n` +
++                      "Resolve relative resource paths from the directory containing this SKILL.md.\n\n" +
++                      `selected ${source} instructions`,
++                    hiddenDenied: true,
++                  },
++            });
++            expect(result.textResultForLlm).not.toContain("not-authorized");
++            if (denyRead) {
++              expect(readFile).not.toHaveBeenCalled();
++              expect(readInstructions).not.toHaveBeenCalled();
++            } else if (source === "sandbox") {
++              expect(readFile).toHaveBeenCalledExactlyOnceWith(
++                expect.objectContaining({ filePath: deliveredPath, cwd: "/workspace" }),
++              );
++              expect(readInstructions).not.toHaveBeenCalled();
++            } else {
++              expect(readInstructions).toHaveBeenCalledExactlyOnceWith(
++                sourcePath,
++                expect.any(Object),
++              );
++              expect(readFile).not.toHaveBeenCalled();
++            }
++            expect(unexpectedAccess).not.toHaveBeenCalled();
++          } finally {
++            try {
++              await bridge?.cleanup?.();
++            } finally {
++              host?.closeHost();
++              host?.closeAdmission();
++              host?.closeGateway();
++              release();
++            }
 +          }
-+        } finally {
-+          bridge.cleanup?.();
-+          release();
-+        }
++        });
 +      },
 +    );
 +
      it("submits the exact conversation-policy-filtered catalog to the SDK", async () => {
        await withTempDir("openclaw-copilot-policy-", async (workspaceDir) => {
          const result = await createCopilotToolBridge({
-@@ -694,6 +929,52 @@ describe("createCopilotToolBridge tool conversion", () => {
+@@ -694,6 +993,52 @@ describe("createCopilotToolBridge tool conversion", () => {
      });
    });
  
@@ -332,7 +399,7 @@ index a3b75bf3..7713ef5a 100644
    it("drains earlier calls after rejection and resumes parallel work after an exclusive call", async () => {
      const started = Array.from({ length: 5 }, () => createDeferred<void>());
      const gates = Array.from({ length: 5 }, () => createDeferred<void>());
-@@ -757,31 +1038,34 @@ describe("createCopilotToolBridge tool conversion", () => {
+@@ -757,31 +1102,34 @@ describe("createCopilotToolBridge tool conversion", () => {
      );
    });
  
@@ -392,7 +459,7 @@ index a3b75bf3..7713ef5a 100644
    it("rechecks abort before a queued tool starts without blocking another attempt", async () => {
      const controller = new AbortController();
 diff --git a/extensions/copilot/src/tool-bridge.ts b/extensions/copilot/src/tool-bridge.ts
-index 4f2925cd..bb135cdf 100644
+index 4f2925cd86d729df311fc91e7e00b558c90fdba4..bb135cdf2d68ec1b9e6605878078c2ec90c4adfb 100644
 --- a/extensions/copilot/src/tool-bridge.ts
 +++ b/extensions/copilot/src/tool-bridge.ts
 @@ -24,6 +24,8 @@ import {
@@ -465,7 +532,7 @@ index 4f2925cd..bb135cdf 100644
      // Copilot built-ins share coding-tool names. Explicit overrides keep calls
      // on OpenClaw's host-bound tools instead of rejecting registration.
 diff --git a/packages/gateway-protocol/src/schema/worker-gateway-tool.ts b/packages/gateway-protocol/src/schema/worker-gateway-tool.ts
-index 6de98ba1..a0749b00 100644
+index 6de98ba14e5fad0f621dfde39055b9efbec7bdac..a0749b00dfb7bbd94130ee67343ae89603236273 100644
 --- a/packages/gateway-protocol/src/schema/worker-gateway-tool.ts
 +++ b/packages/gateway-protocol/src/schema/worker-gateway-tool.ts
 @@ -22,6 +22,7 @@ export const AgentToolSurfacePresentationSchema = closedObject({
@@ -477,7 +544,7 @@ index 6de98ba1..a0749b00 100644
      timeoutMs: Type.Integer({ minimum: 1 }),
      memoryLimitBytes: Type.Integer({ minimum: 1 }),
 diff --git a/src/agents/agent-tools.before-tool-call.wrapper.ts b/src/agents/agent-tools.before-tool-call.wrapper.ts
-index df4ac09e..c163f60b 100644
+index df4ac09eb6226128ae7030d6cbfa54f68bf43914..c163f60b807fcddabf4793f5fd462f35035d3fb9 100644
 --- a/src/agents/agent-tools.before-tool-call.wrapper.ts
 +++ b/src/agents/agent-tools.before-tool-call.wrapper.ts
 @@ -73,8 +73,7 @@ import {
@@ -505,7 +572,7 @@ index df4ac09e..c163f60b 100644
      return tool;
    }
 diff --git a/src/agents/code-mode-control-tools.ts b/src/agents/code-mode-control-tools.ts
-index 73240bab..ce4be93f 100644
+index 73240bab8c326eea9677dfe9a1dbdfbb2e7c06b6..ce4be93fc7c2c9f998eaeffa0273281eaede270b 100644
 --- a/src/agents/code-mode-control-tools.ts
 +++ b/src/agents/code-mode-control-tools.ts
 @@ -1,6 +1,5 @@
@@ -576,7 +643,7 @@ index 73240bab..ce4be93f 100644
  
  function resolveCodeModeExecToolInputKind(params: unknown): CodeModeExecToolInputKind | undefined {
 diff --git a/src/agents/code-mode-execution.ts b/src/agents/code-mode-execution.ts
-index b9600092..38879134 100644
+index b9600092b5335d6b49fd60e0b042151572b2820a..38879134ee6c6039a3500d56cba39b727d445733 100644
 --- a/src/agents/code-mode-execution.ts
 +++ b/src/agents/code-mode-execution.ts
 @@ -180,6 +180,7 @@ export async function runCodeModeExec(params: {
@@ -632,7 +699,7 @@ index b9600092..38879134 100644
        { error: aborted ? "code mode execution aborted" : codeModeFailureMessage(error) },
        state.runtime.hasNetworkContent(),
 diff --git a/src/agents/code-mode-executor.test.ts b/src/agents/code-mode-executor.test.ts
-index 2021978c..08af762d 100644
+index 2021978cd0cfb4d1497cc3a6a999f1c31e6bdb11..08af762d2bb1661812126c2092a7264433bda8ab 100644
 --- a/src/agents/code-mode-executor.test.ts
 +++ b/src/agents/code-mode-executor.test.ts
 @@ -90,4 +90,34 @@ describe("Code Mode executor admission", () => {
@@ -671,7 +738,7 @@ index 2021978c..08af762d 100644
 +  });
  });
 diff --git a/src/agents/code-mode-executor.ts b/src/agents/code-mode-executor.ts
-index ea09541a..02b4652b 100644
+index ea09541aaee17eebc43efb9d405ed92242bb9f62..02b4652b296963b00031b4a437b139243967fdc5 100644
 --- a/src/agents/code-mode-executor.ts
 +++ b/src/agents/code-mode-executor.ts
 @@ -19,6 +19,7 @@ export async function runCodeModeExecutor(
@@ -705,7 +772,7 @@ index ea09541a..02b4652b 100644
      options.signal?.throwIfAborted();
      const preparationMs = performance.now() - startedAt;
 diff --git a/src/agents/code-mode-headless.ts b/src/agents/code-mode-headless.ts
-index 0623c35d..7d161313 100644
+index 0623c35d269220cd5f3a47be474a8dd8efb07be6..7d161313abd0c5a52b1094d20b062f9501fc41d6 100644
 --- a/src/agents/code-mode-headless.ts
 +++ b/src/agents/code-mode-headless.ts
 @@ -343,6 +343,7 @@ export async function runCodeModeScriptHeadless(params: {
@@ -717,7 +784,7 @@ index 0623c35d..7d161313 100644
              signal: abortScope.signal,
              inlineHost: onInputConsumed ? { ...inlineHost, onInputConsumed } : inlineHost,
 diff --git a/src/agents/code-mode-runtime.ts b/src/agents/code-mode-runtime.ts
-index 7356be5f..e96f4882 100644
+index 7356be5ff906570460f201ab71f8e7e6a3144176..e96f4882c31d53fdc362f7a060e9d487623b66f4 100644
 --- a/src/agents/code-mode-runtime.ts
 +++ b/src/agents/code-mode-runtime.ts
 @@ -28,6 +28,7 @@ export const MAX_HEADLESS_TOOL_CALLS = 200;
@@ -749,7 +816,7 @@ index 7356be5f..e96f4882 100644
      timeoutMs: limit("timeoutMs", 10_000, 100, 60_000),
      memoryLimitBytes: limit("memoryLimitBytes", 64 * 1024 * 1024, 1024 * 1024, 1024 * 1024 * 1024),
 diff --git a/src/agents/code-mode-state.ts b/src/agents/code-mode-state.ts
-index 1aa06d26..36bd6bbd 100644
+index 1aa06d263376ca8fe0170c0a62070ba5c8835d03..36bd6bbd0fdf882eb9e509b98a0226e2622b5bf6 100644
 --- a/src/agents/code-mode-state.ts
 +++ b/src/agents/code-mode-state.ts
 @@ -12,7 +12,7 @@ import { observeAgentRunApprovalWait } from "./agent-run-approval-wait.js";
@@ -800,7 +867,7 @@ index 1aa06d26..36bd6bbd 100644
    };
  }
 diff --git a/src/agents/code-mode.config.test.ts b/src/agents/code-mode.config.test.ts
-index a5e970b4..4215c8c0 100644
+index a5e970b41a097d72681f3e0aaa8120ccb1d38368..4215c8c09d34c36d2509f6693ddeee2d277cf277 100644
 --- a/src/agents/code-mode.config.test.ts
 +++ b/src/agents/code-mode.config.test.ts
 @@ -5,6 +5,18 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -824,7 +891,7 @@ index a5e970b4..4215c8c0 100644
        tools: { codeMode: { enabled: false, timeoutMs: 1234, maxOutputBytes: 4096 } },
 diff --git a/src/agents/code-mode.scheduling.test.ts b/src/agents/code-mode.scheduling.test.ts
 new file mode 100644
-index 00000000..398ec5fa
+index 0000000000000000000000000000000000000000..398ec5fa6c0820fe53b26694adec05574e571add
 --- /dev/null
 +++ b/src/agents/code-mode.scheduling.test.ts
 @@ -0,0 +1,109 @@
@@ -938,7 +1005,7 @@ index 00000000..398ec5fa
 +  );
 +});
 diff --git a/src/agents/code-mode.test.ts b/src/agents/code-mode.test.ts
-index e013df35..7a33c602 100644
+index e013df35e3e8e936693b99fe58288846e1871221..7a33c602137d58028804994a2a8b505395c07b60 100644
 --- a/src/agents/code-mode.test.ts
 +++ b/src/agents/code-mode.test.ts
 @@ -1,5 +1,6 @@
@@ -1007,7 +1074,7 @@ index e013df35..7a33c602 100644
      const compile = vi.mocked(Compile);
      const validate = (tools: AnyAgentTool[]) => {
 diff --git a/src/agents/code-mode.ts b/src/agents/code-mode.ts
-index 151109e9..3acf0fbd 100644
+index 151109e94d60bb9043b010487b646b1e8c1f2b6f..3acf0fbd1eaedc82b0f022f6af4eebc905a001ad 100644
 --- a/src/agents/code-mode.ts
 +++ b/src/agents/code-mode.ts
 @@ -9,7 +9,9 @@ import {
@@ -1259,7 +1326,7 @@ index 151109e9..3acf0fbd 100644
 +    : compacted;
  }
 diff --git a/src/agents/embedded-agent-runner/result.types.ts b/src/agents/embedded-agent-runner/result.types.ts
-index 96b72027..14f0bb45 100644
+index 96b7202771e8d6255ede2ffa0e6ff15a2b6f0cea..14f0bb456ee66b1359e89e10bf37c3cfdf44e481 100644
 --- a/src/agents/embedded-agent-runner/result.types.ts
 +++ b/src/agents/embedded-agent-runner/result.types.ts
 @@ -128,7 +128,7 @@ type EmbeddedRunFailureSignal = {
@@ -1272,7 +1339,7 @@ index 96b72027..14f0bb45 100644
  };
  
 diff --git a/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts b/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts
-index 8b2ebd21..88ae2f6d 100644
+index 8b2ebd2162cfe0b792d74ef7b805bdfbb5b5e5d0..88ae2f6d1a20b79e7a3966c9e5e5cf0f38187a97 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts
 @@ -93,6 +93,7 @@ function seedCatalog(mode: "code-mode" | "tool-search", config: OpenClawConfig)
@@ -1384,7 +1451,7 @@ index 8b2ebd21..88ae2f6d 100644
      const catalogRef = createToolSearchCatalogRef();
      const codeModeSkills = [
 diff --git a/src/agents/embedded-agent-runner/run/attempt-client-tools.ts b/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
-index 62256910..0159b7bc 100644
+index 62256910e10c1569a0670cad286d64bb29266c50..0159b7bcf4bd6e69ba0ed1b466da98a359b5c9b8 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
 @@ -56,6 +56,7 @@ export function prepareEmbeddedAttemptClientTools(params: {
@@ -1410,7 +1477,7 @@ index 62256910..0159b7bc 100644
      });
      clientToolDefs = clientToolSearch.tools;
 diff --git a/src/agents/embedded-agent-runner/run/attempt-prompt-support.ts b/src/agents/embedded-agent-runner/run/attempt-prompt-support.ts
-index 6db1968c..2af09f0a 100644
+index 6db1968c6bc49ddbc1178c2d4a500c48e09e4640..2af09f0a112b6956c57866d1c3011d7a79e72f15 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-prompt-support.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-prompt-support.ts
 @@ -153,6 +153,7 @@ export function applyPromptBuildToolsAllow<
@@ -1430,10 +1497,10 @@ index 6db1968c..2af09f0a 100644
    const filterTools = <T extends NamedTool>(tools: T[]) =>
      createAgentHarnessPromptToolPolicy({ tools, codeModeControlsEnabled: false }).apply(policyInput)
 diff --git a/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts b/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts
-index 6b0ca058..d808ce02 100644
+index 6b0ca0582c7b6db02f98adedf11d6bb06501d969..35adf816fbfdcc3f717cc0fa97091c29a85c2487 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts
-@@ -42,6 +42,42 @@ function createBaseline(activeToolNames: string[], catalogRef?: ToolSearchCatalo
+@@ -42,6 +42,43 @@ function createBaseline(activeToolNames: string[], catalogRef?: ToolSearchCatalo
  }
  
  describe("applyPromptBuildToolsAllow", () => {
@@ -1450,7 +1517,7 @@ index 6b0ca058..d808ce02 100644
 +        callCount: 0,
 +      },
 +    };
-+    const fixture = createSession(controls.map((tool) => tool.name));
++    const fixture = createSession([...controls.map((tool) => tool.name), read.name, write.name]);
 +    const policy = createPromptBuildToolPolicy({
 +      session: fixture.session,
 +      effectiveTools: [...controls, read, write],
@@ -1470,6 +1537,7 @@ index 6b0ca058..d808ce02 100644
 +    ]);
 +    expect(policy.current.tools.map((tool) => tool.name)).toEqual(["read"]);
 +    expect(policy.current.activeToolNames).toEqual(["code_exec", "code_wait", "read"]);
++    expect(policy.current.callableToolNames).toEqual(["code_exec", "code_wait", "read"]);
 +    expect(catalogRef.current?.entries.map((entry) => entry.name)).toEqual(["read"]);
 +  });
 +
@@ -1477,7 +1545,7 @@ index 6b0ca058..d808ce02 100644
      "keeps hook-denied tools fenced when the hook resolves %s a permission change",
      (hookTiming) => {
 diff --git a/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts b/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
-index 5bb32689..715477de 100644
+index 5bb32689de8f6e9df81fb4034a73985b990c0a24..715477deaa5cf6ab3de41762ef35e4315b900458 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
 @@ -130,6 +130,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
@@ -1497,10 +1565,18 @@ index 5bb32689..715477de 100644
                effectiveTools,
                pinTools,
 diff --git a/src/agents/embedded-agent-runner/run/attempt-tool-catalog.ts b/src/agents/embedded-agent-runner/run/attempt-tool-catalog.ts
-index 94208a4a..be7fd6bf 100644
+index 94208a4a9430864b5eba0529b251f258472df2b3..1caeca7b99e79013c74e658a07af239280cbbe45 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-tool-catalog.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-tool-catalog.ts
-@@ -154,7 +154,9 @@ export async function prepareEmbeddedAttemptToolCatalog(input: {
+@@ -72,6 +72,7 @@ export async function prepareEmbeddedAttemptToolCatalog(input: {
+     const catalogToolHookContext = preparedToolBase.toolHookContext;
+     const compacted = preparedToolBase.toolSurfaceRuntime.compactTools(effectiveTools, {
+       hookContext: catalogToolHookContext,
++      clientToolsCallable: toolsEnabled && (clientTools?.length ?? 0) > 0,
+       prepared: {
+         abortSignal,
+         forceRestartSafeTools: attempt.forceRestartSafeTools,
+@@ -154,7 +155,9 @@ export async function prepareEmbeddedAttemptToolCatalog(input: {
        clientTools,
        clientToolsCataloged:
          toolSearch.catalogRegistered &&
@@ -1512,25 +1588,72 @@ index 94208a4a..be7fd6bf 100644
        controlsEnabled: toolSearchControlsEnabledForRun || codeModeControlsEnabledForRun,
        deferredToolsCallable: deferredDirectoryToolsCallable,
 diff --git a/src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts b/src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts
-index 2ff22e3f..d5ada285 100644
+index 2ff22e3f3aa4708c06a042a5f6cd895affd6e4b8..3e40f9ee0ba0edda4d6a0384ffd40f17a09b889c 100644
 --- a/src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts
-@@ -1,7 +1,11 @@
+@@ -1,7 +1,12 @@
  import { Type } from "typebox";
  import { describe, expect, it } from "vitest";
  import { setPluginToolMeta } from "../../../plugins/tool-metadata.js";
 +import { createAgentHarnessToolSurfaceRuntimeCore } from "../../harness/tool-surface-bridge.js";
  import type { AnyAgentTool } from "../../tools/common.js";
 +import { createFakeStream } from "./attempt-stream.test-helpers.js";
++import { prepareEmbeddedAttemptClientTools } from "./attempt-client-tools.js";
 +import { wrapStreamFnTrimToolCallNames } from "./attempt-tool-call-stream-normalization.js";
 +import { prepareEmbeddedAttemptToolCatalog } from "./attempt-tool-catalog.js";
  import { buildToolSearchRunPlan } from "./attempt-tool-search-run-plan.js";
  
  const tool = (name: string): AnyAgentTool => ({
-@@ -34,6 +38,95 @@ function plan(overrides: Partial<Parameters<typeof buildToolSearchRunPlan>[0]> =
+@@ -34,6 +39,166 @@ function plan(overrides: Partial<Parameters<typeof buildToolSearchRunPlan>[0]> =
  }
  
  describe("buildToolSearchRunPlan", () => {
++  it("keeps compact controls off when the run has no client or native tools", async () => {
++    const config = {
++      tools: {
++        codeMode: { enabled: true as const, surface: "compact" as const },
++        toolSearch: false,
++      },
++    };
++    const runtime = createAgentHarnessToolSurfaceRuntimeCore({
++      config,
++      executeTool: async () => ({ content: [], details: {} }),
++      modelToolsEnabled: true,
++      runId: "client-visibility-empty",
++    });
++    try {
++      const catalog = await prepareEmbeddedAttemptToolCatalog({
++        attempt: {
++          config,
++          runId: "client-visibility-empty",
++          model: { api: "openai-completions" },
++          runtimePlan: { tools: { logDiagnostics: () => {} } },
++        },
++        setup: {
++          sessionAgentId: "main",
++          effectiveWorkspace: "/tmp/client-visibility-empty",
++          getProviderRuntimeHandle: () => undefined,
++        },
++        preparedToolBase: {
++          toolSurfaceRuntime: runtime,
++          codeModeControlsEnabledForRun: true,
++          codeModeSkills: [],
++          runtimeCapabilityProfile: { policy: {} },
++          toolSearchConfig: runtime.plan.toolSearchConfig,
++          toolSearchControlsEnabledForRun: false,
++          toolsEnabled: true,
++        },
++        bundleTools: { uncompactedEffectiveTools: [], clientTools: undefined },
++        abortSignal: new AbortController().signal,
++        executeCodeModeTool: async () => ({ content: [], details: {} }),
++      } as never);
++      expect(catalog.effectiveTools).toEqual([]);
++      expect(catalog.toolSearch.catalogRegistered).toBe(false);
++    } finally {
++      runtime.cleanup();
++    }
++  });
++
 +  it.each(["additive", "compact"] as const)(
 +    "derives direct client visibility from the configured %s surface",
 +    async (surface) => {
@@ -1572,6 +1695,31 @@ index 2ff22e3f..d5ada285 100644
 +          abortSignal: new AbortController().signal,
 +          executeCodeModeTool: async () => ({ content: [], details: {} }),
 +        } as never);
++        const clients = prepareEmbeddedAttemptClientTools({
++          attempt: {
++            config,
++            runId: `client-visibility-${surface}`,
++          },
++          catalogToolHookContext: undefined,
++          codeModeControlsEnabledForRun: true,
++          codeModeSurface: surface,
++          deferredDirectoryToolsCallable: false,
++          effectiveTools: [],
++          replaySafetyOptions: { declaredReplaySafe: () => undefined },
++          sessionAgentId: "main",
++          toolSearchCatalogRef: runtime.toolSearchCatalogRef,
++          toolSearchRuntimeConfig: runtime.plan.toolSearchRuntimeConfig,
++          uncompactedEffectiveTools: [],
++          clientTools,
++        } as never);
++        expect(clients.clientToolDefs.map((tool) => tool.name)).toEqual(
++          surface === "additive" ? ["client_pick_file"] : [],
++        );
++        expect(
++          runtime.toolSearchCatalogRef?.current?.entries.find(
++            (entry) => entry.name === "client_pick_file",
++          )?.directVisible,
++        ).toBe(surface === "additive");
 +        expect(catalog.toolSearchRunPlan.visibleAllowedToolNames.has("client_pick_file")).toBe(
 +          surface === "additive",
 +        );
@@ -1624,7 +1772,7 @@ index 2ff22e3f..d5ada285 100644
      const foreignTool = tool("sessions_yield");
      setPluginToolMeta(foreignTool, { pluginId: "bundle-mcp", optional: false });
 diff --git a/src/agents/embedded-agent-runner/run/attempt.ts b/src/agents/embedded-agent-runner/run/attempt.ts
-index ba68cc8a..71796305 100644
+index ba68cc8aa3bae50557adda7d49d4a1acd1df530e..7179630501177c8a24bcc97be48d32c56460241e 100644
 --- a/src/agents/embedded-agent-runner/run/attempt.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt.ts
 @@ -385,6 +385,9 @@ async function runEmbeddedAttemptOwned(
@@ -1638,7 +1786,7 @@ index ba68cc8a..71796305 100644
            const allowedNames = new Set([
              ...surface.activeToolNames,
 diff --git a/src/agents/embedded-agent-runner/terminal-tool-failure.ts b/src/agents/embedded-agent-runner/terminal-tool-failure.ts
-index d175fa17..34c77003 100644
+index d175fa17cb83ebc637f3572f6c8d22f13c0ad1a8..34c7700384513f678595b8e288712ef4b89be241 100644
 --- a/src/agents/embedded-agent-runner/terminal-tool-failure.ts
 +++ b/src/agents/embedded-agent-runner/terminal-tool-failure.ts
 @@ -1,6 +1,6 @@
@@ -1671,7 +1819,7 @@ index d175fa17..34c77003 100644
      return undefined;
    }
 diff --git a/src/agents/embedded-agent-runner/types.ts b/src/agents/embedded-agent-runner/types.ts
-index 466d09e6..345666dd 100644
+index 466d09e691dcfc27baa289faf79c86af0f0728fd..345666ddd2e3dd57dee24f52c47bec4903365e35 100644
 --- a/src/agents/embedded-agent-runner/types.ts
 +++ b/src/agents/embedded-agent-runner/types.ts
 @@ -154,7 +154,7 @@ export type EmbeddedRunFailureSignal = {
@@ -1684,7 +1832,7 @@ index 466d09e6..345666dd 100644
  };
  
 diff --git a/src/agents/harness/host-capability-types.ts b/src/agents/harness/host-capability-types.ts
-index 5cc57f9e..ab9e6918 100644
+index 5cc57f9ed68efe7297ecdafd41c6e27d25fecb60..ab9e6918e4899003ed0dbcb4eb3aa0b50565b788 100644
 --- a/src/agents/harness/host-capability-types.ts
 +++ b/src/agents/harness/host-capability-types.ts
 @@ -151,6 +151,10 @@ export type AgentHarnessHostCapabilities = Readonly<{
@@ -1699,7 +1847,7 @@ index 5cc57f9e..ab9e6918 100644
    prepareMutableFileApproval?: (request: { command: string; cwd?: string }) => Promise<
      | {
 diff --git a/src/agents/harness/host-capability.ts b/src/agents/harness/host-capability.ts
-index 7d5cfb38..787a849e 100644
+index 7d5cfb38c7b05f20d6242d7ea851e94f197d8dbe..787a849e7b68946093ee002c51de4a80b443839a 100644
 --- a/src/agents/harness/host-capability.ts
 +++ b/src/agents/harness/host-capability.ts
 @@ -544,6 +544,8 @@ export function createAgentHarnessHostCapabilities(params: {
@@ -1712,7 +1860,7 @@ index 7d5cfb38..787a849e 100644
        assertActive();
        const prepared = await prepareSystemRunMutableFileApproval(request);
 diff --git a/src/agents/harness/host-skills.test.ts b/src/agents/harness/host-skills.test.ts
-index 30d58377..a7f9dfe5 100644
+index 30d58377675f37bf0fa3ff6932eefb87042ce6d3..a7f9dfe56f5b54473b318e19c80bd51e666ca258 100644
 --- a/src/agents/harness/host-skills.test.ts
 +++ b/src/agents/harness/host-skills.test.ts
 @@ -68,6 +68,17 @@ it("binds skill reads to a late sandbox and refuses reads after host closure", a
@@ -1789,7 +1937,7 @@ index 30d58377..a7f9dfe5 100644
      host.closeHost();
      host.closeAdmission();
 diff --git a/src/agents/harness/prompt-tool-policy.ts b/src/agents/harness/prompt-tool-policy.ts
-index 512ea2af..9bb9cd08 100644
+index 512ea2af330e69a8b5150bdd62e0941418b04066..9bb9cd084470ed9b830cd978359409cb05ac4436 100644
 --- a/src/agents/harness/prompt-tool-policy.ts
 +++ b/src/agents/harness/prompt-tool-policy.ts
 @@ -39,7 +39,8 @@ export function createAgentHarnessPromptToolPolicy<T extends NamedTool>(params:
@@ -1838,7 +1986,7 @@ index 512ea2af..9bb9cd08 100644
                    { ...params.catalogPrompt, catalogRef: catalog.ref },
                    catalog.ref.current?.entries ?? [],
 diff --git a/src/agents/harness/tool-surface-bridge.test.ts b/src/agents/harness/tool-surface-bridge.test.ts
-index f3979935..5120ae69 100644
+index f3979935f94074e2763d85ff1562c3e49e294c9c..5120ae69919e87c43eefb8c7f3bcacad88927efd 100644
 --- a/src/agents/harness/tool-surface-bridge.test.ts
 +++ b/src/agents/harness/tool-surface-bridge.test.ts
 @@ -51,6 +51,71 @@ afterEach(() => {
@@ -1914,7 +2062,7 @@ index f3979935..5120ae69 100644
      {
        mode: "automatic Code Mode",
 diff --git a/src/agents/harness/tool-surface-bridge.ts b/src/agents/harness/tool-surface-bridge.ts
-index 163f0638..57424c3d 100644
+index 163f06380a8ea5bfad7d82507cae81d7c5a80e1b..12d5bf9f1cacf02dba5537eb93028693f8b2f8a6 100644
 --- a/src/agents/harness/tool-surface-bridge.ts
 +++ b/src/agents/harness/tool-surface-bridge.ts
 @@ -2,11 +2,8 @@ import type { AgentToolSurfacePresentation } from "../../../packages/gateway-pro
@@ -1967,28 +2115,34 @@ index 163f0638..57424c3d 100644
      ],
    });
    const toolSearchCatalogExecutor =
-@@ -135,6 +134,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+@@ -135,6 +134,9 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
        hookContext?: HookContext;
        localModelLeanApplied?: boolean;
        prepared?: PreparedToolSurface;
 +      codeModeSkills?: PreparedToolSurface["codeModeSkills"];
++      /** Client tools are callable even though core projects them after built-in compaction. */
++      clientToolsCallable?: boolean;
      } = {},
    ) => {
      const prepared = options.prepared;
-@@ -154,8 +154,10 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+@@ -154,8 +156,14 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
      let effectiveTools = prepared
        ? projectedUncompactedTools
        : filterRuntimeCompatibleTools(projectedUncompactedTools).tools;
 -    const codeModeSkills = prepared?.codeModeSkills ?? presentation?.skills;
 -    const createControls = codeModeControlsEnabled
-+    const codeModeSkills = prepared?.codeModeSkills ?? options.codeModeSkills ?? presentation?.skills;
-+    const hasCallableSurface = effectiveTools.length > 0 || (codeModeSkills?.length ?? 0) > 0;
++    const codeModeSkills =
++      prepared?.codeModeSkills ?? options.codeModeSkills ?? presentation?.skills;
++    const hasCallableSurface =
++      effectiveTools.length > 0 ||
++      (codeModeSkills?.length ?? 0) > 0 ||
++      options.clientToolsCallable === true;
 +    const surfaceCodeModeControlsEnabled = codeModeControlsEnabled && hasCallableSurface;
 +    const createControls = surfaceCodeModeControlsEnabled
        ? createCodeModeTools
        : toolSearchControlsEnabled &&
            !effectiveTools.some((tool) => TOOL_SEARCH_CONTROL_TOOL_NAMES.has(tool.name))
-@@ -178,7 +180,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+@@ -178,7 +186,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
        ...params,
        tools: [...controls, ...effectiveTools],
        toolSearchRuntimeConfig,
@@ -1997,7 +2151,7 @@ index 163f0638..57424c3d 100644
        toolSearchConfig,
        catalogRef: toolSearchCatalogRef,
        toolHookContext: options.hookContext,
-@@ -209,11 +211,13 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+@@ -209,11 +217,13 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
        promptToolPolicy: createAgentHarnessPromptToolPolicy({
          tools: effectiveTools,
          catalogRef: toolSearchCatalogRef,
@@ -2014,7 +2168,7 @@ index 163f0638..57424c3d 100644
                  toolSearchDirectoryLean: presentation?.toolSearchDirectoryLean,
                  agentId: params.agentId,
                  sessionKey: params.sessionKey,
-@@ -225,6 +229,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+@@ -225,6 +235,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
    };
    return {
      plan,
@@ -2023,7 +2177,7 @@ index 163f0638..57424c3d 100644
      compactTools,
      config: toolSearchControlsEnabled ? toolSearchRuntimeConfig : params.config,
 diff --git a/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts b/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts
-index 3352876c..72d7adbe 100644
+index 3352876c3c3a0c8ae59a9e4b3b475ee1f50165e4..72d7adbec8e29f01999732cbf366277db89bbd96 100644
 --- a/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts
 +++ b/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts
 @@ -2,8 +2,9 @@ import { describe, expect, it, vi } from "vitest";
@@ -2039,7 +2193,7 @@ index 3352876c..72d7adbe 100644
  
  vi.mock("../tool-replay-safety.js", () => ({
 diff --git a/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.ts b/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.ts
-index e9c87951..b9fb4f9e 100644
+index e9c87951feb5ce321c6939104beac1e56a812ee6..b9fb4f9e20858830278e346c5b717d4be09197d0 100644
 --- a/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.ts
 +++ b/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.ts
 @@ -5,7 +5,7 @@ import {
@@ -2088,7 +2242,7 @@ index e9c87951..b9fb4f9e 100644
    ) {
      return false;
 diff --git a/src/agents/plugin-runtime-refresh.ts b/src/agents/plugin-runtime-refresh.ts
-index 2b5de24b..6b4d25c8 100644
+index 2b5de24b950c38efc1fe2c37e57a2ec2300bf335..6b4d25c809e8cc85ba3673ebc1a283263c3ea5e5 100644
 --- a/src/agents/plugin-runtime-refresh.ts
 +++ b/src/agents/plugin-runtime-refresh.ts
 @@ -17,6 +17,7 @@ const refreshScope = resolveGlobalSingleton(
@@ -2100,7 +2254,7 @@ index 2b5de24b..6b4d25c8 100644
        if (owner?.active) {
          owner.consumer = isCurrent;
 diff --git a/src/agents/sessions/tools/tool-definition-wrapper.test.ts b/src/agents/sessions/tools/tool-definition-wrapper.test.ts
-index 7b652e88..eca54261 100644
+index 7b652e881fe4dc33dffd3d48b1035cbdcec399ca..eca54261d8e54cfeda5c97d39f7a8337b422b989 100644
 --- a/src/agents/sessions/tools/tool-definition-wrapper.test.ts
 +++ b/src/agents/sessions/tools/tool-definition-wrapper.test.ts
 @@ -1,6 +1,11 @@
@@ -2155,7 +2309,7 @@ index 7b652e88..eca54261 100644
    });
  });
 diff --git a/src/agents/system-prompt-skills.ts b/src/agents/system-prompt-skills.ts
-index 07af0ba0..cad56c0b 100644
+index 07af0ba0fb691069385f0d50402c7042e5d1321e..cad56c0b62be760f023540dd4850e0ee310547e4 100644
 --- a/src/agents/system-prompt-skills.ts
 +++ b/src/agents/system-prompt-skills.ts
 @@ -4,6 +4,7 @@ export function buildSkillsSection(params: {
@@ -2185,7 +2339,7 @@ index 07af0ba0..cad56c0b 100644
          ]
        : []),
 diff --git a/src/agents/system-prompt.test.ts b/src/agents/system-prompt.test.ts
-index 2104a846..d2ab9699 100644
+index 2104a8460a004e7bb9030b1d68e935217c2a6462..d2ab96992a37aefbbfc8adf9e7ab7bc5f48fc8fd 100644
 --- a/src/agents/system-prompt.test.ts
 +++ b/src/agents/system-prompt.test.ts
 @@ -204,26 +204,6 @@ describe("buildAgentSystemPrompt", () => {
@@ -2216,7 +2370,7 @@ index 2104a846..d2ab9699 100644
      const restricted = (toolNames: string[], promptMode: PromptParams["promptMode"] = "minimal") =>
        renderPrompt({
 diff --git a/src/agents/system-prompt.ts b/src/agents/system-prompt.ts
-index ab5f6bc1..9696e614 100644
+index ab5f6bc1d28b318591cb690f70f646e4cf818006..9696e6144bbeaeff45b7636989870979c4558eb8 100644
 --- a/src/agents/system-prompt.ts
 +++ b/src/agents/system-prompt.ts
 @@ -401,7 +401,8 @@ export function buildAgentSystemPrompt(params: {
@@ -2259,7 +2413,7 @@ index ab5f6bc1..9696e614 100644
          "## Assistant Output Directives",
          ...(sourceMessageToolOnly
 diff --git a/src/agents/tool-search-catalog.ts b/src/agents/tool-search-catalog.ts
-index f1561fec..08491618 100644
+index f1561fecf2060646e33a6c83911f74090bfe6561..084916181841a0fb95cf3ee9a3df583d0081ac2c 100644
 --- a/src/agents/tool-search-catalog.ts
 +++ b/src/agents/tool-search-catalog.ts
 @@ -501,6 +501,7 @@ export function applyToolCatalogCompaction(
@@ -2289,7 +2443,7 @@ index f1561fec..08491618 100644
 +  };
  }
 diff --git a/src/agents/tool-search-scheduling.ts b/src/agents/tool-search-scheduling.ts
-index 78f4067b..17d73f75 100644
+index 78f4067b08b0137d03c34d7978f7e57cd6749941..17d73f75b24e4b606ba2188d674c115f9b356953 100644
 --- a/src/agents/tool-search-scheduling.ts
 +++ b/src/agents/tool-search-scheduling.ts
 @@ -1,12 +1,20 @@
@@ -2471,7 +2625,7 @@ index 78f4067b..17d73f75 100644
 +  return wrapped;
 +}
 diff --git a/src/agents/tool-surface-plan.ts b/src/agents/tool-surface-plan.ts
-index 6f31e3a6..028c3dff 100644
+index 6f31e3a615456515ab9b742257e2c336967c5b18..028c3dff087479aaae06cb2469ed69295ae64edc 100644
 --- a/src/agents/tool-surface-plan.ts
 +++ b/src/agents/tool-surface-plan.ts
 @@ -1,6 +1,7 @@
@@ -2498,7 +2652,7 @@ index 6f31e3a6..028c3dff 100644
      toolSearchControlsEnabled,
      toolSearchConfig,
 diff --git a/src/config/schema.help.runtime.ts b/src/config/schema.help.runtime.ts
-index 3c6c8866..1b470c37 100644
+index 3c6c88666a58531c053f4bf372d090e2f36026f5..1b470c371c91f8998cd2d2b75df213952bd677a1 100644
 --- a/src/config/schema.help.runtime.ts
 +++ b/src/config/schema.help.runtime.ts
 @@ -141,13 +141,15 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
@@ -2520,7 +2674,7 @@ index 3c6c8866..1b470c37 100644
    "tools.codeMode.memoryLimitBytes":
      "QuickJS guest heap limit or best-effort Node worker V8 heap budget in bytes. Node runtime overhead and minimum engine allocations affect the effective budget; external buffers and process RSS are excluded. This is not a security guarantee.",
 diff --git a/src/config/schema.labels.ts b/src/config/schema.labels.ts
-index 79d8d9f0..fde0019a 100644
+index 79d8d9f031f433d484508d8cd553814f54281246..fde0019a694c5a8b48586f1a495fb96f425244bb 100644
 --- a/src/config/schema.labels.ts
 +++ b/src/config/schema.labels.ts
 @@ -185,7 +185,8 @@ export const FIELD_LABELS: Record<string, string> = {
@@ -2534,7 +2688,7 @@ index 79d8d9f0..fde0019a 100644
    "tools.codeMode.memoryLimitBytes": "Code Mode Memory Limit",
    "tools.codeMode.maxOutputBytes": "Code Mode Output Limit",
 diff --git a/src/config/zod-schema.agent-runtime.ts b/src/config/zod-schema.agent-runtime.ts
-index e629dad8..b78d82b6 100644
+index e629dad8840eb0f9e95aac829309eeb5394f2893..b78d82b638e4b271b4cd07194e5bb5201b622f93 100644
 --- a/src/config/zod-schema.agent-runtime.ts
 +++ b/src/config/zod-schema.agent-runtime.ts
 @@ -455,6 +455,8 @@ const CodeModeSchema = z
@@ -2548,7 +2702,7 @@ index e629dad8..b78d82b6 100644
        /** Wall-clock limit in milliseconds for one exec or wait call. */
 diff --git a/src/config/zod-schema.code-mode.test.ts b/src/config/zod-schema.code-mode.test.ts
 new file mode 100644
-index 00000000..1af75d03
+index 0000000000000000000000000000000000000000..1af75d0351ad3421146dae3e87fb3f111ac5e6eb
 --- /dev/null
 +++ b/src/config/zod-schema.code-mode.test.ts
 @@ -0,0 +1,23 @@
@@ -2576,7 +2730,7 @@ index 00000000..1af75d03
 +  });
 +});
 diff --git a/src/plugin-sdk/agent-harness-tool-runtime.ts b/src/plugin-sdk/agent-harness-tool-runtime.ts
-index a62cf1bc..68808dc5 100644
+index a62cf1bc0e82b6c92e7dbb03dd2a1a501bd25626..68808dc56ae02301a2db8e61141b5d1b23eb6089 100644
 --- a/src/plugin-sdk/agent-harness-tool-runtime.ts
 +++ b/src/plugin-sdk/agent-harness-tool-runtime.ts
 @@ -23,6 +23,8 @@ export {
@@ -2608,7 +2762,7 @@ index a62cf1bc..68808dc5 100644
        );
        return { tools: compacted, promptToolPolicy };
 diff --git a/src/plugins/code-mode-executor.test.ts b/src/plugins/code-mode-executor.test.ts
-index 6c02f246..7a995b5c 100644
+index 6c02f246ab4435538aab9420e52569de93b4f821..7a995b5c60e6f625179a49b838d31f57d9dcc885 100644
 --- a/src/plugins/code-mode-executor.test.ts
 +++ b/src/plugins/code-mode-executor.test.ts
 @@ -84,6 +84,24 @@ describe("Code Mode executor plugin selection", () => {
@@ -2637,7 +2791,7 @@ index 6c02f246..7a995b5c 100644
      { plugins: { enabled: false } },
      { plugins: { deny: ["code-mode-quickjs"] } },
 diff --git a/src/plugins/code-mode-executor.ts b/src/plugins/code-mode-executor.ts
-index 39356b26..406059c9 100644
+index 39356b265e94e9c62b25869a5e5b08440679aa19..406059c9e4c32978ba70147f02234b824734cdcd 100644
 --- a/src/plugins/code-mode-executor.ts
 +++ b/src/plugins/code-mode-executor.ts
 @@ -15,11 +15,14 @@ import { resolvePluginRootPublicSurfacePath } from "./public-surface-runtime.js"
