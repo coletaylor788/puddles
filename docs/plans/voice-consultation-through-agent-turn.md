@@ -33,6 +33,16 @@ Qualify the entire maintained application, including integrations, permissions, 
 
 This phase has its own focused checks, independent review, build, DEV, full application suite, TEST, production acceptance, merge and cleanup. An upstream unit-test pass alone does not qualify the upgrade.
 
+Include the configured native CLI backend update in this phase. Pin and qualify
+an official release with the relevant authentication reliability fixes, using
+the existing native sign-in profile. Native CLI code continues to own credential
+storage and renewal. Qualify subscription access, tools, session continuation,
+steering and cancellation with the upgraded OpenClaw runtime before promotion.
+Package that executable inside the application candidate. Each environment uses
+its own installed copy, so CI owns transfer, validation, rollback and retirement
+with the runtime. Select it through the existing service environment. Preserve
+the normal user launcher and native sign-in profile.
+
 The upgrade provides
 
 - Native Claude CLI text steering into the running process, with current-authority checks and consumption receipts before recording acceptance.
@@ -104,13 +114,28 @@ The complete repair still must prove one continuous scenario: delegate research,
 
 **Workshop approval:** Production approved on 2026-11-14. The requester answered “Yes I like that better anyways” to adopting native immediate, versioned skill edits with undo, preserving existing access limits and exporting pending drafts without activation. This lifts the prior Workshop design hold; the two independent release phases remain unchanged.
 
-**Progress:** The upgraded application built successfully and required hosted checks passed. Installed DEV failed when candidate-mode authentication could not access its profile catalog. CI then encountered the new native Doctor capture directory during cleanup. Guarded recovery preserved that capture in the same run's scratch, and CI completed target teardown and source-queue closure. The durable private cleanup correction is reviewed with 13 focused cases passing. The proposed candidate-readiness patch was rejected without implementation. CI compatibility is being revised to follow the supported native lifecycle. Existing phase approvals remain valid; Phase 2 has not started.
+**CLI update approval:** Production approved within Phase 1 on 2026-11-14:
+“Can we update cli while we update openclaw? Give me steps to login on the mini
+and I’ll handle it now”. The requester handles interactive native sign-in. The
+owner qualifies and ships the CLI update through the existing CI lifecycle.
+
+**Progress:** The upgraded application built successfully and required hosted checks passed. The first installed DEV failure and native Doctor capture cleanup are terminally closed. CI now uses normal isolated startup in DEV/TEST and native canary startup in held PROD. Both reader environments pass authenticated plugin access, exact state preservation and process cleanup. The complete CI tooling suite passes 368 tests. The native CLI update is packaged and under final review; fresh build and DEV qualification remain required. The rejected OpenClaw candidate-readiness patch was never implemented. Phase 2 has not started.
 
 ## Agent section
 
 ### State
 
 Selected target: `v2026.11.3`, commit `847611dcaa3bf0e2783335f961dd1fd0580e4d9f`, published 2026-11-10. The latest-release API was reconfirmed on 2026-11-14. Earlier runtime source pin: `eb377ac59e6c9fd6c7705028034812becf00271b`.
+
+The configured native CLI update now belongs to Phase 1. The official stable
+release is selected and its downloaded executable has passed digest, signing
+identity and version checks. Keep provider-specific pins in the companion
+repository. Include the executable in the immutable application output and bind
+qualification to each environment's runtime. Record and verify the complete
+service-environment change using the existing CI run witness. Require fresh DEV
+for the changed dependency. The requester restored native sign-in, verified in
+the desktop service context. Installed acceptance remains pending; no active CLI
+has changed.
 
 Main `466a4b6f5073b5fe83b6a0b479a6dfc8392c82e4` is comparison evidence only. The previous proposal's main-based unified-controller and ambient `withSessionTurn` assumptions do not describe stable and are superseded here.
 

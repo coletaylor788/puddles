@@ -75,7 +75,41 @@ export async function stopFixtureProcess(handle, {
   const owned = new Map(members.map(row => [row.pid, row]));
   const currentOwned = () => {
     const current = readGroup(child.pid);
-    for (const row of current) assert.deepEqual(row, owned.get(row.pid), "Fixture process group identity changed");
+    for (const row of current) {
+      if (owned.has(row.pid)) assert.deepEqual(row, owned.get(row.pid), "Fixture process group identity changed");
+    }
+    const added = current.filter(row => !owned.has(row.pid));
+    if (added.length) {
+      // Workers may be born between capture and the first signal. Adopt only
+      // descendants of the still-owned leader, never an arbitrary new group
+      // member or a replacement for a PID whose identity we already recorded.
+      assert.deepEqual(current.find(row => row.pid === child.pid), identity,
+        "New fixture descendant requires its original group leader");
+      const fresh = readProcesses();
+      assert.deepEqual(processIdentity(fresh.find(row => row.pid === child.pid) ?? {}), identity,
+        "Fixture process identity changed before descendant admission");
+      const admitted = new Set([child.pid]);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const row of fresh) {
+          if (admitted.has(row.parentPid) && !admitted.has(row.pid)) { admitted.add(row.pid); grew = true; }
+        }
+      }
+      const additions = fresh.filter(row => admitted.has(row.pid));
+      for (const row of additions) {
+        assert.equal(row.uid, process.getuid(), "Fixture descendant has another owner");
+        if (descendantIdentities.has(row.pid)) assert.deepEqual(processIdentity(row), descendantIdentities.get(row.pid),
+          "Fixture descendant identity changed");
+      }
+      for (const row of added) {
+        const admittedRow = additions.find(candidate => candidate.pid === row.pid && candidate.group === child.pid);
+        assert.ok(admittedRow, "New fixture group member is not an owned descendant");
+        assert.deepEqual(processIdentity(admittedRow), row, "Fixture descendant identity changed during admission");
+      }
+      for (const row of additions) descendantIdentities.set(row.pid, processIdentity(row));
+      for (const row of added) owned.set(row.pid, row);
+    }
     return current;
   };
   const send = kind => {
