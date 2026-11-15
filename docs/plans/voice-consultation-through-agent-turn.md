@@ -56,7 +56,7 @@ flowchart LR
   A[Admitted conversation or agent turn] --> C[Configured CLI backend]
   C --> M[Native OpenClaw MCP grant and tool policy]
   M --> F[Workspace-scoped file tools]
-  M --> X[Native sandbox for OpenClaw execution]
+  M --> X[Native exec to paired container node]
   M --> I[Existing scoped integration tools]
 ```
 
@@ -72,10 +72,19 @@ A required shell sandbox must fail closed if unavailable.
 The normal bundled local CLI route replaces native Bash with mediated OpenClaw
 exec. The tested stable route refuses `host=sandbox` because its coding-tool
 factory lacks the prepared sandbox. This does not establish that every native
-route fails. Qualification now tests documented configuration alternatives and
-must produce one complete recipe covering shell, files and MCP together.
-Keep subscription access and native messaging/steering intact. A plugin API or
-an upstream patch proposal is not a configuration-only solution.
+route fails. A stock configuration-only alternative passed an isolated end-to-end test:
+keep the CLI and MCP on the Gateway, bind native exec to a real OpenClaw node
+inside Docker, and enable workspace-only file tools. Commands ran inside the
+container, outside host paths stayed inaccessible, file reads/writes stayed in
+the workspace, and a configured MCP server remained usable. Other host/node
+requests and a disconnected node were refused without host fallback.
+Keep subscription access and native messaging/steering intact. The node mounts only its permitted workspace at the same absolute path used by
+the Gateway and sets that working directory. Separate access boundaries require
+separate mounts/nodes. Deny Gateway-local process and terminal controls; preserve
+role allowlists and disable elevation. Remote node exec is synchronous and has no
+background process handle. This tradeoff needs review before adopting the
+topology. No production configuration changed. A plugin API or an upstream patch
+proposal is not a configuration-only solution.
 
 #### Native history and permission compatibility
 
@@ -190,8 +199,11 @@ patch or backend plugin is authorized for it.
 **Progress:** Public removals are implemented in source. Native regressions remain
 selected, patch-suite checks pass, and the reduced paired stack composes against
 the pinned stable revision. This is not a built or deployed successor candidate.
-The previous installed integration group passed; subscription qualification still
-needs the complete native configuration recipe. Phase 2 has not begun.
+The previous installed integration group passed. The configuration-only Docker
+node route passed isolated stock execution, file, MCP and failure-boundary tests.
+Native policy/routing checks passed 127 tests. The reduced candidate still needs
+its own build and installed qualification after configuration review. Phase 2
+has not begun.
 
 ## Agent section
 
@@ -246,7 +258,10 @@ runtime/test types, plugin suites and focused native tests have passed in this
 workstream. The last installed integration group passed 9/9; it did not qualify
 all subscription-tool behavior. Native workspace confinement passed the real
 Gateway fixture in 16.46 seconds. Docker exec was refused for lack of runtime
-context. No positive shell containment result is claimed for that route.
+context. The separate configured-node route passed actual stock Gateway/MCP to
+Docker-node execution, workspace file confinement, configured MCP coexistence,
+host/node override rejection and disconnected-node refusal. This is isolated
+route qualification, not acceptance of the rebuilt upgrade artifact.
 
 1. Prove a documented configuration-only shell/files/MCP recipe and resolve
    delegated admission and diagnostic/workspace semantics. Do not add a plugin
