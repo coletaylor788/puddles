@@ -1,330 +1,311 @@
-# Latest stable and native CLI voice controls
+# Stable upgrade and native CLI voice controls
 
-Status: Production approved in two independent phases; upgrade in progress
+Status: Two-phase release approved; revised upgrade compatibility scope proposed
 Issue: https://github.com/coletaylor788/puddles/issues/359
-Last updated: 2026-11-14
+Last updated: 2026-11-15
 
 ## Human section
 
 ### Design
 
-Upgrade to **OpenClaw v2026.11.3, the latest stable release**, and safely finish that production release first. Then make and independently release the remaining integration repair between realtime Talk, native agent coordination and the configured CLI runtime. Preserve native CLI authentication, concurrent conversation, same-run steering and proactive research results.
+Upgrade to **OpenClaw v2026.11.3**, use native CLI execution and remove redundant
+integration patches. Preserve current integrations, sessions, permissions and
+sandboxing. Finish that production release before implementing and releasing
+the remaining realtime delegation and steering repair.
+
+The release API still identifies v2026.11.3 as latest stable. Newer main contains
+additional fixes, but moving main is not the proposed deployment target.
 
 ```mermaid
 flowchart LR
-  U[Phase 1: upgrade and preserve existing behavior] --> G[Review, DEV, full suite, TEST, PROD]
-  G --> C[Merge and terminal cleanup]
-  C --> P[Phase 2: native CLI voice repair]
-  P --> R[Independent review and complete release process]
+  U[Phase 1: stable upgrade and remove redundant integration] --> D[Build and DEV]
+  D --> P[Full suite, TEST, PROD, merge and cleanup]
+  P --> V[Phase 2: native realtime coordination repair]
+  V --> D2[Separate build and DEV]
+  D2 --> P2[Separate full suite, TEST, PROD, merge and cleanup]
 ```
+
+#### Phase 1: use native behavior
+
+The registered CLI backend runs the selected local CLI using its native login.
+Model configuration selects the runtime. This route is distinct from ACP and
+does not require replacing native subscription authentication with API billing.
+Include the approved native CLI update in the immutable application artifact;
+each environment uses its own copy. Preserve the user's normal launcher and
+existing sign-in profile.
+
+| Capability | Native behavior to adopt |
+| --- | --- |
+| Model execution | Registered backend, model runtime selection, native authentication and session binding. |
+| Tools and configured MCP | Policy-filtered OpenClaw catalog, exact run grants, server instructions and native cleanup. |
+| Managed Claude file and shell tools | OpenClaw file controls and execution tools through MCP; native file/Bash tools are disabled on ordinary managed turns. |
+| Steering and cancellation | CLI text injection with current-authority checks, consumption receipts and native cancellation. |
+| Long shell commands | Managed exec/process handles and originating-conversation completion notifications. |
+| Compaction | CLI-owned compaction and supported native manual control. Additional memory snapshot behavior remains separate. |
+| Workshop | Immediate skill saves, version history, undo and native pending-draft export, preserving existing access limits. |
+
+Stable also contains fixes for private child-completion streaming and replacement
+work after a cancelled child's handoff. It does not contain newer main's unified
+session controller or injected child-result context fix. Do not count those as
+stable benefits or claim the complete realtime scenario is already repaired.
+
+#### Sandbox contract and discovered gap
 
 ```mermaid
 flowchart LR
-  T[Realtime Talk] --> O[Native agent execution and controls]
-  C[Chat and agent coordination] --> O
-  O --> CLI[Existing configured CLI backend]
-  CLI -->|Receipts and results| O
-  O -->|Existing result attachment| T
+  A[Admitted conversation or agent turn] --> C[Configured CLI backend]
+  C --> M[Native OpenClaw MCP grant and tool policy]
+  M --> F[Workspace-scoped file tools]
+  M --> X[Native sandbox for OpenClaw execution]
+  M --> I[Existing scoped integration tools]
 ```
 
-#### Phase 1: upgrade and preserve existing behavior
+Use Docker for OpenClaw shell execution in this deployment. If a supported
+execution route offers Claude Code's own shell, it must use Claude's native
+sandbox. The Gateway and CLI can remain on the trusted host; this does not mean
+external MCP servers inherit Claude's shell sandbox.
 
-Qualify the entire maintained application, including integrations, permissions, sessions, memory, tools, provider routing and state migration. Port existing patches only as needed to preserve their behavior. Remove a patch only when the replacement and its regression coverage are proved. The new voice repair is excluded from this candidate.
+Native `tools.fs.workspaceOnly: true` passed a full-Gateway file test: inside
+writes succeed and outside writes fail. That setting does not contain arbitrary
+shell commands. A required sandbox must fail closed if unavailable.
 
-This phase has its own focused checks, independent review, build, DEV, full application suite, TEST, production acceptance, merge and cleanup. An upstream unit-test pass alone does not qualify the upgrade.
+The installed shell test exposed a native handoff gap. Tool resolution knows the
+session is sandboxed but does not supply a prepared sandbox to the mediated
+coding-tool factory. `exec` with `host=sandbox` is refused. No unsandboxed shell
+fallback occurred. Renaming the old test's expected tool cannot fix this.
 
-Include the configured native CLI backend update in this phase. Pin and qualify
-an official release with the relevant authentication reliability fixes, using
-the existing native sign-in profile. Native CLI code continues to own credential
-storage and renewal. Qualify subscription access, tools, session continuation,
-steering and cancellation with the upgraded OpenClaw runtime before promotion.
-Package that executable inside the application candidate. Each environment uses
-its own installed copy, so CI owns transfer, validation, rollback and retirement
-with the runtime. Select it through the existing service environment. Preserve
-the normal user launcher and native sign-in profile.
+**Proposed compatibility change:** use the approach in upstream
+[PR #163238](https://github.com/openclaw/openclaw/pull/163238). Prepare the sandbox
+for admitted coding tools, retain it in the host-owned grant, and bind native
+coding tools to it. Preserve current authority, invocation revocation,
+read-only workspaces and cleanup. Do not add an executor, restore native Bash
+by bypassing managed tool policy, or change the message-delivery path.
 
-The upgrade provides
+That PR is open and spans multiple sandbox backends. Review the exact
+stable-compatible scope before implementation; the whole PR is not automatically
+approved. A sandboxed run without a prepared sandbox must receive no mediated
+coding tools. A filesystem bridge unable to check invocation authority after
+awaited path and backend preparation must not expose write/edit/apply_patch.
+Preserve these fail-closed rules and stable sandbox ownership/disposal. Separate
+native rules reject sandbox-classified delegated CLI children and isolated CLI
+automations. The handoff fix alone does not prove safe admission for those children.
+Working delegation remains a release gate, not a reason to bypass the rule.
 
-- Native Claude CLI text steering into the running process, with current-authority checks and consumption receipts before recording acceptance.
-- Existing transcript/cancellation handling and explicit uncertain-delivery outcomes, without blindly replaying accepted input.
-- Stable's fixes for keeping private child completions out of streamed replies and allowing replacement work after a cancelled child's handoff.
+#### Native history and permission compatibility
 
-Stable does not include main's unified session controller or the injected child-result context fix. Those must not be counted as upgrade benefits.
+Stable can launch Claude with a dedicated `CLAUDE_CONFIG_DIR`, but some history
+readers still assume the default directory. Upstream merged
+[PR #175549](https://github.com/openclaw/openclaw/pull/175549) fixes that recovery
+path. Propose using the narrow upstream fix instead of custom directory plumbing,
+with cold resume, history and compaction proofs. Bind the existing login root in
+the Gateway environment. The upstream fix uses it only without an explicit
+offline `homeDir`; check Doctor, TUI and cold/history callers before retiring
+profile plumbing. It is not part of v2026.11.3. Keep credentials in their existing
+native profile.
 
-The approved upgrade adopts native Workshop behavior: skill edits save
-immediately with version history and undo. Preserve the existing tool and agent
-access limits. Use native Doctor to export pending drafts without activating
-them, and retain regressions for scope, revocation, history and recovery.
-Keep the existing narrow access compatibility for sandboxed agents already
-allowed to use Workshop. Native authoring grants cover authenticated Gateway
-human turns, but do not cover all existing channel and background callers.
-Skill writes, version history, undo and migration remain native.
+Workspace-only policy is a hard boundary. It does not reproduce our old
+allow-once outside-file approval sequence. Prefer native confinement and explicit
+resources over rebuilding that mechanism just to satisfy an implementation-shaped
+test. Record any resulting access change before implementation. Existing
+unsandboxed diagnostic access needs an explicit equivalent policy; do not
+silently remove protected-path restrictions, widen it, or call it sandboxed.
 
-#### Phase 1 CI compatibility
+#### Patches we will keep
 
-The first installed DEV run exposed a mismatch between our acceptance checks
-and native candidate mode. This mode is a startup probe with autonomous work
-suppressed; it does not initialize the profiles needed by ordinary authenticated
-Gateway requests. CI must use the new release's supported lifecycle and checks.
-Do not patch OpenClaw to make candidate mode support our previous check sequence.
-Preserve installed runtime, authentication and plugin qualification, and keep
-production intake held until acceptance and merge.
+Keep these existing capabilities through the upgrade, with cumulative regression
+coverage. This is a preservation inventory, not a claim that every current hunk
+is irreducible.
 
-| Environment | Native startup | Required evidence |
-|---|---|---|
-| DEV and TEST | Normal Gateway, with isolated state, held configuration and recording fixtures | Real authenticated Gateway plugin inventory and runtime loading, plus installed integration checks. |
-| PROD before activation | Native startup canary | Startup readiness and supported installed plugin metadata, bound to the same artifact, production configuration and preserved files. |
+| Patch or group | Retained behavior |
+| --- | --- |
+| `code-mode-additive-surface`, `claude-code-mode-mcp`, `copilot-configured-mcp` | Direct tools plus contained scripting, nested policy, parked calls and grant-owned cleanup. Native MCP transport does not replace these additions. |
+| Reduced `claude-native-agent-profiles` remainder | Only required credential clearing, profile continuity and independent callback behavior until native replacement is proved. |
+| Memory and wiki | Detached snapshots, idle maintenance, persistent memory and citation metadata beyond native compaction. |
+| Existing conversation, delegation and trust patches | Shared context, active tool ownership, result provenance, announcements and heartbeat behavior. |
+| Talk and FaceTime | Existing voice transport, progress, overlap recovery and accepted-work lifetime. New realtime integration work remains Phase 2. |
+| iMessage and browser | Message coalescing, group policy, profile lifecycle and singleton cleanup. |
+| Deployment and sandbox support | Joined services, lock recovery, stopped-state migration, private staging, portability and existing sandbox Workshop access. |
+| Native regression patches | Tests for behavior now owned upstream, including migration, discovery and continuation. These do not all modify runtime code. |
 
-Make the launcher mode explicit. Keep native candidate mode in PROD because
-normal startup can recover sessions and start background work even when known
-channels are disabled. PROD metadata inspection must reject missing or ambiguous
-plugins, wrong enablement/origin and discovery errors. It must not claim that
-metadata alone proves a plugin is active. The same immutable artifact must pass
-full authenticated runtime acceptance in TEST before reaching PROD.
-The metadata check does not prove production-bound runtime initialization or
-credential-dependent plugin behavior.
+#### Patches and custom behavior we will remove
 
-**Direction approved on 2026-11-14:** “No, fix CI to work with the new version if
-required. Not the other way around.” The proposed candidate profile-initialization
-patch is rejected and was never implemented. Adapt CI within the approved upgrade
-scope. Any material change to production acceptance or isolation needs review;
-passing only readiness cannot substitute for required installed behavior proof.
+- **`talk-agent-parity.patch`:** already removed from the candidate. Use native
+  approvals and detached-work admission; retain lifetime regressions.
+- **Redundant Claude profile mechanics:** remove custom native permission phases,
+  exec-default overrides, workspace argv settings and cap plumbing after native
+  access and credential equivalence is proved. Retain only justified remainders.
+- **`claude-configured-mcp.patch`:** propose native filtering and omission with
+  diagnostics on server failure, replacing profile preauthorization and the
+  stricter exception rethrow. Preserve denied-tool, grant and cleanup coverage.
+- **Obsolete Workshop proposal compatibility:** use native immediate saves,
+  history, undo and draft export; retain the existing sandbox access bridge.
 
-#### Phase 2: repair native CLI voice coordination
+Custom configured-MCP grant fields and its old resolver are already gone from
+this candidate. The rejected canary profile-initialization patch was never
+implemented. Neither should be counted as a new removal.
 
-Begin implementation only after Phase 1 has passed production and completed source merge and terminal cleanup. Start from that landed upgraded baseline, with a separate candidate and the full development and release process. The patch will:
+#### CI and upgrade acceptance
 
-1. Route Talk through the agent's configured runtime while retaining its admitted caller, session and asynchronous result ownership.
-2. Connect Talk steering, coordinator guidance and child completion to the **same native CLI execution and guarded control capability**. Reconcile embedded-only ownership checks with that actual run. Keep one result claim and native continuation after yield.
-3. Preserve each injected input's full context and provenance, so Reader's result reaches a busy parent as a child completion rather than an empty wake-up or new human request.
+Adapt CI to the new native lifecycle. DEV and TEST use normal isolated Gateway
+startup and recording fixtures. Held PROD uses native startup canary behavior.
+Installed plugin metadata does not establish runtime loading or authentication;
+the same artifact must pass full authenticated TEST acceptance first.
 
-Reuse native transport, tools, sessions and delivery. Do not retain the first repair's CLI-ready flags or steering refusal, substitute cancellation/restart for steering, or add another message queue. Retire existing patches only after replacement proof.
+Qualify the complete application: integrations, subscription login, exact tool
+policy, files and shell, unavailable-sandbox refusal, session/cold continuation,
+steering and cancellation, memory, compaction, migrations and cleanup. Include
+ordinary, restricted and delegated execution. Test observable behavior rather
+than a required Claude-native tool name. Keep unresolved permissions as failing
+acceptance gates until the reviewed behavior has a durable regression.
 
-#### Qualification
+Preserve and rebase both source branches on current main. Use installed `build`,
+`ci-dev` and `ci-prod`, with retained independent review and required checks.
+Yield after dispatch; CI owns deployment, full tests, TEST, backup, PROD, merge,
+recovery and cleanup. A passed workflow is not a terminal deployment receipt.
+Recovery keeps the current CLI baseline and never overwrites new live writes
+or restores an older runtime over migrated state.
 
-**69 existing checks passed on unmodified latest stable in 99.67 seconds.** They cover the real CLI stdio adapter with fixture processes, text injection, authority checks, consumption receipts, cancellation, Talk controls and delayed-result ownership.
+#### Phase 2: realtime coordination
 
-The complete repair still must prove one continuous scenario: delegate research, keep talking, steer the same task, let Reader finish while the parent is busy or has yielded, and receive the corrected result proactively. Require actual native CLI execution, exact permissions, no duplicate work and one final delivery through browser and the maintained FaceTime path.
+After Phase 1 production, merge and cleanup close, start from that landed
+baseline with a separate candidate. The repair will:
+
+1. Route Talk through the agent's configured runtime while retaining its caller,
+   session and asynchronous result ownership.
+2. Connect Talk steering, coordinator guidance and child completion to the same
+   native CLI execution and guarded controls. Keep one result claim and native
+   continuation after yield.
+3. Preserve each injected input's context and provenance so a child result is
+   consumed as a completion, including while the parent is busy.
+
+Use native sessions, controls and delivery. Do not retain the first repair's
+CLI-ready switches or steering refusal, add a second message queue, or replace
+steering with cancellation/restart.
+
+Prove one continuous scenario: delegate research, keep talking, steer the same
+task, and receive the corrected result proactively after completion, whether
+the parent is busy or yielded. Require real native CLI execution, permissions,
+no duplicate work and one result through browser and FaceTime. Repeat the full
+build, DEV, TEST, PROD, merge and cleanup lifecycle independently.
 
 ### Status
 
-**Approval:** Production approved for both phases, in order. Phase 1 upgrades and preserves existing behavior. Phase 2 implements the native CLI voice repair only after Phase 1 completes its independent production lifecycle. Approval covers implementation, commits, pushes, review, CI deployment, merge and cleanup within this scope.
+**Existing approval:** Production approved in two independent phases. The
+requester's 2026-11-13 instruction approved implementation and shipping within
+that design, with upgrade preservation first. Native Workshop adoption and the
+configured CLI update were subsequently approved. The requester also requires
+sandboxing at the execution owner and retirement of redundant patches.
 
-**Approval reference:** “One change. Make it have two phases, that follow dev process independently. I.e we upgrade first, safely roll to prod, then we make the patch and safely roll to prod. Upgrade is holistically ensuring existing tests and behavior doesn’t break. Then approved to ship, push, and implement” (2026-11-13).
+**Revised scope:** Proposed for review. The new sandbox backport, upstream history
+substitution, server-failure semantics and outside-workspace policy are not
+recorded as newly approved. Delegated/automation CLI admission and diagnostic policy remain
+open. The request to redraft this proposal is not approval of an unseen patch.
+Independent investigation and qualification within existing approval may continue.
 
-**Workshop approval:** Production approved on 2026-11-14. The requester answered “Yes I like that better anyways” to adopting native immediate, versioned skill edits with undo, preserving existing access limits and exporting pending drafts without activation. This lifts the prior Workshop design hold; the two independent release phases remain unchanged.
-
-**CLI update approval:** Production approved within Phase 1 on 2026-11-14:
-“Can we update cli while we update openclaw? Give me steps to login on the mini
-and I’ll handle it now”. The requester handles interactive native sign-in. The
-owner qualifies and ships the CLI update through the existing CI lifecycle.
-
-**Progress:** The upgraded application built successfully and required hosted checks passed. The first installed DEV failure and native Doctor capture cleanup are terminally closed. CI now uses normal isolated startup in DEV/TEST and native canary startup in held PROD. Both reader environments pass authenticated plugin access, exact state preservation and process cleanup. The complete CI tooling suite passes 368 tests. The native CLI update is packaged and under final review; fresh build and DEV qualification remain required. The rejected OpenClaw candidate-readiness patch was never implemented. Phase 2 has not started.
+**Progress:** Latest DEV passed its installed integration group and native
+login/startup, then failed the old native-Write assertion. Subsequent local
+proofs established workspace confinement and reproduced the sandbox handoff
+failure. The focused patch audit is complete. No additional runtime patch
+removals or successor deployment resulted from the audit. Phase 2 has not begun.
 
 ## Agent section
 
-### State
+### Sources and findings
 
-Selected target: `v2026.11.3`, commit `847611dcaa3bf0e2783335f961dd1fd0580e4d9f`, published 2026-11-10. The latest-release API was reconfirmed on 2026-11-14. Earlier runtime source pin: `eb377ac59e6c9fd6c7705028034812becf00271b`.
+Stable target: `847611dcaa3bf0e2783335f961dd1fd0580e4d9f` (v2026.11.3).
+The GitHub latest-release API was reconfirmed 2026-11-15. The earlier source pin
+was `eb377ac59e6c9fd6c7705028034812becf00271b`. Read the pinned native
+`docs/gateway/cli-backends.md`; the website fetch failed in this environment.
+Newer main was inspected at `5370661901a61a4aa5c7e9f76174e50eb1ee597b`.
 
-The configured native CLI update now belongs to Phase 1. The official stable
-release is selected and its downloaded executable has passed digest, signing
-identity and version checks. Keep provider-specific pins in the companion
-repository. Include the executable in the immutable application output and bind
-qualification to each environment's runtime. Record and verify the complete
-service-environment change using the existing CI run witness. Require fresh DEV
-for the changed dependency. The requester restored native sign-in, verified in
-the desktop service context. Installed acceptance remains pending; no active CLI
-has changed.
+| Source | Use and limitation |
+| --- | --- |
+| [CLI backend guide](https://docs.openclaw.ai/gateway/cli-backends) | Runtime selection, managed MCP tools, isolation, sessions and compaction. Use the pinned-source copy for stable behavior. |
+| [Sandbox PR #163238](https://github.com/openclaw/openclaw/pull/163238) | Open proposal for prepared sandbox capability and grant binding. Inspected head `3033c7d66ef3f2b500abe406e0e4ca4666eb15ff`; not shipped stable. |
+| [History PR #175549](https://github.com/openclaw/openclaw/pull/175549) | Merged commit `08d89a8bdf54785bb869994203f43985abc7efa1`; honors config root in transcript recovery. Not shipped stable. |
+| [Sandbox hooks PR #191205](https://github.com/openclaw/openclaw/pull/191205) | Embedded attempt hook metadata; distinct from the CLI coding-tool handoff. |
+| [Native CLI steering #159816](https://github.com/openclaw/openclaw/pull/159816) | Stable native steering; existing focused transport and receipt tests passed. |
+| [Input context #185945](https://github.com/openclaw/openclaw/pull/185945) | Newer-main context/provenance evidence for Phase 2, not an upgrade benefit. |
+| [Coordinator steering #178865](https://github.com/openclaw/openclaw/pull/178865) | Main ownership/control evidence; not permission to bypass stable admission. |
+| [Talk routing #164229](https://github.com/openclaw/openclaw/pull/164229) and [phone routing #191683](https://github.com/openclaw/openclaw/pull/191683) | Routing and lifetime cases; neither proves the complete approved scenario. |
 
-Main `466a4b6f5073b5fe83b6a0b479a6dfc8392c82e4` is comparison evidence only. The previous proposal's main-based unified-controller and ambient `withSessionTurn` assumptions do not describe stable and are superseded here.
+The sandbox runtime reproduction used composed output. Stock causality was
+checked separately: `prepare-tool-policy.ts` is unchanged at the controlling
+ordinary mediation logic; `gateway/tool-resolution.ts` resolves sandbox status
+without handing `SandboxContext` to `createOpenClawCodingToolsInternalAsync`;
+exec rejects the absent sandbox. Native managed tool configuration accepts only
+Agent/Workflow, not Bash. Do not describe the reproduction as a clean stock build.
 
-The initial stable qualification ran on an unmodified checkout with Node 26.1.0 and pnpm 12.15.0. The isolated checkout now holds ordered compatibility ports of the existing patch stack. Tests use isolated fixture state, without external messages or production changes.
+The native delegated child-plan sandbox/CLI tests pass by denying those children.
+This is a safe refusal, not successful delegated CLI execution. Do not expand
+admission without a reviewed containment and authority contract.
 
-### Scope and acceptance criteria
+### Patch and configuration implementation
 
-Phase 2 maintained patch: **`native-cli-voice-coordination.patch`**. Its three reviewed contracts are configured execution/ownership, shared guarded control/completion, and injected input context. No full session-controller backport, new harness, custom delivery watcher, replay queue or API-auth replacement is in scope.
+Keep the Human disposition table and the cumulative manifest synchronized.
+`claude-configured-mcp` already uses the native catalog/grant APIs. Its remaining
+runtime differences are profile exact grants and exceptional-error propagation.
+The proposed removal adopts native warning-and-omission behavior; test it as an
+intentional behavior decision, not a claimed byte-for-byte equivalent.
 
-Cover ordinary chat, direct CLI agent/child turns, provider-owned Talk and parent continuation. Preserve exact physical session, run, source and authority identity, plus existing non-CLI behavior. The maintained Puddles patch bundle and runtime/state upgrade still need qualification against the new version.
+`claude-native-agent-profiles` includes independent environment, history,
+callback and permission changes. Remove only the redundant portions after
+qualifying native policy. The upstream history fix is a candidate replacement,
+not permission to move login state. Compare inherited credential sanitization.
+Do not discard cold-history or compaction coverage when shrinking the patch.
 
-### Architecture and decisions
+`claude-code-mode-mcp` still supplies an additive execution surface. Preserve
+current policy lookup, grant identity, nested hooks/approvals, result capture,
+parked-call cleanup and selected-skill authority. Native MCP transport does not
+establish a replacement for these capabilities.
 
-| Contract | Stable evidence | Required integration |
-|---|---|---|
-| Native CLI steering | Anthropic `registerMessageInjection` and host `createSteeredCliMessageInjection` provide guarded V2 with consumption receipts. `attachCliReplyBackend` requires a reply operation. | Reuse that capability and authority checks. |
-| Runtime/owner selection | Talk calls embedded execution. Direct command ingress prepares its own admission and does not automatically create a `ReplyOperation`. Stable lacks main's CLI turn-admission wrapper. | Share ordinary configured execution under the correct native owner, preserving Talk admission. A command-entry substitution alone is insufficient. |
-| Cross-caller controls | Talk, `sessions_send` and busy-parent announce select the embedded-run registry; its CLI diagnostic handle lacks V2. Native reply-target injection already supports CLI V2 and captured backend identity. | Connect these callers to the genuine capability with exact owner binding. Preserve mismatch refusal and accepted-unconfirmed custody. |
-| Talk ownership | Provider-owned Talk requires embedded completion registration/authority before steering and consumes a one-time claim before append. | Reconcile existing checks with the real execution owner; preserve requester-final transfer after yield. No readiness boolean or first-output authority. |
-| Child-result context | Stable injection takes text/currentness callback but no per-input context/provenance; injected prompt hooks suppress private initial context. | Port the relevant per-input contract from upstream #185945. Do not inherit the running input's context or mislabel the child as human. |
+Workshop uses native edits, version history and Doctor export. Preserve agent
+access and the existing sandbox construction bridge. Retire obsolete approval
+settings through the declared stopped-state migration. Talk setting retirement
+is a separate exact-value migration. Keep recovery captures and bounded Doctor
+execution; no manual deletion of recovery data.
 
-Two native bridge locations remain to compare in implementation qualification: use the existing captured ReplyOperation target, or expose the same genuine CLI V2 capability through the existing native active-run handle. Both must retain real authority, exact admitted instance and cleanup ownership. Do not create a second sink or competing owner.
+### Validation and release sequence
 
-Stable reply-turn kinds (`visible`, `heartbeat`, `queued_followup`) affect scheduling, stale recovery and continuation. Do not select one mechanically just to obtain a registry entry. A broader lifecycle/state redesign requires revised review. This bounded ownership mapping remains unproven; source inspection alone cannot establish the smallest sound bridge.
+Retain earlier successful evidence only for unchanged inputs. Local composition,
+runtime/test types, plugin suites and focused native tests have passed in this
+workstream. The last installed integration group passed 9/9; it did not qualify
+all subscription-tool behavior. Native workspace confinement passed the real
+Gateway fixture in 16.46 seconds. Docker exec was refused for lack of runtime
+context. No positive shell containment result is claimed for that route.
 
-Relevant upstream evidence:
+1. Review the concrete compatibility scope and resolve delegated admission and
+   diagnostic/outside-workspace semantics. Record exact patch authorization.
+2. Implement approved reductions and replacements. Keep cumulative tests,
+   patch order and digests coherent. Do not patch prepared distribution chunks.
+3. Update fixtures for native MCP names and parameter shapes. Use Docker-visible
+   paths and test-owned sentinels; verify execution location, read-only access,
+   unavailable backend, revocation and absence of host fallback.
+4. Requalify login, cold/warm history, policy intersections, compaction,
+   continuation, integrations and existing-state migration. Keep external
+   mutations and message delivery on explicit recording adapters.
+5. Preserve/rebase source on fresh main, complete retained independent review,
+   required checks and sealed build. Dispatch DEV and yield. Inspect actual
+   terminal deployment and source cleanup before production submission.
+6. CI runs full application tests, TEST, backup, PROD, exact source merge and
+   cleanup. Phase 2 may start only after those Phase 1 receipts close.
 
-- [Stable release](https://github.com/openclaw/openclaw/releases/tag/v2026.11.3) and [release notes](https://github.com/openclaw/openclaw/blob/847611dcaa3bf0e2783335f961dd1fd0580e4d9f/CHANGELOG/2026.11.3.md): private completion streaming #188490 and cancelled-child handoff #178893 are shipped. Their specific regressions were not separately run in this focused qualification.
-- [Native CLI steering #159816](https://github.com/openclaw/openclaw/pull/159816): represented in stable source and release history; local fixture-level checks below passed on the selected tag.
-- [Input context #185945](https://github.com/openclaw/openclaw/pull/185945): relevant main repair absent from stable. Port its narrow context/provenance contract, not the entire main runtime.
-- [Coordinator steering #178865](https://github.com/openclaw/openclaw/pull/178865): main uses operation authority when CLI placeholder authority is absent. Design evidence, not a shipped stable capability claim.
-- [Talk routing #164229](https://github.com/openclaw/openclaw/pull/164229) and [phone routing #191683](https://github.com/openclaw/openclaw/pull/191683): useful routing, terminal and permission cases. Neither proves this full scope. Do not adopt cancel-and-replace as in-place steering or guest phone ingress as owner authority.
-- [Owner steering #189418](https://github.com/openclaw/openclaw/pull/189418): check projection under the selected stable admission. Do not automatically add a main-specific patch or relax permissions.
+CI startup adaptation remains application qualification work. Normal DEV/TEST
+and held PROD canary must preserve exact artifact/configuration bindings and
+read-only production checks. Never equate plugin metadata with active runtime.
+The requester rejected the proposed canary profile-initialization patch; it
+was not implemented. Current lifecycle details are in
+[triggered CI](../../packages/release/CI.md).
 
-### Implementation
+### Review and approval record
 
-#### Phase 1
+The retained reviewer previously cleared composition ports, packaging, CI
+startup compatibility and fixture repairs. Its newer three-patch audit found
+removable profile/MCP code, a remaining history gap and no native Code Mode
+replacement. Those findings inform this redraft; earlier clearance does not
+approve its new sandbox backport or policy changes.
 
-Workshop adoption is approved. Retire obsolete proposal-specific compatibility.
-Retain only the existing sandbox construction and diagnostic compatibility,
-because native human-turn library grants do not cover existing channel and
-background callers. Preserve ordinary and sandbox tool policies and native
-agent ownership and revocation. Use native library mutations and Doctor migration;
-remove obsolete `approvalPolicy` and `maxPending` configuration through the
-reviewed transition. Prove pending-draft export without activation and preserve
-scope and revocation checks. Keep native proposal-retirement recovery behavior.
-Do not recreate a custom proposal subsystem or mint new authoring capabilities.
-
-Upgrade compatibility includes the integrity-bound pnpm 12.15.0 toolchain and native schema migration from shared state 18 / agent 23 to shared state 22 / agent 27. The existing-state regression seeds the exact predecessor schemas with synthetic sessions, committed WAL history, memory, disabled cron and execution denial settings. It runs the candidate's native migration and verifies reopened data; fresh state does not substitute for this proof.
-
-1. Fetch both feature repositories and rebase preserved work before submission. Pin stable and review every maintained public and private patch. Port only existing behavior; retire only proved redundant hunks with durable replacement coverage.
-2. Update the package graph, build tooling, test registration and runtime configuration compatibility as required by the stable upgrade. Preserve current provider routing and security boundaries.
-3. Run focused compatibility checks and retain independent review of the complete upgrade diff. Build one reusable candidate and submit it through `ci-dev`, then `ci-prod` with its full application suite and installed acceptance.
-4. Require the terminal production receipt, exact source merge and all source/transfer/cleanup closure before starting Phase 2. Record physical acceptance separately from automated readiness.
-
-The stable Talk implementation replaces `talk-agent-parity.patch`. Remove its
-runtime hunks and retain the two offer-close lifetime cases under the existing
-Talk overlap regression patch. Native tool permissions, detached admission,
-source revocation and result ownership remain the runtime owners. Existing
-configuration that selects ordinary approvals must migrate only its obsolete
-setting, with exact before/after validation.
-
-#### Candidate-mode qualification blocker
-
-DEV `gh-43628324374-1`, candidate `8edd6b30b99f4283140d70e3e319ab0852f7bca493ac81bffa67795f58733cf8`, passed preparation and reached native readiness. Its authenticated `plugins.list` failed about 18 seconds later with `User profile catalog is not ready`. This is missing initialization, not delayed startup. The original diagnostic is separate from the later cleanup failure. Recovery ended with target `failed`, `phase=complete`, `child=null`, and source `queueClosedAt` populated.
-
-Native `updateCanary` skips `SessionRowProjection`, including its profile
-catalog and canonical owner initialization. Upstream
-[startup-only canary PR #154548](https://github.com/openclaw/openclaw/pull/154548)
-and [stable request runtime](https://github.com/openclaw/openclaw/blob/847611dcaa3bf0e2783335f961dd1fd0580e4d9f/src/gateway/server-kernel-request-runtime.ts)
-confirm this is deliberate native behavior. The requester rejected adding a
-catalog/owner initialization patch. No such patch was implemented.
-
-Require explicit `normal` or `canary` mode in the private held-Gateway launcher.
-The versioned DEV and TEST held jobs use normal mode with their existing
-isolated state and recording fixtures. Preserve authenticated `plugins.list`
-and runtime-state assertions there. The PROD held job retains native canary
-mode. Its baseline control uses supported `plugins list --json` metadata,
-asserts exact installation/enablement/origin and rejects plugin errors and
-unexpected diagnostics. Supported native registry-fallback notices remain in
-the receipt. This metadata check cannot establish production-bound runtime
-initialization or credential-dependent plugin behavior. Startup health still
-requires native readiness. Never assert runtime-active
-from metadata. Keep all artifact/configuration/preserved-file bindings and the
-same-artifact TEST gate. Do not move failure-prone application acceptance after
-PROD resume, when new live writes may make restoration unsafe.
-
-Test both launcher modes and invalid/missing mode, exact environment-to-mode
-selection, real DEV/TEST RPC requirements, PROD metadata failures, and unchanged
-hold/backup/merge/resume ordering. Review normal DEV/TEST startup against all
-recording-fixture bindings before dispatch. This is CI-only compatibility; no
-OpenClaw source or patch composition changes are required.
-
-The independent private cleanup correction recognizes only the native
-`state.update-captures` directory beneath the journal-owned DEV/TEST slot. It
-validates native markers, rejects unknown or linked roots, joins services before
-deleting captures, and keeps interrupted cleanup retryable. It changes frozen
-candidate controls, so the next candidate needs a rebuild and fresh DEV proof.
-It adds no OpenClaw patch and changes no production backup retention.
-
-#### Phase 2
-
-1. Start a fresh feature branch from the landed Phase 1 baseline. Reconfirm the three approved contracts against that exact runtime.
-2. Resolve and test the native ownership bridge, then implement the three scoped contracts. Use native registry/admission operations with one execution and delivery owner.
-3. Exercise real provider-owned `runPrompt.steer` and adopted `claimAppend`. Do not bypass wrapper checks or let fixtures grant completion unconditionally.
-4. Check actual allowed tools and denied execution, including caller caps, logical provider rules, source revocation and CLI-native controls. Retain the independent reviewer through remediation.
-5. Independently build, qualify DEV, run the full release gate, qualify TEST and PROD, merge and close cleanup. Phase 1 evidence is baseline evidence, not release clearance for changed inputs.
-
-### Validation
-
-Phase 1 local compatibility: all eight public plugins compile against the pinned `openclaw@2026.11.3` SDK. Their existing suites pass 364 tests with no skips. The public lockfile was regenerated and installed using pnpm 12.15.0 and the shared store. The first dependency-order check required building `mcp-hooks`; compilation then passed. These checks do not replace the complete application or installed candidate gates.
-
-Focused compatibility ports now have additional evidence. The iMessage coalescer passes 41 cases, independently rerun by the retained reviewer. The browser entrypoint fixture passes against the ported source. The corrected native delegation suite passes 43 cases in 35.05 seconds. Heartbeat prompt and terminal resolution pass 65 cases in 16.05 seconds; the two Copilot inbound-context cases pass in 27.28 seconds. These focused source checks do not prove the final composed runtime, prompt generation, installed startup, or production readiness.
-
-The retained reviewer cleared the wiki metadata port and verified correction of delegation fixtures that still used the retired roster shape and test configuration owner. State-migration SDK qualification now passes all six Doctor cases. The preview preserves legacy owner provenance and uses native authentication ownership preparation, matching the writer without weakening exact equality. Explicit owners, workspace, fixed-store and included-file refusal cases pass. Installed schema migration still requires the composed build.
-
-Current composed-source qualification preserves the native maintenance boundary: all 12 idle cases pass, including foreground preemption, and the 23 bridge cases pass. The memory tool tests retain exact permission intersections. Corrected FaceTime readiness passes 11 cases, native storage custody 13, direct provider selection 8, and Gateway plugin behavior 69. The other existing FaceTime groups passed their first run. Storage cases use the same forked-process inventory as native browser tests. Native Claude runtime passes 54 cases, including failure with the original snapshot-retention error before any compaction acknowledgement. Core and extension runtime typechecks pass; complete test typechecking remains open. Required public PR checks pass at `ac7d5fab`; subsequent source changes still need their own checks. No immutable build or CI deployment has been submitted.
-
-Active Memory fixture cleanup passes all 109 native cases in 79.20 seconds. The managed child-process bundle check passes after relocation into native tooling tests (one case, 2.83 seconds). Patch-manifest checks pass all nine cases in 0.25 seconds. The recovery run completed with 164 passing cases and four failures in 348.15 seconds: one displaced-input refusal expectation, two startup waits caused by an invalid registration fixture, and one retry using the same invalid fixture. The prepared-source digest stayed unchanged through that run. Native type-boundary checks also require moving provider-specific race tests out of the core test graph. The corrected core gateway suite passes 23 cases, the harness suite passes 43, and the corrected provider delegation suite passes 28. Both provider/Gateway race cases pass in 12.05 seconds after the fixture corrections. Restored progress and Copilot-to-Talk integration tests pass all ten cases in 12.70 seconds. The full iMessage port is now reconciled from the exact stable prefix. Its native scheduler and debounce fixtures preserve the original assertions; all 110 targeted cases pass, including the 46 monitor cases in 24.93 seconds. The earlier omission and fixture failures are closed. The full prefix applies through the reviewed memory and profile ports; remaining Code Mode/MCP review and private composition still block the complete candidate.
-
-Completed on unmodified `847611dcaa3bf0e2783335f961dd1fd0580e4d9f`:
-
-| Existing test file | Result | Duration |
-|---|---|---|
-| `src/talk/agent-run-control.test.ts` | 15 passed | 29.94 s |
-| `src/gateway/test/talk-client-agent-consult.requester-final.test.ts` | 2 passed | 14.27 s |
-| `src/agents/cli-runner/execute-plugin.steering.test.ts` | 1 passed, covering configured/session/explicit input routes | 18.31 s |
-| `extensions/anthropic/cli-runtime.test.ts` | 51 passed | 28.71 s |
-
-Command: `pnpm test` with those four explicit files and `--maxWorkers=1`. Exit 0; four shards passed in 99.67 seconds. Fixture processes exercise the real stdio adapter, not authenticated Claude. Talk delayed-result tests use an embedded fixture. Neither proves the repaired composed path. No full application build, cumulative suite, installed DEV/TEST or physical audio check was performed.
-
-Phase 1 acceptance requires every existing application suite and maintained public/private patch regression, compatible plugin packaging and startup, preserved sessions/state, tool access and denials, provider authentication/routing, messaging, memory, browser, calendar and maintained voice paths. Any removed regression needs evidence that its behavior is covered by the new runtime and cumulative runner. Existing voice limitations may remain; regressions may not be hidden by the pending repair.
-
-Phase 2 candidate proofs:
-
-- Chat, voice and coordinator corrections reach the intended active CLI run/process; unavailable or incompatible input is not lost or replayed after acceptance.
-- Reader's opaque result and provenance reach a busy or resumed parent without history polling; the final reaches Talk proactively once.
-- Actual Talk readiness, authority, claim and continuation attachment survive startup, fallback, cancellation, stale-source and hangup races.
-- Installed native CLI login, warm continuity, allowed synthetic operations and denied/revoked operations pass without exporting credentials or delivering real test messages.
-- Browser and maintained FaceTime qualify against the same candidate, with physical audible delivery separately confirmed.
-- Full maintained-patch compatibility, application suite and runtime/state migration pass through CI before production.
-
-### Rollout and rollback
-
-Each phase independently uses the normal development process and immutable candidate. Phase 2 cannot enter implementation before Phase 1 terminal production, merge and cleanup closure. Upgrade latest stable, not moving main. Preserve the working CLI baseline. Use `build`, `ci-dev`, and `ci-prod`; CI owns installed tests, full suite, deployment, merge, recovery and cleanup. Yield after dispatch and resume from terminal receipts. Recovery uses the captured current baseline, never the superseded pre-CLI harness. Preserve active candidates and recovery references until closure.
-
-### Review log
-
-The retained reviewer independently checked the full stable checkout. It confirmed native CLI V2 exists but direct command/Talk execution does not automatically own a ReplyOperation; Talk, coordinator and announce callers still select the embedded registry. The proposal separates three remaining contracts and removes the assumption that main's unified controller ships in stable. Architecture review and component tests do not constitute full repair or release clearance.
-
-### Checklist
-
-- [x] Pin and inspect latest stable separately from main.
-- [x] Run focused unmodified native CLI, Talk-control and delayed-result tests.
-- [x] Separate shipped fixes from the proposed patch's three contracts.
-- [x] Record approval for two independently gated production phases.
-- [ ] Phase 1: preserve all existing behavior and complete independent upgrade review and qualification.
-- [ ] Phase 1: close production, source merge and cleanup before Phase 2 starts.
-- [ ] Phase 2: resolve the ownership bridge and qualify the complete voice/CLI/Reader scenario.
-- [ ] Phase 2: complete its own CI-owned release, cleanup and physical acceptance.
-
-#### Composed upgrade qualification checkpoint
-
-The first frozen composed run completed 2,132 passing tests, 35 failures and one Linux-only procfs test skipped on macOS; one additional suite failed during collection. Eight requested agent-core files were not reached after an earlier native project failed. The source digest stayed unchanged through the run. This is diagnostic evidence, not release clearance. Native realtime provider coverage passed 141 cases and native Claude CLI provider coverage passed 119 cases.
-
-Corrections preserve existing behavior: additive control names and direct/catalog visibility, selected skill access, exact grant facts, recorded-owner cleanup, current pooled-client deletion and native SQLite test ownership. Retired provider task API fixtures use supported teardown failure boundaries. The reviewed private runtime corrections also address six type errors. Affected native reruns and typechecks are active; full application and installed CI gates remain required.
-
-The next composed correction run passed 334 cases and left three fixture failures: one synthetic CLI backend cleanup case and two Copilot compaction owner checks. Prepared source stayed unchanged throughout. The synthetic preparation hook enters native authentication selection; explicit environment-only authentication reaches the hook, but the expected MCP resource is still not acquired. That remaining fixture failure needs runtime diagnosis. Native compaction callbacks intentionally omit host-only memory policy, so the owner checks must observe the real host hook while retaining callback timing and verifying no policy leak. The eight previously unreached agent-core files separately passed all 197 cases in 43.14 seconds. Current pushed public and companion repository checks pass. These are local compatibility results, not release clearance.
-
-All four native root test-type groups pass (tooling 50.9 seconds, scripts 61.9, end-to-end types 53.9, other root tests 82.5). The 19 maintained patch-manifest and application-suite contract tests also pass. Test project bindings now use the native collector's exact Gateway subprojects; the tool-search run-plan regression uses its native unit-fast project.
-
-The corrected Copilot attempt suite passes all 117 cases in 36.37 seconds, including source-owner preservation at the host boundary and private-policy exclusion from plugin callbacks. The CLI backend cleanup fixture still fails and remains an open qualification item. No assertion was weakened to pass it.
-
-Native discovery finds all 270 maintained test/project pairs across 33 projects. Stable's Gateway server project now contains native child projects. The application runner preserves that configuration and passes only selected regression paths rather than embedding the container inside a combined project. Its 21 focused contracts pass, and a real native discovery-only check confirms both the ordinary combined path and the intact Gateway container. This does not claim another runtime test pass. Extension test typechecking found fixture typing errors; corrections remain under retained review. A bounded CLI diagnostic reaches every MCP materialization gate, so the namespace spy's zero count is insufficient evidence of skipped acquisition. The temporary diagnostics were removed and the original source digest restored.
-
-All 46 selected patches now compose to the reviewed stable source, excluding the held Workshop port. The prepared source matches that composition. The retained reviewer cleared the final Code Mode permission corrections and their exact dependent rebases. The new host-skill and prompt-policy regressions are registered in their native projects. A 51-file affected native pass and serial runtime/extension/core test-type checks are running on the unchanged composition. The remaining MCP cleanup fixture failure was measured as a one-second polling deadline race: materialization and cleanup entry both occurred, and settlement waited for gate release. The reviewed fixture uses a bounded ten-second setup wait while retaining every acquisition, failure and cleanup assertion. Actual native execution through both ordinary combined and Gateway container paths passed.
-
-The refreshed runtime checks both fail on an undefined `claudeSkillsPlugin` reference in moved CLI skill setup. The first eight native files passed, but the following preparation cases hit the same error. The affected native and type runs were interrupted, their descendants were confirmed exited, and the prepared source digest remained unchanged. Do not treat the interrupted test-type checks or unrun groups as passing. Repair this integration before rebuilding qualification evidence.
-
-The independent surface pass completed on the unchanged composed source with 152 passing and 13 failing cases. It found an adapter queue blocking native Code Mode controls behind the sequential tool they coordinate. The proposed correction reuses native scheduling identity and keeps captured execution context; ordinary tools retain their existing queue. Other failures concern selected-skill availability, native hook preparation counts and fixtures relying on older tool or configuration defaults. These failures remain open until corrected source passes native checks. No build or CI dispatch occurred.
-
-The reviewed correction composition is `6a5446947289f3cd60e25808a867f90c5b3de11c`. All 46 selected patches apply strictly, with Workshop still held. The exact prepared source was reconciled in 12 reviewed paths. Corrections preserve one native hook owner with the Gateway caller context, selected skill access through current grants, native direct/scripted scheduling and ordinary tool ordering. A first runtime-core pass found one shared catalog type mismatch. The reviewed correction narrows only the closed Gateway producer type and preserves tool identity. Serial fail-fast runtime and test-type qualification is running again, followed by the affected native cases. Repository checks passed for the preceding public/private heads; refreshed heads need their own results.
-
-The current native composition is `6e9d225d276b50341a62836bad8eb41dcccebdd8`. Runtime core and extensions types passed in 13.27 and 70.89 seconds. Extension test types found one obsolete callback property in a private cleanup fixture; its reviewed removal changes only that test input. The ten-file critical native run completed with 297 passes and nine failures on an unchanged source digest. Native scheduling, configured-MCP cleanup, host skill authority, config-denied reads and empty-surface checks pass. Remaining fixture work covers full native skill construction, direct normalization settings, one preparation and one hook, and correct prompt catalog expectations. A separate 39-file pass is running on the unchanged composition; two related Copilot files await the shared fixture update. All 36 refreshed private contract checks passed before the test-only cleanup patch; its metadata refresh remains to apply with the next source checkpoint.
-
-The latest reviewed composition is `6f6f83f5a474eae9510b9bbafe00c9bb51d7f3c6`. All 46 selected patches apply strictly with Workshop held, and the prepared source was reconciled in nine paths. The previous 39-file run completed with 814 passes and four failures on unchanged source. Three failures came from execution-host fixtures conflating generic mediated tools, configured node execution and supplemental node-only tools. The fourth exposed a client-only compact catalog regression; the correction retains controls for admitted client tools while keeping disabled or truly empty surfaces empty. The reviewed fixture repairs preserve native skill policy, grant checks, hook ownership and exact execution arguments. Thirteen affected files, including both related Copilot suites, are now running. Both mains were freshly fetched and remain ancestors of the task branches. Checks pass on the preceding pushed heads; the working correction is not yet a release candidate.
-
-The reviewed fixture-only successor composes to `c7b926907eadc10632d3f376abb39ca3cea3b7bf` across all 46 selected patches. The prepared source stays at `57f5209173b2e5e35cb27e649174b92b4e2e85b7` while serial type qualification runs; runtime core and extensions pass in 53.01 and 71.06 seconds. The corrected Copilot tool-bridge file passes all 47 cases, including remote skill source authority and raw argument preservation. The remaining execution-host fixture now distinguishes automatic target selection from supplemental node-only execution, checks exact bounded yield arguments, and retains forbidden-host refusal and disconnect withdrawal. Its recording constructor proves routing, not actual sandbox startup; installed sandbox acceptance remains required. The reviewed final fixture still needs native execution and affected test types. Source rebases onto freshly fetched public and private main were clean. No deployment submission exists.
-
-The current reviewed composition is `21103ac4c5f09d7809b9beec485ef959c0a1ff34`. All 46 selected patches apply strictly; Workshop remains explicitly excluded from this local compatibility checkpoint. The final 15-file native repair run passed all 416 cases in 267.67 seconds on an unchanged source digest. The subsequent text-literal type annotation changes no runtime behavior; the affected configured-MCP file passed all four cases again on the final source, and its Gateway type group passed in 11.59 seconds. All 17 core type groups covering the 129 patched core test paths now pass, together with the native dependency-boundary check, runtime core/extensions types and extension test types. Earlier successful type proofs remain valid because later changes affect test fixtures only. Both mains were fetched again and remain unchanged. These are local compatibility results, not full application or installed release acceptance. Workshop migration and the complete CI lifecycle still block Phase 1 completion.
-
-The November 14 Workshop approval supersedes the earlier hold. The retained reviewer cleared the reduced existing sandbox access patch and the exact-auto configuration retirement. Native writes, history, undo and migration remain unchanged. The installed regression covers JSON and schema-v18 SQLite pending and quarantined drafts, excludes applied rows, preserves later live edits, checks schema-v22 integrity and foreign keys, and repeats Doctor. Full selected composition is `10eefa6d95fab5b6d2c27907cfa7ffbfe5a0d5e7`; all 47 patches apply with no exclusions. Native Workshop cases passed 48/48 and the changed access/authority group passed 42/42. Installed execution is not yet claimed.
+The requester's two-phase instruction remains controlling. The earlier custom
+protection either/or question was withdrawn and is not an outstanding gate.
+This revised proposal separates existing approval from new compatibility choices.
+No phase completion or production qualification is claimed by this document.
