@@ -17,21 +17,12 @@ PATCHES=(
   managed-local-service-lifecycle
   gateway-memory-warmup
   file-lock-stale-reclaim-guard
-  native-parent-continuation
   subagent-cross-agent-spawn-fix
   skill-workshop-sandbox-fix
   imessage-message-part-coalescing
-  imessage-group-inbound-policy
-  sandbox-discovery-failure-fix
   browser-userdata-dir-fix
-  builtin-memory-migration
-  silent-reply-completion-evidence
   native-heartbeat-response
   stopped-state-migration-sdk
-  scoped-container-temp-root
-  active-memory-cold-recall
-  active-memory-fixture-cleanup
-  gateway-protocol-declaration-portability
   core-declaration-portability
   facetime-talk-client
   harness-tool-work-owner

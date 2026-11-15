@@ -60,53 +60,30 @@ flowchart LR
   M --> I[Existing scoped integration tools]
 ```
 
-Use Docker for OpenClaw shell execution in this deployment. If a supported
-execution route offers Claude Code's own shell, it must use Claude's native
-sandbox. The Gateway and CLI can remain on the trusted host; this does not mean
-external MCP servers inherit Claude's shell sandbox.
+Use existing features and configuration to provide sandboxed shell commands,
+workspace-restricted file tools and the remaining MCP integrations. The requester
+accepts either native sandbox and either shell owner. No new backend plugin,
+custom routing or source patch may be added to satisfy this requirement.
 
-Native `tools.fs.workspaceOnly: true` passed a full-Gateway file test: inside
-writes succeed and outside writes fail. That setting does not contain arbitrary
-shell commands. A required sandbox must fail closed if unavailable.
+Native `tools.fs.workspaceOnly: true` passed a Gateway file test: inside writes
+succeed and outside writes fail. This does not contain arbitrary shell commands.
+A required shell sandbox must fail closed if unavailable.
 
-The installed shell test exposed a native handoff gap. Tool resolution knows the
-session is sandboxed but does not supply a prepared sandbox to the mediated
-coding-tool factory. `exec` with `host=sandbox` is refused. No unsandboxed shell
-fallback occurred. Renaming the old test's expected tool cannot fix this.
-
-Other supported routes remain: native Bash routes can use Claude-owned
-sandboxing when configured and verified, and the built-in agent loop supports
-OpenClaw Docker execution.
-A supported CLI backend plugin can retain native Bash without patching core.
-It is an alternative to evaluate, not a proven configuration-only replacement
-for the ordinary bundled route. It must retain integrations, exact permissions,
-authentication and delegated/automation behavior. Do not claim all OpenClaw
-sandbox routes are broken or that a core patch is the only option.
-
-**Core-backport option:** use the approach in upstream
-[PR #163238](https://github.com/openclaw/openclaw/pull/163238). Prepare the sandbox
-for admitted coding tools, retain it in the host-owned grant, and bind native
-coding tools to it. Preserve current authority, invocation revocation,
-read-only workspaces and cleanup. Do not add an executor, restore native Bash
-by bypassing managed tool policy, or change the message-delivery path.
-
-That PR is open and spans multiple sandbox backends. Review the exact
-stable-compatible scope before implementation; the whole PR is not automatically
-approved. A sandboxed run without a prepared sandbox must receive no mediated
-coding tools. A filesystem bridge unable to check invocation authority after
-awaited path and backend preparation must not expose write/edit/apply_patch.
-Preserve these fail-closed rules and stable sandbox ownership/disposal. Separate
-native rules reject sandbox-classified delegated CLI children and isolated CLI
-automations. The handoff fix alone does not prove safe admission for those children.
-Working delegation remains a release gate, not a reason to bypass the rule.
+The normal bundled local CLI route replaces native Bash with mediated OpenClaw
+exec. The tested stable route refuses `host=sandbox` because its coding-tool
+factory lacks the prepared sandbox. This does not establish that every native
+route fails. Qualification now tests documented configuration alternatives and
+must produce one complete recipe covering shell, files and MCP together.
+Keep subscription access and native messaging/steering intact. A plugin API or
+an upstream patch proposal is not a configuration-only solution.
 
 #### Native history and permission compatibility
 
 Stable can launch Claude with a dedicated `CLAUDE_CONFIG_DIR`, but some history
 readers still assume the default directory. Upstream merged
 [PR #175549](https://github.com/openclaw/openclaw/pull/175549) fixes that recovery
-path. Propose using the narrow upstream fix instead of custom directory plumbing,
-with cold resume, history and compaction proofs. Bind the existing login root in
+path. The harness/history follow-up category will evaluate this native replacement
+after both phases, with cold resume, history and compaction proofs. Bind the existing login root in
 the Gateway environment. The upstream fix uses it only without an explicit
 offline `homeDir`; check Doctor, TUI and cold/history callers before retiring
 profile plumbing. It is not part of v2026.11.3. Keep credentials in their existing
@@ -119,41 +96,38 @@ test. Record any resulting access change before implementation. Existing
 unsandboxed diagnostic access needs an explicit equivalent policy; do not
 silently remove protected-path restrictions, widen it, or call it sandboxed.
 
-#### Patches we will keep
+#### Phase 1 patch retirement
 
-The following groups describe capabilities, not unconditional patch retention.
-The per-patch source audit found test-only overlays, harness-only runtime
-customization, unselected features and broad patches containing unrelated changes.
-Retain only demonstrated consumers and qualify each removal. Native defaults
-may replace optional features if their behavior changes are explicitly chosen.
+The requester approved removing seven public test-only overlays:
+`native-parent-continuation`, `sandbox-discovery-failure-fix`,
+`builtin-memory-migration`, `silent-reply-completion-evidence`,
+`active-memory-cold-recall`, `active-memory-fixture-cleanup`, and
+`gateway-protocol-declaration-portability`.
 
-| Patch or group | Retained behavior |
-| --- | --- |
-| `code-mode-additive-surface`, `claude-code-mode-mcp`, `copilot-configured-mcp` | Direct tools plus contained scripting, nested policy, parked calls and grant-owned cleanup. Native MCP transport does not replace these additions. |
-| Reduced `claude-native-agent-profiles` remainder | Only required credential clearing, profile continuity and independent callback behavior until native replacement is proved. |
-| Memory and wiki | Detached snapshots, idle maintenance, persistent memory and citation metadata beyond native compaction. |
-| Existing conversation, delegation and trust patches | Shared context, active tool ownership, result provenance, announcements and heartbeat behavior. |
-| Talk and FaceTime | Existing voice transport, progress, overlap recovery and accepted-work lifetime. New realtime integration work remains Phase 2. |
-| iMessage and browser | Message coalescing, group policy, profile lifecycle and singleton cleanup. |
-| Deployment and sandbox support | Joined services, lock recovery, stopped-state migration, private staging, portability and existing sandbox Workshop access. |
-| Native regression patches | Tests for behavior now owned upstream, including migration, discovery and continuation. These do not all modify runtime code. |
+Also remove `imessage-group-inbound-policy` (unselected behavior) and
+`scoped-container-temp-root` (used only by test helpers). Native regressions stay
+selected independently of patch records. Tests use native secure temporary
+staging. No replacement test overlay or new runtime patch is introduced.
 
-#### Patches and custom behavior we will remove
+`talk-agent-parity` and obsolete Workshop proposal compatibility were already
+retired in this candidate; do not count them again. Other audit reductions are
+reserved for independent work after both phases, unless separately required and
+approved for the realtime repair. Preserve their existing behavior meanwhile.
 
-- **`talk-agent-parity.patch`:** already removed from the candidate. Use native
-  approvals and detached-work admission; retain lifetime regressions.
-- **Redundant Claude profile mechanics:** remove custom native permission phases,
-  exec-default overrides, workspace argv settings and cap plumbing after native
-  access and credential equivalence is proved. Retain only justified remainders.
-- **`claude-configured-mcp.patch`:** propose native filtering and omission with
-  diagnostics on server failure, replacing profile preauthorization and the
-  stricter exception rethrow. Preserve denied-tool, grant and cleanup coverage.
-- **Obsolete Workshop proposal compatibility:** use native immediate saves,
-  history, undo and draft export; retain the existing sandbox access bridge.
+#### Deferred behavior categories
 
-Custom configured-MCP grant fields and its old resolver are already gone from
-this candidate. The rejected canary profile-initialization patch was never
-implemented. Neither should be counted as a new removal.
+- Deployment and process lifecycle.
+- Talk, realtime and FaceTime.
+- Memory and compaction.
+- Messaging and delegation.
+- Tools, MCP and sandbox policy.
+- Harness sessions, credentials and request ownership.
+- Model configuration, skills and accounting.
+
+A category is assigned only when the requester asks. Each gets its own design,
+qualification and development lifecycle. A broad patch may span categories;
+coordinate its consumed hunks before changing it. “Reduce” or “unproven” in the
+audit does not mean unconditional removal in Phase 1.
 
 #### CI and upgrade acceptance
 
@@ -207,18 +181,17 @@ that design, with upgrade preservation first. Native Workshop adoption and the
 configured CLI update were subsequently approved. The requester also requires
 sandboxing at the execution owner and retirement of redundant patches.
 
-**Revised scope:** Proposed for review. The new sandbox backport, upstream history
-substitution, server-failure semantics and outside-workspace policy are not
-recorded as newly approved. Delegated/automation CLI admission and diagnostic policy remain
-open. The request to redraft this proposal is not approval of an unseen patch.
-Independent investigation and qualification within existing approval may continue.
+**Current scope:** The requester approved the test-only and confirmed redundant
+patch removals on 2026-11-15. Remaining category redesigns are deferred until
+after Phase 1 and Phase 2 and future requester assignment. The shell/files/MCP
+investigation must use only existing features and configuration. No new sandbox
+patch or backend plugin is authorized for it.
 
-**Progress:** Latest DEV passed its installed integration group and native
-login/startup, then failed the old native-Write assertion. Subsequent local
-proofs established workspace confinement and reproduced the sandbox handoff
-failure. The per-patch source audit is complete; the grouped inventory is provisional
-where current consumers or native-equivalence evidence remain unresolved. No additional runtime patch
-removals or successor deployment resulted from the audit. Phase 2 has not begun.
+**Progress:** Public removals are implemented in source. Native regressions remain
+selected, patch-suite checks pass, and the reduced paired stack composes against
+the pinned stable revision. This is not a built or deployed successor candidate.
+The previous installed integration group passed; subscription qualification still
+needs the complete native configuration recipe. Phase 2 has not begun.
 
 ## Agent section
 
@@ -254,22 +227,11 @@ admission without a reviewed containment and authority contract.
 
 ### Patch and configuration implementation
 
-Keep the Human disposition table and the cumulative manifest synchronized.
-`claude-configured-mcp` already uses the native catalog/grant APIs. Its remaining
-runtime differences are profile exact grants and exceptional-error propagation.
-The proposed removal adopts native warning-and-omission behavior; test it as an
-intentional behavior decision, not a claimed byte-for-byte equivalent.
-
-`claude-native-agent-profiles` includes independent environment, history,
-callback and permission changes. Remove only the redundant portions after
-qualifying native policy. The upstream history fix is a candidate replacement,
-not permission to move login state. Compare inherited credential sanitization.
-Do not discard cold-history or compaction coverage when shrinking the patch.
-
-`claude-code-mode-mcp` still supplies an additive execution surface. Preserve
-current policy lookup, grant identity, nested hooks/approvals, result capture,
-parked-call cleanup and selected-skill authority. Native MCP transport does not
-establish a replacement for these capabilities.
+Keep the removal list, patch order, digests and direct native regression targets
+synchronized. Preserve the existing profile, configured-MCP and additive scripting
+patches while their category work is deferred. Do not implement earlier proposed
+shrinks or history substitutions merely because the old audit suggested them.
+Keep credentials in the existing profile and protect retained recovery state.
 
 Workshop uses native edits, version history and Doctor export. Preserve agent
 access and the existing sandbox construction bridge. Retire obsolete approval
@@ -286,8 +248,9 @@ all subscription-tool behavior. Native workspace confinement passed the real
 Gateway fixture in 16.46 seconds. Docker exec was refused for lack of runtime
 context. No positive shell containment result is claimed for that route.
 
-1. Review the concrete compatibility scope and resolve delegated admission and
-   diagnostic/outside-workspace semantics. Record exact patch authorization.
+1. Prove a documented configuration-only shell/files/MCP recipe and resolve
+   delegated admission and diagnostic/workspace semantics. Do not add a plugin
+   or source patch to make the recipe pass.
 2. Implement approved reductions and replacements. Keep cumulative tests,
    patch order and digests coherent. Do not patch prepared distribution chunks.
 3. Update fixtures for native MCP names and parameter shapes. Use Docker-visible
