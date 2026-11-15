@@ -74,7 +74,16 @@ session is sandboxed but does not supply a prepared sandbox to the mediated
 coding-tool factory. `exec` with `host=sandbox` is refused. No unsandboxed shell
 fallback occurred. Renaming the old test's expected tool cannot fix this.
 
-**Proposed compatibility change:** use the approach in upstream
+Other supported routes remain: native Bash routes can use Claude-owned
+sandboxing when configured and verified, and the built-in agent loop supports
+OpenClaw Docker execution.
+A supported CLI backend plugin can retain native Bash without patching core.
+It is an alternative to evaluate, not a proven configuration-only replacement
+for the ordinary bundled route. It must retain integrations, exact permissions,
+authentication and delegated/automation behavior. Do not claim all OpenClaw
+sandbox routes are broken or that a core patch is the only option.
+
+**Core-backport option:** use the approach in upstream
 [PR #163238](https://github.com/openclaw/openclaw/pull/163238). Prepare the sandbox
 for admitted coding tools, retain it in the host-owned grant, and bind native
 coding tools to it. Preserve current authority, invocation revocation,
@@ -112,9 +121,11 @@ silently remove protected-path restrictions, widen it, or call it sandboxed.
 
 #### Patches we will keep
 
-Keep these existing capabilities through the upgrade, with cumulative regression
-coverage. This is a preservation inventory, not a claim that every current hunk
-is irreducible.
+The following groups describe capabilities, not unconditional patch retention.
+The per-patch source audit found test-only overlays, harness-only runtime
+customization, unselected features and broad patches containing unrelated changes.
+Retain only demonstrated consumers and qualify each removal. Native defaults
+may replace optional features if their behavior changes are explicitly chosen.
 
 | Patch or group | Retained behavior |
 | --- | --- |
@@ -205,7 +216,8 @@ Independent investigation and qualification within existing approval may continu
 **Progress:** Latest DEV passed its installed integration group and native
 login/startup, then failed the old native-Write assertion. Subsequent local
 proofs established workspace confinement and reproduced the sandbox handoff
-failure. The focused patch audit is complete. No additional runtime patch
+failure. The per-patch source audit is complete; the grouped inventory is provisional
+where current consumers or native-equivalence evidence remain unresolved. No additional runtime patch
 removals or successor deployment resulted from the audit. Phase 2 has not begun.
 
 ## Agent section
