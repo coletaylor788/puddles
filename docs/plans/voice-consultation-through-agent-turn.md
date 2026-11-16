@@ -2,7 +2,7 @@
 
 Status: Phase 1 production approved with one sandbox handoff patch; pause before Phase 2
 Issue: https://github.com/coletaylor788/puddles/issues/359
-Last updated: 2026-11-15
+Last updated: 2026-11-16
 
 ## Human section
 
@@ -13,8 +13,9 @@ integration patches. Preserve current integrations, sessions, permissions and
 sandboxing. Finish that production release, then pause for review of realtime delegation,
 steering and all existing realtime patches.
 
-The release API still identifies v2026.11.3 as latest stable. Newer main contains
-additional fixes, but moving main is not the proposed deployment target.
+The approved target remains v2026.11.3. A later release check found v2026.11.4;
+that does not change this frozen upgrade scope. Moving main is not the deployment
+target.
 
 ```mermaid
 flowchart LR
@@ -199,7 +200,7 @@ both normal and held service definitions in the backup and verify their exact
 interpreter after deployment. Keep unrelated explicit tool launchers unchanged.
 The new interpreter requires a fresh candidate, DEV and full production gate.
 
-#### Proposed test fixture correction, awaiting approval
+#### Retained patch test compatibility
 
 The retained `untrusted-agent-results.patch` adds a configuration read to the
 reply flow. Three native delegation tests do not supply that configuration. The
@@ -207,14 +208,16 @@ patched flow rejects immediately, while the test waits for a callback that never
 occurs. Native test isolation reproduces the failure. This is compatibility with
 our retained patch, not an independent upstream test defect.
 
-Propose one test-only adaptation in that retained patch: pass
+Make one test-only adaptation in that retained patch: pass
 `config: context.getRuntimeConfig()`
 to this fixture's `runSessionsSendA2AFlow` call. The retained patch already adds this
 parameter. The same Gateway test context then supplies its configuration, while
 all disconnect, revocation and reply assertions remain intact. No runtime code,
 timeout or selected test changes. Do not restore the retired preload patch.
-This correction is proposed separately from the approved patch removals and is
-not implemented until the requester approves it.
+This is a compatibility correction within the already approved retained patch.
+It preserves that patch's purpose and behavior. The earlier request for another
+approval applied the patch policy too broadly and is withdrawn. No new patch or
+runtime behavior is authorized by this clarification.
 
 ### Status
 
@@ -235,10 +238,12 @@ now runs original native test projects in separate, sequential processes, retain
 all tests and each project's setup, worker policy and teardown. This CI-only
 change is reviewed. Native execution exposed a stale macOS port-range assertion
 in the retained service-lifecycle patch; the corrected test passes all 23 cases.
-The remaining native projects are being qualified. Three native Gateway tests
-now fail because the retained results patch needs explicit fixture configuration; the correction
-above awaits approval. The exact OOM trigger remains uncertain. Production is
-unchanged; Phase 2 remains paused.
+The remaining mapped projects completed during diagnosis. Three native Gateway
+tests need explicit fixture configuration for the retained results patch; that
+compatibility correction is being qualified. CI services and remote callbacks
+now use the verified Node 26.13.1 interpreter. Both repositories' checks passed
+before this fixture change. The exact OOM trigger remains uncertain. Production
+is unchanged; Phase 2 remains paused.
 
 ## Agent section
 
@@ -363,7 +368,7 @@ regressions were assigned to the wrong native projects. `review-undo` belongs to
 remain selected and their 12 cases pass. This changes CI metadata only.
 No production acceptance or Phase 2 work is claimed.
 
-### Pending Gateway fixture correction evidence
+### Gateway fixture compatibility evidence
 
 The original Gateway project ran five files: 149 tests passed and three requester
 lifetime cases timed out. Each unhandled rejection reports `Runtime config is not
@@ -378,11 +383,12 @@ The retained reviewer compared the exact unpatched source. The new config
 parameter and read come from `untrusted-agent-results.patch`, so this is our
 compatibility obligation. The latest-release API was checked during this repair;
 v2026.11.4 was published 2026-11-16 UTC. Its unchanged test does not establish an
-upstream defect. The approved upgrade remains pinned to v2026.11.3. Proposed
-delta is one explicit `config` argument in the retained patch's test adaptation;
-no source patch or prepared-source edit has been applied. Approval was
-requested in the task conversation. Remaining native projects continue separately;
-the failed Gateway project stays explicitly blocked and is not counted as passed.
+upstream defect. The approved upgrade remains pinned to v2026.11.3. The delta is
+one explicit `config` argument in the retained patch's test adaptation. On
+2026-11-16 the owner corrected its earlier approval interpretation: existing
+approval remains valid within the recorded retained-patch scope. The additional
+approval request is withdrawn. Qualification must still rerun the affected
+Gateway project and review the exact test-only diff before submission.
 
 ### Node and provider qualification follow-up
 
@@ -392,8 +398,11 @@ passes all three cases on 26.13.1. Official archive SHA-256:
 `aec2514ea1ceb2ba52455e9ec65986f6749a06dd759e5db2a72e6889668c9735`.
 Executable SHA-256:
 `266dec4dce3a6cdcf5cdc38722a00cf5ae6a12cc51068d2a227655bbb75751ec`.
-Staging is not activation. CI tooling and stopped Gateway activation remain
-separate changes with their own review and verification.
+The guarded CI interpreter update is complete on both hosts, including the
+build host's remote callback binding. Retained review, full release-tool suites
+and required repository checks passed. Production Gateway PID, service files
+and configuration were unchanged. Its interpreter update remains part of the
+normal candidate deployment and backup lifecycle.
 
 A misplaced provider header test addition was removed from the retained
 companion patch. Its existing Responses case again checks the native headers;
@@ -403,5 +412,5 @@ all 36 patches and the 21 companion metadata checks pass.
 
 All other mapped projects completed during diagnosis. These runs used both
 interpreter versions and are not a fresh candidate's full-suite receipt. The
-three Gateway continuation cases remain blocked on the proposed explicit fixture
+three Gateway continuation cases are being rerun with explicit fixture
 configuration. No new build or DEV submission has been made for these repairs.

@@ -1955,3 +1955,15 @@ index 205f244f..949f25cc 100644
    }
    return replies.length ? replies.join("\n\n") : undefined;
  }
+diff --git a/src/gateway/server-plugin-in-process-dispatch.continuation.test.ts b/src/gateway/server-plugin-in-process-dispatch.continuation.test.ts
+index 37ce74e3..742d9cd0 100644
+--- a/src/gateway/server-plugin-in-process-dispatch.continuation.test.ts
++++ b/src/gateway/server-plugin-in-process-dispatch.continuation.test.ts
+@@ -382,6 +382,7 @@ describe("typed in-process agent continuation authorization", () => {
+                       startTurn.mockClear();
+                       const pending = runWithGatewayToolContinuationContext(() =>
+                         runSessionsSendA2AFlow({
++                          config: context.getRuntimeConfig(),
+                           targetAgentId: "main",
+                           targetSessionKey: "agent:main:child",
+                           displayKey: "agent:main:child",
