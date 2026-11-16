@@ -240,13 +240,13 @@ and CI cleanup, then stop. Phase 2 requires further discussion of all realtime
 patches and is not authorized to start automatically.
 
 **Progress:** Candidate `62d94385` passed DEV and cleanup. Production CI passed
-the previously failing candidate group, then stopped before transfer in two
-installed message-history scenarios. Their generated two-agent roster lacked
-the native explicit ownership setting, so the Gateway rejected startup before
-handling messages. The fixture now declares ownership and explicitly routes its synthetic iMessage
-account to main, with main pinned to the existing fixture workspace. Access
-and untrusted content checks are unchanged. Focused installed scenarios and retained review
-precede the next build and DEV pass. Production is unchanged. Phase 2 stays paused.
+the candidate group, then stopped before transfer in installed recall fixtures.
+Those fixtures now declare native ownership, account routing and workspaces
+explicitly. Broader installed checks also found that the two quiet-group cases
+must opt into native group silence. The repairs change test configuration only;
+permissions, unexpected-request rejection and visible direct replies remain
+checked. Installed qualification and retained review precede a fresh build and
+DEV pass. Production is unchanged. Phase 2 stays paused.
 
 ## Agent section
 
@@ -478,3 +478,13 @@ that account owner instead of selecting the first agent. Main also gets an
 explicit workspace so the native per-agent default does not relocate the
 fixture below a new `main` directory. This changes only test configuration. The enabled and disabled untrusted-content checks, history visibility, tool
 restrictions and recording-only message adapter remain intact.
+
+The full installed message stage then found a second stale fixture assumption:
+accepted group requests require a reply unless group silence is explicitly
+allowed. Pinned `docs/concepts/messages.md` and `docs/channels/groups.md` document
+`agents.defaults.silentReply.group: "allow"` for unaddressed group requests.
+The two quiet-group scenarios now opt into that native setting through a
+strictly group-only fixture option. Unexpected model requests still fail, and
+the direct-chat continuation case still requires a visible reply. Production
+configuration is unchanged. This behavior was already documented in the native
+v2026.9.6 release notes; the tests must state their intended policy explicitly.

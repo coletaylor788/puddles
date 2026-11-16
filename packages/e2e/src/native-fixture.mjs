@@ -99,6 +99,8 @@ function validateScenario(scenario) {
   if (scenario.sessionRecall !== undefined &&
       (!scenario.sessionRecall || typeof scenario.sessionRecall.enabled !== "boolean" ||
        Object.keys(scenario.sessionRecall).join(",") !== "enabled")) throw new Error("Invalid session recall fixture");
+  if (scenario.allowGroupSilence !== undefined &&
+      (scenario.allowGroupSilence !== true || scenario.chatType !== "group")) throw new Error("Invalid group silence fixture");
   if (scenario.heartbeat !== undefined && scenario.heartbeat !== true) throw new Error("Invalid fixture heartbeat selection");
   if (scenario.sessionSend !== undefined && scenario.sessionSend !== true) throw new Error("Invalid fixture native session send selection");
   for (const step of scenario.steps) {
@@ -289,6 +291,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
       config.tools.agentToAgent = { enabled: true, allow: ["main", "reader"],
         untrustedAgents: scenario.sessionRecall.enabled ? ["reader"] : [] };
     }
+    if (scenario.allowGroupSilence) config.agents.defaults.silentReply = { group: "allow" };
     atomicJson(context.configPath, provider ? provider.configure(config) : config);
     if (scenario.sessionRecall) await runCommand(process.execPath,
       [join(packageDir, "fixtures/sessions/seed-reader.mjs"), installedDir, context.root],
