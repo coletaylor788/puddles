@@ -198,9 +198,11 @@ and CI cleanup, then stop. Phase 2 requires further discussion of all realtime
 patches and is not authorized to start automatically.
 
 **Progress:** The removal diff and sandbox handoff are implemented and reviewed.
-The rebuilt installed CLI/Gateway/Docker path passes file, shell, nested MCP,
-background completion, role restrictions and cleanup checks with synthetic
-inference. DEV and the production CI lifecycle remain required. Production is unchanged.
+The installed CLI/Gateway/Docker fixture passes 23 operations across four real
+containers. DEV passed its subscription and boundary checks with terminal cleanup.
+Production CI stopped before deployment on two stale native test-project mappings.
+Both mappings are corrected, and all 12 affected cases pass. The successor needs
+fresh DEV and the full production lifecycle. Production is unchanged.
 
 ## Agent section
 
@@ -314,8 +316,13 @@ The ordered 36-patch composition passes at the pinned stable base. Nine public
 manifest checks pass. Native backend checks cover capability provenance, final
 launch fencing, real grant revocation, and existing removal semantics.
 The combined CLI, Gateway and native admission run passes all 220 tests. Core,
-extension and affected test types pass. The installed check passes 21 operations
-across four real agent containers in 50.5 seconds, including native background
+extension and affected test types pass. The installed check passes 23 operations
+across four real agent containers in 54.944 seconds, including native background
 completion, direct and nested MCP, read-only mounts, role limits and cleanup.
-Inference is synthetic; subscription qualification remains a DEV/TEST gate.
+Inference in that focused fixture is synthetic. DEV subscription and boundary
+qualification passed on candidate `e50b0e6f5aad76d6f04e71e32c7d40418a4a0e2622fb4ccaddde6be1980416f0`.
+Its production workflow stopped before target deployment because two retained
+regressions were assigned to the wrong native projects. `review-undo` belongs to
+`unit`; `legacy-config-migrations.runtime.skills` belongs to `unit-fast`. Both
+remain selected and their 12 cases pass. This changes CI metadata only.
 No production acceptance or Phase 2 work is claimed.
