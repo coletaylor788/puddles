@@ -239,14 +239,14 @@ successfully lands in production. Complete production validation, exact merge
 and CI cleanup, then stop. Phase 2 requires further discussion of all realtime
 patches and is not authorized to start automatically.
 
-**Progress:** The refreshed candidate passed DEV, installed acceptance and teardown.
-Production CI then stopped in four application scenarios before transfer or
-deployment. The repairs adapt tests to native async helpers, Workshop's retired
-proposal export, and one-time peer replies without an extra announcement turn.
-The watcher fixture also waits for traffic readiness before invoking tools after
-restart. These are fixture changes, not runtime patches. Focused qualification
-and retained review precede a fresh build and DEV pass. CI closed the failed
-submission; production is unchanged. Phase 2 stays paused.
+**Progress:** Candidate `62d94385` passed DEV and cleanup. Production CI passed
+the previously failing candidate group, then stopped before transfer in two
+installed message-history scenarios. Their generated two-agent roster lacked
+the native explicit ownership setting, so the Gateway rejected startup before
+handling messages. The fixture now declares ownership and explicitly routes its synthetic iMessage
+account to main, with main pinned to the existing fixture workspace. Access
+and untrusted content checks are unchanged. Focused installed scenarios and retained review
+precede the next build and DEV pass. Production is unchanged. Phase 2 stays paused.
 
 ## Agent section
 
@@ -460,3 +460,21 @@ asserts that contract for the upgraded release, including recovered reports.
 It uses `/readyz` before tools: `docs/gateway/health.md` distinguishes traffic
 readiness from `/healthz` HTTP liveness, which can precede database admission.
 No runtime code, patch, permission or delivery layer changes for these repairs.
+
+### Explicit ownership in installed recall fixtures
+
+Production workflow `gh-43964942131-1` for candidate
+`62d94385cd1b30223a44176a180501202c25e2cd41f6d1c92adb20af59fb8940`
+passed the 14-file candidate group, then failed the first two installed message
+scenarios. Transfer and production were skipped. Source cleanup closed and no
+target transaction was created. A reproduction with the same provider fixture
+captured native startup rejection of the generated `main` and `reader` roster.
+
+Pinned `src/config/zod-schema.agents.ts` requires explicit ownership for a
+multi-agent roster without the legacy default marker. The recall fixture now
+sets `agents.ownership` to `explicit` and binds its synthetic iMessage account
+to `main`. With an explicit multi-agent roster, native routing also requires
+that account owner instead of selecting the first agent. Main also gets an
+explicit workspace so the native per-agent default does not relocate the
+fixture below a new `main` directory. This changes only test configuration. The enabled and disabled untrusted-content checks, history visibility, tool
+restrictions and recording-only message adapter remain intact.

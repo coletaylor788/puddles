@@ -278,7 +278,12 @@ export async function runScenario(installedDir, scenario, options = {}) {
       config.tools.profile = "full";
     }
     if (scenario.sessionRecall) {
-      config.agents.entries = { main: {}, reader: { workspace: join(context.stateDir, "reader-workspace") } };
+      config.agents.ownership = "explicit";
+      config.agents.entries = {
+        main: { workspace: context.workspace },
+        reader: { workspace: join(context.stateDir, "reader-workspace") },
+      };
+      config.bindings = [{ agentId: "main", match: { channel: "imessage", accountId: "default" } }];
       config.tools.allow.push("sessions_history");
       config.tools.sessions = { visibility: "all" };
       config.tools.agentToAgent = { enabled: true, allow: ["main", "reader"],
