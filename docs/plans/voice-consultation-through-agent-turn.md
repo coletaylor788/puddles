@@ -219,6 +219,13 @@ It preserves that patch's purpose and behavior. The earlier request for another
 approval applied the patch policy too broadly and is withdrawn. No new patch or
 runtime behavior is authorized by this clarification.
 
+The provider health-check fixture also needs to drain its incoming HTTP request
+before it can reliably observe client closure on Node 26.13.1. Add `socket.resume()`
+to the existing raw test server within the retained lifecycle patch. Keep the
+response unfinished, cancellation requirement, assertions and one-second bound.
+The negative control without cancellation must remain open. This test correction
+changes no runtime code or service behavior.
+
 ### Status
 
 **Approval:** Production approved for Phase 1, including the stable and CLI
@@ -232,18 +239,14 @@ successfully lands in production. Complete production validation, exact merge
 and CI cleanup, then stop. Phase 2 requires further discussion of all realtime
 patches and is not authorized to start automatically.
 
-**Progress:** The upgrade passed DEV and terminal cleanup. Production CI stopped
-before deployment when the combined native test process exhausted its heap. CI
-now runs original native test projects in separate, sequential processes, retaining
-all tests and each project's setup, worker policy and teardown. This CI-only
-change is reviewed. Native execution exposed a stale macOS port-range assertion
-in the retained service-lifecycle patch; the corrected test passes all 23 cases.
-The remaining mapped projects completed during diagnosis. Three native Gateway
-tests need explicit fixture configuration for the retained results patch; that
-compatibility correction is being qualified. CI services and remote callbacks
-now use the verified Node 26.13.1 interpreter. Both repositories' checks passed
-before this fixture change. The exact OOM trigger remains uncertain. Production
-is unchanged; Phase 2 remains paused.
+**Progress:** The current candidate passed DEV, installed acceptance and teardown.
+Production CI stopped before transfer in a local-provider health-check test. A
+standalone reproduction confirms the test server does not read the request and
+can miss the client's disconnect on Node 26.13.1. The fixture now drains the
+request while keeping its response unfinished and its original closure assertion.
+The no-cancellation control still fails. The application cleanup is unchanged.
+Affected tests and retained review are running before a fresh build and DEV pass.
+CI closed the failed submission; production is unchanged. Phase 2 stays paused.
 
 ## Agent section
 
@@ -387,8 +390,11 @@ upstream defect. The approved upgrade remains pinned to v2026.11.3. The delta is
 one explicit `config` argument in the retained patch's test adaptation. On
 2026-11-16 the owner corrected its earlier approval interpretation: existing
 approval remains valid within the recorded retained-patch scope. The additional
-approval request is withdrawn. Qualification must still rerun the affected
-Gateway project and review the exact test-only diff before submission.
+approval request is withdrawn. The affected Gateway project passed all 152 tests across five files in
+58.86 seconds on Node 26.13.1. Retained review cleared the exact test-only diff.
+The public manifest also registers the continuation test in `gateway-server`;
+combined selection runs it once. All 20 public suite checks and 21 companion
+metadata checks pass.
 
 ### Node and provider qualification follow-up
 
@@ -412,5 +418,22 @@ all 36 patches and the 21 companion metadata checks pass.
 
 All other mapped projects completed during diagnosis. These runs used both
 interpreter versions and are not a fresh candidate's full-suite receipt. The
-three Gateway continuation cases are being rerun with explicit fixture
-configuration. No new build or DEV submission has been made for these repairs.
+Gateway continuation correction is qualified. Candidate
+`ac920c4b2f41d56f1663c7456e9f88418c11d2e8065763a2ad35c3193623e5a9`
+passed DEV run `gh-43912588635-1` with terminal `phase=complete`, no child and
+closed source cleanup. Production workflow `gh-43915015065-1` failed the
+`agents-core` group: 291 cases passed and one health-response cancellation
+assertion failed. Transfer and deployment were skipped. Source queue closure
+and absence of a target transaction were verified before repair work resumed.
+
+### Health response fixture qualification
+
+Production workflow `gh-43915015065-1` stopped before transfer on the native
+health-response cancellation assertion. The stock v2026.11.3 fixture writes an
+unfinished response without consuming the request. Stock `probeHealth` already
+awaits response-body cancellation. A standalone Node 26.13.1 reproduction records
+cancellation called with no server close while paused, successful close after
+resuming the request, and no close when cancellation is omitted. Node 26.1.0
+happens to observe closure with the original fixture. The retained lifecycle
+patch adds only request draining and a comment to this test. Runtime cleanup and
+the test's timeout and assertions stay unchanged.

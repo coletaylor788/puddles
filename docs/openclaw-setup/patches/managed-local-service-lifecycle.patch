@@ -594,7 +594,7 @@ index 07e87689114b09163888cc4d8ecb6867807f0a5a..3e03d28c9f5956053b7e2e8ed9a079e4
    });
  });
 diff --git a/src/agents/provider-local-service.test.ts b/src/agents/provider-local-service.test.ts
-index b15f248e7118266168977ba35c166e390372d27b..10a0e99629ea3571ee46d96eacde7a2b7c33daf0 100644
+index b15f248e7118266168977ba35c166e390372d27b..14d66758b38883995a17c73f6cbb492ca8c13bee 100644
 --- a/src/agents/provider-local-service.test.ts
 +++ b/src/agents/provider-local-service.test.ts
 @@ -15,6 +15,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -605,7 +605,16 @@ index b15f248e7118266168977ba35c166e390372d27b..10a0e99629ea3571ee46d96eacde7a2b
  import { mintSecretSentinel } from "../secrets/sentinel.js";
  import { createDeferredCore } from "../shared/deferred.js";
  import { isPidAlive } from "../shared/pid-alive.js";
-@@ -785,6 +786,48 @@ describe("provider local service", () => {
+@@ -431,6 +432,8 @@ describe("provider local service", () => {
+     const sockets = new Set<net.Socket>();
+     const server = net.createServer((socket) => {
+       sockets.add(socket);
++      // Drain the request so the server can observe peer closure after body cancellation.
++      socket.resume();
+       socket.on("error", () => undefined);
+       socket.on("close", () => {
+         sockets.delete(socket);
+@@ -785,6 +788,48 @@ describe("provider local service", () => {
      }
    });
  

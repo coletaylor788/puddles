@@ -48,3 +48,8 @@ The service fixtures keep listener blocks outside the kernel client-port ranges
 on Linux and macOS. The macOS tests assert the ranges returned by the mocked
 `sysctl`, real socket bindability, and no overlap with existing listeners. They
 do not assume the older fixed 30000–64999 allocation range.
+
+The health-response cancellation fixture drains its incoming request before
+observing the client's disconnect. Its response stays unfinished, so the existing
+closure assertion still requires response-body cancellation. This accommodates
+Node 26.13.1 socket observation without changing runtime cleanup or test timeouts.
