@@ -197,12 +197,12 @@ successfully lands in production. Complete production validation, exact merge
 and CI cleanup, then stop. Phase 2 requires further discussion of all realtime
 patches and is not authorized to start automatically.
 
-**Progress:** The removal diff and sandbox handoff are implemented and reviewed.
-The installed CLI/Gateway/Docker fixture passes 23 operations across four real
-containers. DEV passed its subscription and boundary checks with terminal cleanup.
-Production CI stopped before deployment on two stale native test-project mappings.
-Both mappings are corrected, and all 12 affected cases pass. The successor needs
-fresh DEV and the full production lifecycle. Production is unchanged.
+**Progress:** The upgrade passed DEV and terminal cleanup. Production CI stopped
+before deployment when the combined native test process exhausted its heap. CI
+now runs original native test projects in separate, sequential processes, retaining
+all tests and each project's setup, worker policy and teardown. This CI-only
+change is reviewed; real native execution qualification is in progress. The exact
+OOM trigger remains uncertain. Production is unchanged; Phase 2 remains paused.
 
 ## Agent section
 

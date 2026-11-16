@@ -102,11 +102,14 @@ are never install destinations.
 A companion supplies `E2E_APPLICATION_EXTENSION=/absolute/companion/scripts/application-suite.mjs`.
 It declares additional application targets and checks. A companion check may declare
 `timeoutMs` from 1 millisecond through six hours when its sequential phases need
-a different bound. Omitted values retain the 30-minute default. The runner combines mapped
-public/private targets by Vitest project, preserves distinct required modes,
-checks collection, and runs each selected target once per project. Independent
-projects share four workers by default; explicitly serial tests keep one worker.
-Set `E2E_TEST_WORKERS` to change the full-suite worker count. Missing tests
+a different bound. Omitted values retain the 30-minute default. The runner groups mapped
+public/private targets by native Vitest project, preserves distinct required modes,
+and checks every selection before execution. Each original project config runs
+in a separate process and completes teardown before the next starts. This bounds
+coordinator memory across projects and preserves their serial and exclusive
+fixture ownership. Every selected target still runs once per required project.
+Each invocation has a four-worker ceiling by default; native configs retain
+stricter limits. Set `E2E_TEST_WORKERS` to change that ceiling. Missing tests
 or failed checks fail the suite. It prints durations and does not build, deploy,
 archive reports, or run release-tool implementation tests.
 

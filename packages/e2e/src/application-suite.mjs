@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runCommand } from './process-runner.mjs';
@@ -26,7 +26,7 @@ const collected = (output, target) => output.split('\n').some(line => {
 });
 
 /** Resolve alternatives in batches; run a target only once per selected project. */
-export async function runMappedTests(source, manifests, run, workers = 4, scratch) {
+export async function runMappedTests(source, manifests, run, workers = 4) {
   if (!Number.isSafeInteger(workers) || workers < 1) throw new Error('Test workers must be a positive integer');
   const requests = new Map();
   for (const manifest of manifests) for (const target of nativeRegressionTargets(manifest).tests) {
@@ -38,7 +38,6 @@ export async function runMappedTests(source, manifests, run, workers = 4, scratc
     requests.set(JSON.stringify([target, projects]), { target, projects, index: 0 });
   }
   const selected = new Map();
-  const containers = new Map();
   let pending = [...requests.values()];
   const flags = ['--maxWorkers', String(workers)];
   while (pending.length) {
@@ -60,12 +59,14 @@ export async function runMappedTests(source, manifests, run, workers = 4, scratc
       });
       if (listing.some(row => row.project.startsWith(project + ' ('))) {
         // Native containers own child pools, serial phases and shared fixtures.
-        // Execute their original config instead of nesting it in our combined project.
         if (listing.some(row => !targets.includes(row.path) ||
           !(row.project === project || row.project.startsWith(project + ' (') && row.project.endsWith(')')))) {
           throw new Error('Native container discovery differs from mapped regressions');
         }
-        containers.set(project, true);
+      }
+      if (listing.some(row => !targets.includes(row.path) ||
+        !(row.project === project || row.project.startsWith(project + ' (') && row.project.endsWith(')')))) {
+        throw new Error('Native project discovery differs from mapped regressions');
       }
       for (const item of items) {
         if (!collected(output, item.target)) { pending.push({ ...item, index: item.index + 1 }); continue; }
@@ -74,39 +75,15 @@ export async function runMappedTests(source, manifests, run, workers = 4, scratc
       }
     }
   }
-  const ordinary = new Map([...selected].filter(([project]) => project !== 'e2e' && !containers.has(project)));
-  if (ordinary.size) await runCombinedProjects(source, ordinary, run, flags, scratch);
-  for (const [project, files] of selected) if (project !== 'e2e' && containers.has(project)) {
-    await run(process.execPath, ['scripts/run-vitest.mjs', 'run', '--config', `test/vitest/vitest.${project}.config.ts`, ...flags, ...files], { cwd: source });
+  // Keep each native project's coordinator, module graph and output buffers
+  // inside its own process lifetime. Await teardown before starting the next
+  // project so native serial and exclusive fixtures cannot overlap.
+  for (const [project, files] of selected) if (project !== 'e2e') {
+    await run(process.execPath, ['scripts/run-vitest.mjs', 'run', '--config', `test/vitest/vitest.${project}.config.ts`, ...files], { cwd: source });
   }
   // The upstream e2e entrypoint deliberately runs distinct transport modes.
-  if (selected.has('e2e')) await run(process.execPath, ['scripts/run-vitest.mjs', 'run', '--config', 'test/vitest/vitest.e2e.config.ts', ...flags, ...selected.get('e2e')], { cwd: source });
+  if (selected.has('e2e')) await run(process.execPath, ['scripts/run-vitest.mjs', 'run', '--config', 'test/vitest/vitest.e2e.config.ts', ...selected.get('e2e')], { cwd: source });
   return { projects: selected.size, tests: [...selected.values()].reduce((count, files) => count + files.size, 0) };
-}
-
-export async function runCombinedProjects(source, selected, run, flags, scratch) {
-  if (!isAbsolute(scratch ?? '') || realpathSync(scratch) !== scratch) throw new Error('Combined tests require owned canonical scratch');
-  const directory = join(scratch, 'combined-projects');
-  mkdirSync(directory);
-  const path = join(directory, 'vitest.config.mts');
-  const selection = [...selected].map(([project, files]) => ({ project, files: [...files] }));
-  const targets = [...new Set(selection.flatMap(group => group.files))];
-  const imports = selection.map(({ project }, index) => `import p${index} from ${JSON.stringify(join(source, `test/vitest/vitest.${project}.config.ts`))};`).join('\n');
-  const workers = Number(flags[flags.indexOf('--maxWorkers') + 1] ?? 4);
-  writeFileSync(path, `import base from ${JSON.stringify(join(source, 'vitest.config.ts'))};\nimport {applicationTestProject} from ${JSON.stringify(join(repository, 'packages/e2e/src/application-test-projects.mjs'))};\n${imports}\nconst selection = ${JSON.stringify(selection)};\nconst configs = [${selection.map((_, index) => `p${index}`).join(',')}];\nexport default {...base,test:{...base.test,root:${JSON.stringify(source)},projects:configs.map((config,index)=>applicationTestProject(config,selection[index].files,${JSON.stringify(source)},${workers}))}};\n`);
-  try {
-    // Retain each existing project's runtime, isolation and setup. Verify the
-    // combined collector selects exactly the same file/project pairs.
-    const args = ['scripts/run-vitest.mjs', 'list', '--filesOnly', '--config', path, ...flags, ...targets];
-    const output = await run(process.execPath, args, { cwd: source, capture: true });
-    const expected = selection.flatMap(({ project, files }) => files.map(file => project + ':' + file)).sort();
-    const actual = output.split('\n').flatMap(line => {
-      const match = line.replace(/\x1b\[[0-9;]*m/g, '').trim().match(/^\[([^\]]+)\]\s+(.+)$/);
-      return match ? [match[1] + ':' + match[2].replace(source + '/', '')] : [];
-    }).sort();
-    if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error('Combined project discovery differs from mapped regressions');
-    await run(process.execPath, ['scripts/run-vitest.mjs', 'run', '--config', path, ...flags, ...targets], { cwd: source });
-  } finally { rmSync(directory, { recursive: true, force: true }); }
 }
 
 export async function applicationSuite({ source, artifact, extensionPath, workers = 4, env = process.env, scratch = env.OPENCLAW_APPLICATION_TEST_SCRATCH }, execute = runCommand, preparePython = prepareApplicationPython) {
@@ -151,7 +128,7 @@ export async function applicationSuite({ source, artifact, extensionPath, worker
     relativeFile(project);
     await run(process.execPath, ['scripts/run-tsgo.mjs', '-p', project, '--incremental'], { cwd: source });
   }
-  const mapped = await runMappedTests(source, manifests, run, workers, scratch);
+  const mapped = await runMappedTests(source, manifests, run, workers);
   const candidateTests = nativeRegressionTargets(suite).candidateTests;
   if (candidateTests.length) {
     for (const file of candidateTests) relativeFile(file);
