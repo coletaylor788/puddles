@@ -48,6 +48,7 @@ patch inventory and application commands do not authorize a new or changed patch
 | `claude-code-mode-mcp.patch` | Connect native Claude MCP calls to the shared contained runtime and existing execution policy |
 | `claude-configured-mcp.patch` | Carry permitted configured MCP tools through the restricted CLI host bridge and support exact MCP grants in native workspace profiles |
 | `copilot-configured-mcp.patch` | Connect configured MCP tools to the Copilot host tool bridge with role policy and owned cleanup |
+| [`cli-sandbox-handoff.patch`](cli-sandbox-handoff.md) | Bind native sandbox ownership and mutation authority to managed CLI coding tools |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at

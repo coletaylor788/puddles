@@ -1,6 +1,6 @@
 # Stable upgrade and native CLI voice controls
 
-Status: Two-phase release approved; revised upgrade compatibility scope proposed
+Status: Phase 1 production approved with one sandbox handoff patch; pause before Phase 2
 Issue: https://github.com/coletaylor788/puddles/issues/359
 Last updated: 2026-11-15
 
@@ -10,8 +10,8 @@ Last updated: 2026-11-15
 
 Upgrade to **OpenClaw v2026.11.3**, use native CLI execution and remove redundant
 integration patches. Preserve current integrations, sessions, permissions and
-sandboxing. Finish that production release before implementing and releasing
-the remaining realtime delegation and steering repair.
+sandboxing. Finish that production release, then pause for review of realtime delegation,
+steering and all existing realtime patches.
 
 The release API still identifies v2026.11.3 as latest stable. Newer main contains
 additional fixes, but moving main is not the proposed deployment target.
@@ -20,9 +20,7 @@ additional fixes, but moving main is not the proposed deployment target.
 flowchart LR
   U[Phase 1: stable upgrade and remove redundant integration] --> D[Build and DEV]
   D --> P[Full suite, TEST, PROD, merge and cleanup]
-  P --> V[Phase 2: native realtime coordination repair]
-  V --> D2[Separate build and DEV]
-  D2 --> P2[Separate full suite, TEST, PROD, merge and cleanup]
+  P --> V[Pause: review Phase 2 and existing realtime patches]
 ```
 
 #### Phase 1: use native behavior
@@ -49,42 +47,41 @@ work after a cancelled child's handoff. It does not contain newer main's unified
 session controller or injected child-result context fix. Do not count those as
 stable benefits or claim the complete realtime scenario is already repaired.
 
-#### Sandbox contract and discovered gap
+#### Sandbox handoff repair
+
+Keep the ordinary OpenClaw Docker sandbox and managed exec/process tools. The
+CLI stays on the Gateway, where it calls OpenClaw tools through the existing
+MCP grant. One approved source patch supplies those tools with the prepared
+session sandbox. No additional node service, custom message routing or native
+Bash bypass is introduced.
 
 ```mermaid
 flowchart LR
-  A[Admitted conversation or agent turn] --> C[Configured CLI backend]
-  C --> M[Native OpenClaw MCP grant and tool policy]
-  M --> F[Workspace-scoped file tools]
-  M --> X[Native exec to paired container node]
-  M --> I[Existing scoped integration tools]
+  C[Configured CLI backend] --> M[OpenClaw MCP grant and tool policy]
+  M --> S[Prepared native Docker sandbox]
+  S --> F[Workspace-restricted file tools]
+  S --> E[Managed exec and process]
+  M --> I[Existing integration MCP tools]
 ```
 
-Use existing features and configuration to provide sandboxed shell commands,
-workspace-restricted file tools and the remaining MCP integrations. The requester
-accepts either native sandbox and either shell owner. No new backend plugin,
-custom routing or source patch may be added to satisfy this requirement.
+Adapt upstream [PR #163238](https://github.com/openclaw/openclaw/pull/163238)
+to the pinned stable APIs. Prepare the sandbox only when the effective coding
+tool surface needs it. Keep its lifetime with the native run/grant owner, bind
+both files and shell to it, and fail closed on preparation failure. Preserve
+workspace restrictions, read-only modes and authority revocation at the final
+operation. Existing background command handles and completion notifications
+remain native OpenClaw behavior.
 
-Native `tools.fs.workspaceOnly: true` passed a Gateway file test: inside writes
-succeed and outside writes fail. This does not contain arbitrary shell commands.
-A required shell sandbox must fail closed if unavailable.
+Review every upstream comment and inline finding. Incorporate relevant fixes;
+record evidence for findings that do not apply. Preserve existing backend removal
+semantics, including literal tilde paths and recursive limits. Do not copy older
+PR code over newer stable ownership/disposal APIs. Unsupported third-party
+bridges must not silently acquire mutation authority. Tests must cover the full
+CLI/Gateway path as well as backend units, failure and cleanup.
 
-The normal bundled local CLI route replaces native Bash with mediated OpenClaw
-exec. The tested stable route refuses `host=sandbox` because its coding-tool
-factory lacks the prepared sandbox. This does not establish that every native
-route fails. A stock configuration-only alternative passed an isolated end-to-end test:
-keep the CLI and MCP on the Gateway, bind native exec to a real OpenClaw node
-inside Docker, and enable workspace-only file tools. Commands ran inside the
-container, outside host paths stayed inaccessible, file reads/writes stayed in
-the workspace, and a configured MCP server remained usable. Other host/node
-requests and a disconnected node were refused without host fallback.
-Keep subscription access and native messaging/steering intact. The node mounts only its permitted workspace at the same absolute path used by
-the Gateway and sets that working directory. Separate access boundaries require
-separate mounts/nodes. Deny Gateway-local process and terminal controls; preserve
-role allowlists and disable elevation. Remote node exec is synchronous and has no
-background process handle. This tradeoff needs review before adopting the
-topology. No production configuration changed. A plugin API or an upstream patch
-proposal is not a configuration-only solution.
+The previously tested Docker-node route is feasibility evidence only and is not
+the selected design. Existing native CLI child/cron admission restrictions stay
+intact; this patch does not bypass them or expand runtime placement authority.
 
 #### Native history and permission compatibility
 
@@ -101,9 +98,10 @@ native profile.
 Workspace-only policy is a hard boundary. It does not reproduce our old
 allow-once outside-file approval sequence. Prefer native confinement and explicit
 resources over rebuilding that mechanism just to satisfy an implementation-shaped
-test. Record any resulting access change before implementation. Existing
-unsandboxed diagnostic access needs an explicit equivalent policy; do not
-silently remove protected-path restrictions, widen it, or call it sandboxed.
+test. The approved native boundary applies to diagnostic tools too: shell execution
+uses the ordinary Docker sandbox and file tools stay inside their workspace.
+Existing MCP role permissions remain. Arbitrary host diagnostics and outside-file
+approval are retired; protected paths outside the workspace remain inaccessible.
 
 #### Phase 1 patch retirement
 
@@ -116,7 +114,8 @@ The requester approved removing seven public test-only overlays:
 Also remove `imessage-group-inbound-policy` (unselected behavior) and
 `scoped-container-temp-root` (used only by test helpers). Native regressions stay
 selected independently of patch records. Tests use native secure temporary
-staging. No replacement test overlay or new runtime patch is introduced.
+staging. These removals introduce no replacement overlays. The separately approved
+sandbox handoff is the only new runtime patch.
 
 `talk-agent-parity` and obsolete Workshop proposal compatibility were already
 retired in this candidate; do not count them again. Other audit reductions are
@@ -148,8 +147,9 @@ the same artifact must pass full authenticated TEST acceptance first.
 Qualify the complete application: integrations, subscription login, exact tool
 policy, files and shell, unavailable-sandbox refusal, session/cold continuation,
 steering and cancellation, memory, compaction, migrations and cleanup. Include
-ordinary, restricted and delegated execution. Test observable behavior rather
-than a required Claude-native tool name. Keep unresolved permissions as failing
+ordinary and restricted turns, existing delegated admission/refusal, and
+supported completion paths. Test observable behavior rather than a required
+Claude-native tool name. Keep unresolved permissions as failing
 acceptance gates until the reviewed behavior has a durable regression.
 
 Preserve and rebase both source branches on current main. Use installed `build`,
@@ -161,8 +161,10 @@ or restores an older runtime over migrated state.
 
 #### Phase 2: realtime coordination
 
-After Phase 1 production, merge and cleanup close, start from that landed
-baseline with a separate candidate. The repair will:
+After Phase 1 production, merge and cleanup close, pause for requester review
+of the proposed repair together with all existing realtime patches. Do not
+implement Phase 2 until that discussion produces renewed approval. The prior
+proposal is retained below for discussion:
 
 1. Route Talk through the agent's configured runtime while retaining its caller,
    session and asynchronous result ownership.
@@ -184,26 +186,21 @@ build, DEV, TEST, PROD, merge and cleanup lifecycle independently.
 
 ### Status
 
-**Existing approval:** Production approved in two independent phases. The
-requester's 2026-11-13 instruction approved implementation and shipping within
-that design, with upgrade preservation first. Native Workshop adoption and the
-configured CLI update were subsequently approved. The requester also requires
-sandboxing at the execution owner and retirement of redundant patches.
+**Approval:** Production approved for Phase 1, including the stable and CLI
+upgrade, the 12 approved removals, and one sandbox handoff patch adapted from
+upstream PR #163238. All other patch categories remain deferred.
+**Approval reference:** On 2026-11-15 the requester approved the proposal plus
+this one patch, required every upstream review finding to be incorporated or
+dismissed with evidence, and instructed: "Implement, push, and ship."
+**Stop condition:** The requester then instructed us to pause after Phase 1
+successfully lands in production. Complete production validation, exact merge
+and CI cleanup, then stop. Phase 2 requires further discussion of all realtime
+patches and is not authorized to start automatically.
 
-**Current scope:** The requester approved the test-only and confirmed redundant
-patch removals on 2026-11-15. Remaining category redesigns are deferred until
-after Phase 1 and Phase 2 and future requester assignment. The shell/files/MCP
-investigation must use only existing features and configuration. No new sandbox
-patch or backend plugin is authorized for it.
-
-**Progress:** Public removals are implemented in source. Native regressions remain
-selected, patch-suite checks pass, and the reduced paired stack composes against
-the pinned stable revision. This is not a built or deployed successor candidate.
-The previous installed integration group passed. The configuration-only Docker
-node route passed isolated stock execution, file, MCP and failure-boundary tests.
-Native policy/routing checks passed 127 tests. The reduced candidate still needs
-its own build and installed qualification after configuration review. Phase 2
-has not begun.
+**Progress:** The removal diff is implemented and reviewed. The sandbox handoff
+is implemented and source-reviewed. Earlier Docker-node tests are not qualification of this
+patch. A new build, focused real-path tests, retained review, DEV and the normal
+production CI lifecycle are required. Production is unchanged.
 
 ## Agent section
 
@@ -263,9 +260,9 @@ Docker-node execution, workspace file confinement, configured MCP coexistence,
 host/node override rejection and disconnected-node refusal. This is isolated
 route qualification, not acceptance of the rebuilt upgrade artifact.
 
-1. Prove a documented configuration-only shell/files/MCP recipe and resolve
-   delegated admission and diagnostic/workspace semantics. Do not add a plugin
-   or source patch to make the recipe pass.
+1. Implement the approved sandbox handoff patch and all applicable upstream
+   review fixes. Preserve native admission; enforce the requested sandbox and
+   workspace boundaries using existing configuration.
 2. Implement approved reductions and replacements. Keep cumulative tests,
    patch order and digests coherent. Do not patch prepared distribution chunks.
 3. Update fixtures for native MCP names and parameter shapes. Use Docker-visible
@@ -278,7 +275,7 @@ route qualification, not acceptance of the rebuilt upgrade artifact.
    required checks and sealed build. Dispatch DEV and yield. Inspect actual
    terminal deployment and source cleanup before production submission.
 6. CI runs full application tests, TEST, backup, PROD, exact source merge and
-   cleanup. Phase 2 may start only after those Phase 1 receipts close.
+   cleanup. Stop there for the requested Phase 2 and realtime-patch review.
 
 CI startup adaptation remains application qualification work. Normal DEV/TEST
 and held PROD canary must preserve exact artifact/configuration bindings and
@@ -299,3 +296,23 @@ The requester's two-phase instruction remains controlling. The earlier custom
 protection either/or question was withdrawn and is not an outstanding gate.
 This revised proposal separates existing approval from new compatibility choices.
 No phase completion or production qualification is claimed by this document.
+
+### Approved sandbox implementation checkpoint
+
+Assess all feedback on PR #163238 against stable847611 and the reduced 35-patch
+base. Add one reviewed patch and its cumulative regressions. Preserve native
+background process ownership, sandbox image/network configuration and scoped
+MCP integrations. No Docker-node topology or native child admission bypass.
+
+### Sandbox handoff qualification checkpoint
+
+The new patch carries the complete native sandbox owner from CLI preparation
+through the host-only MCP grant. All accessible upstream review edits were
+assessed in the [feedback ledger](../openclaw-setup/patches/cli-sandbox-handoff.md).
+The retained reviewer cleared the complete source and exact patch export.
+The ordered 36-patch composition passes at the pinned stable base. Nine public
+manifest checks pass. Native backend checks cover capability provenance, final
+launch fencing, real grant revocation, and existing removal semantics.
+The combined CLI, Gateway and native admission run passes all 220 tests. Core
+and extension runtime types pass. Remaining test-type validation and rebuilt
+installed qualification precede the next CI submission. No production acceptance or Phase 2 work is claimed.

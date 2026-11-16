@@ -245,7 +245,20 @@
     "src/auto-reply/reply/session-hooks-context.test.ts": "infra",
     "src/agents/harness/host-skills.test.ts": "agents-support",
     "src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts": "agents-embedded-agent-run",
-    "packages/gateway-protocol/src/schema/protocol-schema-composer.test.ts": "gateway-client"
+    "packages/gateway-protocol/src/schema/protocol-schema-composer.test.ts": "gateway-client",
+    "src/agents/cli-runner/prepare-sandbox.test.ts": "agents-support",
+    "src/agents/sandbox/fs-bridge.mutation-fence.test.ts": "agents-support",
+    "src/agents/sandbox/remote-shell-backend.test.ts": "agents-support",
+    "src/agents/sandbox/remote-fs-bridge.test.ts": "agents-support",
+    "src/agents/apply-patch.test.ts": "agents-core",
+    "extensions/mxc/test/fs-bridge.test.ts": "extensions",
+    "extensions/openshell/src/openshell-mirror-fs-bridge.test.ts": "extension-misc",
+    "src/agents/subagents/spawn/subagent-spawn-child-plan.sandbox-cli.test.ts": "agents-support",
+    "src/cron/isolated-agent/run.model-policy-config-preserved.test.ts": "cron",
+    "src/cron/isolated-agent/destination-completion.test.ts": "cron",
+    "src/agents/sandbox/mcp-grant-mutation-fence.test.ts": "unit-fast",
+    "extensions/openshell/src/backend.exec-workdir.test.ts": "extension-misc",
+    "src/infra/fs-safe-remove.test.ts": "infra"
   },
   "patches": [
     {
@@ -620,6 +633,24 @@
         "src/gateway/mcp-grant-store.test.ts",
         "src/gateway/tool-resolution.test.ts"
       ]
+    },
+    {
+      "name": "cli-sandbox-handoff",
+      "tests": [
+        "src/agents/cli-runner/prepare-sandbox.test.ts",
+        "src/agents/cli-runner/prepare.test.ts",
+        "src/gateway/mcp-grant-store.test.ts",
+        "src/gateway/tool-resolution.test.ts",
+        "src/agents/sandbox/fs-bridge.mutation-fence.test.ts",
+        "src/agents/sandbox/docker-backend.test.ts",
+        "src/agents/sandbox/remote-shell-backend.test.ts",
+        "src/agents/sandbox/remote-fs-bridge.test.ts",
+        "src/agents/apply-patch.test.ts",
+        "extensions/mxc/test/fs-bridge.test.ts",
+        "extensions/openshell/src/openshell-mirror-fs-bridge.test.ts",
+        "src/agents/sandbox/mcp-grant-mutation-fence.test.ts",
+        "extensions/openshell/src/backend.exec-workdir.test.ts"
+      ]
     }
   ],
   "tests": [
@@ -677,7 +708,11 @@
     "extensions/active-memory/trigger-recall.test.ts",
     "extensions/active-memory/config.test.ts",
     "extensions/active-memory/escalation.test.ts",
-    "packages/gateway-protocol/src/schema/protocol-schema-composer.test.ts"
+    "packages/gateway-protocol/src/schema/protocol-schema-composer.test.ts",
+    "src/agents/subagents/spawn/subagent-spawn-child-plan.sandbox-cli.test.ts",
+    "src/cron/isolated-agent/run.model-policy-config-preserved.test.ts",
+    "src/cron/isolated-agent/destination-completion.test.ts",
+    "src/infra/fs-safe-remove.test.ts"
   ],
   "candidateTests": [
     "tests/candidate.gmail-approval.test.ts",

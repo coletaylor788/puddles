@@ -38,6 +38,7 @@ PATCHES=(
   claude-native-agent-profiles
   copilot-configured-mcp
   claude-configured-mcp
+  cli-sandbox-handoff
 )
 
 if [ -n "${MINI_HOST:-}" ]; then
