@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { parseDocument } from "yaml";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-describe.each(["integration", "codeql"])("%s automatic CI path selection", (name) => {
+describe.each(["codeql"])("%s automatic CI path selection", (name) => {
   const parsed = parseDocument(readFileSync(resolve(repoRoot, `.github/workflows/${name}.yml`), "utf8"));
   const workflow = parsed.toJS();
   it("parses the workflow and preserves main push and PR triggers", () => {
@@ -61,55 +61,4 @@ it("keeps CodeQL coverage, weekly scans, and uploads after replacing default set
   const analyze = workflow.jobs.analyze.steps.find((step: any) => step.uses?.startsWith("github/codeql-action/analyze@"));
   expect(analyze).toBeTruthy();
   expect(analyze.with.upload).not.toBe(false);
-});
-
-
-it("runs application checks on feature events and the full prepared suite on dispatch", () => {
-  const workflow = parseDocument(readFileSync(resolve(repoRoot, ".github/workflows/integration.yml"), "utf8")).toJS();
-  expect(workflow.on.workflow_dispatch).toBeNull();
-  expect(workflow.jobs.repository.if).toBe("github.event_name != 'workflow_dispatch'");
-  expect(workflow.jobs.cumulative.if).toBe("github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)");
-  expect(workflow.jobs.repository.env.E2E_RESOURCE_PROFILE).toBe("hosted-arm");
-  const steps = workflow.jobs.repository.steps;
-  const commands = steps.map((step: any) => step.run ?? "").join("\n");
-  expect(commands).toContain("corepack pnpm build\ncorepack pnpm lint\ncorepack pnpm test");
-  expect(commands).toContain("python -m pytest tests/ --ignore=tests/integration -q");
-  expect(commands).toContain("python -m ruff check src/ tests/");
-  expect(steps.some((step: any) => step.with?.repository)).toBe(false);
-  expect(commands).not.toContain("openclaw-test-env.mjs ci");
-  expect(workflow.jobs.cumulative.steps.find((step: any) => step.name === "Check out Puddles").with.ref)
-    .toBe("${{ github.event.pull_request.head.sha || github.sha }}");
-  expect(workflow.jobs.cumulative.steps.some((step: any) => step.run === "node packages/e2e/bin/openclaw-test-env.mjs ci")).toBe(true);
-});
-
-it("selects independent application and release jobs", () => {
-  const app = parseDocument(readFileSync(resolve(repoRoot, '.github/workflows/integration.yml'), 'utf8')).toJS();
-  const release = parseDocument(readFileSync(resolve(repoRoot, '.github/workflows/release.yml'), 'utf8')).toJS();
-  for (const event of ['push', 'pull_request']) {
-    const appRuns = (files: string[]) => files.some(file => !app.on[event]['paths-ignore'].some((glob: string) => matchesGlob(file, glob)));
-    const releaseRuns = (files: string[]) => files.some(file => release.on[event].paths.some((glob: string) => matchesGlob(file, glob)));
-    expect(appRuns(['packages/release/src/backup.mjs'])).toBe(false);
-    expect(releaseRuns(['packages/release/src/backup.mjs'])).toBe(true);
-    expect(appRuns(['openclaw-plugins/secure-gmail/src/index.ts'])).toBe(true);
-    expect(releaseRuns(['openclaw-plugins/secure-gmail/src/index.ts'])).toBe(false);
-    expect(appRuns(['packages/release/src/backup.mjs', 'packages/mcp-hooks/src/index.ts'])).toBe(true);
-    expect(releaseRuns(['packages/release/src/backup.mjs', 'packages/mcp-hooks/src/index.ts'])).toBe(true);
-  }
-  const steps = release.jobs.release.steps.map((step: any) => step.run ?? '').join('\n');
-  expect(release.jobs.release.defaults.run['working-directory']).toBe('packages/release');
-  expect(steps).not.toContain('openclaw-test-env');
-  expect(steps).toContain('pnpm@12.4.0');
-  expect(release.jobs.release.steps.some((step: { run?: string }) => step.run === 'pnpm test')).toBe(true);
-});
-
-it('tests the packaged sandbox image on a Docker-capable runner for every integration event', () => {
-  const workflow = parseDocument(readFileSync(resolve(repoRoot, '.github/workflows/integration.yml'), 'utf8')).toJS();
-  const job = workflow.jobs['sandbox-media'];
-  expect(job['runs-on']).toBe('ubuntu-24.04-arm');
-  expect(job.if).toBeUndefined();
-  const commands = job.steps.filter((step: any) => step.run).map((step: any) => step.run);
-  expect(commands).toEqual([
-    'node packages/sandbox-tools/build.mjs "$RUNNER_TEMP/sandbox-application"',
-    'node packages/sandbox-tools/installed.mjs test "$RUNNER_TEMP/sandbox-application"',
-  ]);
 });

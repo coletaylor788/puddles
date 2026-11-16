@@ -54,6 +54,26 @@ artifacts are not install destinations. See the [suite prerequisites](../e2e/REA
 
 ## Integration requirements
 
+GitHub orchestrates jobs; repository checks run on the development Mac through
+`[self-hosted, macOS, ARM64, puddles-build]`. These OS and architecture labels
+describe the owned runner, not GitHub-hosted compute. Each repository needs its
+own runner registration. Use separate runner work and tool-cache directories on
+the same Mac. Keep target deployment on its existing target runner.
+
+Application builds and acceptance use the application loop above. The former
+`Integration` workflow duplicated that work and is retired. Do not require its
+`repository` or `sandbox-media` checks in new candidate inputs. CI-tooling changes
+still run their independent release suite. CodeQL retains its security analysis
+on the development Mac, including weekly scans. No workflow falls back to a
+GitHub-hosted runner when a Mac is offline; jobs remain queued.
+
+Public fork contributions must receive maintainer approval before any workflow
+can execute on an owned runner. Configure GitHub's fork approval policy to
+`all_external_contributors` before enabling the runner. Normal jobs also select
+only same-repository PR heads. Those YAML guards are defense in depth; the
+repository approval setting is the boundary for changes to workflow YAML itself.
+CodeQL on Apple Silicon requires the Xcode command-line tools and Rosetta 2.
+
 This is a single-owner workflow. User authorization and retained agent review
 belong to the owning task. GitHub approving reviews, another account, branch
 protection, and paid repository features are not prerequisites. Each changed

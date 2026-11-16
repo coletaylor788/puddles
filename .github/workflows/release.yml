@@ -19,16 +19,20 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   release:
-    runs-on: macos-15
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS, ARM64, puddles-build]
     timeout-minutes: 10
     defaults:
       run:
         working-directory: packages/release
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: '26.1.0'
+          node-version: '26.13.1'
+          package-manager-cache: false
       - name: Install pinned package manager
         run: |
           npm install --prefix "$RUNNER_TEMP/puddles-pnpm" --no-save --no-audit --no-fund pnpm@12.4.0
@@ -37,3 +41,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm test
+      - name: Remove job-owned build outputs
+        if: always()
+        run: |
+          rm -rf -- "$GITHUB_WORKSPACE/packages/release/node_modules" "$GITHUB_WORKSPACE/packages/release/dist" "$RUNNER_TEMP/puddles-pnpm"
