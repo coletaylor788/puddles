@@ -184,6 +184,38 @@ the parent is busy or yielded. Require real native CLI execution, permissions,
 no duplicate work and one result through browser and FaceTime. Repeat the full
 build, DEV, TEST, PROD, merge and cleanup lifecycle independently.
 
+#### Supporting Node interpreter update
+
+Use Node 26.13.1 for CI, builds and the upgraded Gateway. Node 26.1 has a SQLite
+column-metadata bug after schema changes; the unchanged database recovery test
+exposes it. Node's [upstream fix](https://github.com/nodejs/node/pull/64219) is
+included from 26.6.0 onward. A minimal reproduction and the unchanged recovery
+test pass with the checksum-verified 26.13.1 binary.
+
+Stage the new interpreter alongside the old one. Adopt it for CI only while
+both hosts are idle, with consistent workflow and service bindings. The Gateway
+switch belongs to the normal stopped deployment and backup lifecycle. Preserve
+both normal and held service definitions in the backup and verify their exact
+interpreter after deployment. Keep unrelated explicit tool launchers unchanged.
+The new interpreter requires a fresh candidate, DEV and full production gate.
+
+#### Proposed test fixture correction, awaiting approval
+
+The retained `untrusted-agent-results.patch` adds a configuration read to the
+reply flow. Three native delegation tests do not supply that configuration. The
+patched flow rejects immediately, while the test waits for a callback that never
+occurs. Native test isolation reproduces the failure. This is compatibility with
+our retained patch, not an independent upstream test defect.
+
+Propose one test-only adaptation in that retained patch: pass
+`config: context.getRuntimeConfig()`
+to this fixture's `runSessionsSendA2AFlow` call. The retained patch already adds this
+parameter. The same Gateway test context then supplies its configuration, while
+all disconnect, revocation and reply assertions remain intact. No runtime code,
+timeout or selected test changes. Do not restore the retired preload patch.
+This correction is proposed separately from the approved patch removals and is
+not implemented until the requester approves it.
+
 ### Status
 
 **Approval:** Production approved for Phase 1, including the stable and CLI
@@ -203,8 +235,10 @@ now runs original native test projects in separate, sequential processes, retain
 all tests and each project's setup, worker policy and teardown. This CI-only
 change is reviewed. Native execution exposed a stale macOS port-range assertion
 in the retained service-lifecycle patch; the corrected test passes all 23 cases.
-The remaining native projects are being qualified. The exact OOM trigger remains
-uncertain. Production is unchanged; Phase 2 remains paused.
+The remaining native projects are being qualified. Three native Gateway tests
+now fail because the retained results patch needs explicit fixture configuration; the correction
+above awaits approval. The exact OOM trigger remains uncertain. Production is
+unchanged; Phase 2 remains paused.
 
 ## Agent section
 
@@ -328,3 +362,46 @@ regressions were assigned to the wrong native projects. `review-undo` belongs to
 `unit`; `legacy-config-migrations.runtime.skills` belongs to `unit-fast`. Both
 remain selected and their 12 cases pass. This changes CI metadata only.
 No production acceptance or Phase 2 work is claimed.
+
+### Pending Gateway fixture correction evidence
+
+The original Gateway project ran five files: 149 tests passed and three requester
+lifetime cases timed out. Each unhandled rejection reports `Runtime config is not
+prepared` from the A2A flow call in
+`src/gateway/server-plugin-in-process-dispatch.continuation.test.ts`. The fixture
+awaits `waitStarted` before observing the rejected reply-flow Promise. A native
+`--isolate` diagnostic reproduced the same three errors with the other 149 tests
+passing. It used a shorter timeout only to bound diagnosis, not as release proof.
+The retired preload overlay is not the fix and remains removed.
+
+The retained reviewer compared the exact unpatched source. The new config
+parameter and read come from `untrusted-agent-results.patch`, so this is our
+compatibility obligation. The latest-release API was checked during this repair;
+v2026.11.4 was published 2026-11-16 UTC. Its unchanged test does not establish an
+upstream defect. The approved upgrade remains pinned to v2026.11.3. Proposed
+delta is one explicit `config` argument in the retained patch's test adaptation;
+no source patch or prepared-source edit has been applied. Approval was
+requested in the task conversation. Remaining native projects continue separately;
+the failed Gateway project stays explicitly blocked and is not counted as passed.
+
+### Node and provider qualification follow-up
+
+A two-connection SQLite reproduction fails with Node 26.1.0 and succeeds with
+26.13.1 without loading OpenClaw. The unchanged native Doctor migration file
+passes all three cases on 26.13.1. Official archive SHA-256:
+`aec2514ea1ceb2ba52455e9ec65986f6749a06dd759e5db2a72e6889668c9735`.
+Executable SHA-256:
+`266dec4dce3a6cdcf5cdc38722a00cf5ae6a12cc51068d2a227655bbb75751ec`.
+Staging is not activation. CI tooling and stopped Gateway activation remain
+separate changes with their own review and verification.
+
+A misplaced provider header test addition was removed from the retained
+companion patch. Its existing Responses case again checks the native headers;
+all dedicated Anthropic header cases remain. Seven provider files pass all 175
+cases on the newer Node, and retained review is clear. Ordered composition of
+all 36 patches and the 21 companion metadata checks pass.
+
+All other mapped projects completed during diagnosis. These runs used both
+interpreter versions and are not a fresh candidate's full-suite receipt. The
+three Gateway continuation cases remain blocked on the proposed explicit fixture
+configuration. No new build or DEV submission has been made for these repairs.

@@ -88,7 +88,7 @@ remain explicit host prerequisites; the suite does not install those services.
 The standalone command owns one deterministic `<artifact>.tests` scratch tree and
 bounded SQLite control files under `<artifact>.tests.lock`, all within the feature
 workspace. Success, failure and catchable signals join children before removing
-scratch, including native transform caches and the combined-project config.
+scratch, including native transform caches.
 Incremental build/compiler caches stay with the build workspace. After SIGKILL
 the next invocation joins the recorded process scope and
 reclaims the same tree before restarting. Whole-workspace finalization also owns
