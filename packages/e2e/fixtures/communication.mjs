@@ -50,6 +50,10 @@ export async function communicationFixture(installedDir, pluginDir, root, option
   const version = JSON.parse(readFileSync(join(installedDir, 'package.json'), 'utf8')).version;
   const [year, month, patch] = version.split('.').map(v => parseInt(v, 10));
   const supportsDetachedReplies = year > 2026 || year === 2026 && (month > 9 || month === 9 && patch >= 6);
+  // v2026.11.3 returns a peer reply once, without the old target announcement turn.
+  // See upstream docs/concepts/session-tool.md and sessions-send-tool.a2a.ts.
+  const oneWayPeerReplies = year > 2026 || year === 2026 && (month > 11 || month === 11 && patch >= 3);
+  const expectsAnnouncement = supportsDetachedReplies && !oneWayPeerReplies;
   const requests = [], receipts = [];
   const sender = createHash('sha256').update('+15555550123').digest('hex').slice(0, 32);
   const path = `memory/correspondence/${sender}/2026-09-26.md`;
@@ -210,7 +214,9 @@ export async function communicationFixture(installedDir, pluginDir, root, option
       writeFileSync(join(root, 'gateway-pid.json'), JSON.stringify({ pid: child.pid, port }));
       for (let i = 0; i < 600; i++) {
         assertCommunicationGatewayRunning(child, 'startup');
-        try { if ((await fetch(`http://127.0.0.1:${port}/healthz`)).ok) return; } catch {}
+        // HTTP liveness precedes native sidecar and agent-database admission.
+        // Wait for traffic readiness before invoking tools, including after restart.
+        try { if ((await fetch(`http://127.0.0.1:${port}/readyz`)).ok) return; } catch {}
         await delay(100);
       }
       throw new Error('Gateway startup timed out');
@@ -246,7 +252,7 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     }
     if (supportsDetachedReplies) {
       await waitForReply(() => followups >= 1, 'watcher follow-up');
-      await waitForReply(() => announcements >= 1, 'silent announcement');
+      if (expectsAnnouncement) await waitForReply(() => announcements >= 1, 'silent announcement');
     }
     assert.equal(mainCalls, 2, 'main reads the guarded handoff');
     assert.equal(followups, supportsDetachedReplies ? 1 : 0, 'native follow-up ends without another intake sweep');
@@ -275,7 +281,8 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     writeFileSync(join(workspace, pendingPath), `Sender key: ${sender}\nWatcher pending: yes\nSource: interrupted-report. Action already completed: fixture-event. Report pending.\n`);
     await heartbeat(); // Empty inbox still discovers and sends the unfinished report.
     await waitForReply(() => mainCalls >= 4, 'recovered main report');
-    if (supportsDetachedReplies) await waitForReply(() => announcements >= 2, 'recovered announcement');
+    if (supportsDetachedReplies) await waitForReply(() => followups >= 2, 'recovered watcher follow-up');
+    if (expectsAnnouncement) await waitForReply(() => announcements >= 2, 'recovered announcement');
     writeFileSync(join(workspace, pendingPath), readFileSync(join(workspace, pendingPath), 'utf8').replace('Watcher pending: yes', 'Watcher pending: no') + '\nMain received report. Owner: main.\n');
     await heartbeat(); // Main acknowledgment leaves a truly empty heartbeat quiet.
     assert.equal(readFileSync(join(workspace, path), 'utf8'), afterRecovery, 'recovery does not rewrite settled correspondence');
@@ -286,7 +293,8 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     const calls = readFileSync(join(pim, 'calls.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
     assert.equal(calls.filter(c => c[0] === 'create').length, 1, 'recovery does not repeat calendar creation');
     assert.equal(mainCalls, 4, 'only the initial and recovered reports reach main');
-    assert.equal(announcements, supportsDetachedReplies ? 2 : 0, 'native final announcement stays silent');
+    assert.equal(followups, supportsDetachedReplies ? 2 : 0, 'each accepted report receives exactly one native reply');
+    assert.equal(announcements, expectsAnnouncement ? 2 : 0, 'native peer replies do not create an extra target turn');
     assert.equal(readerCalls, 12, 'bounded intake jobs and one separate calendar reader');
     const readerFiles = readdirSync(join(context.stateDir, 'agents/communication-reader/sessions')).filter(p => p.endsWith('.jsonl'));
     assert.deepEqual(readerFiles, [], 'reader transcripts are deleted');

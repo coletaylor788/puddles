@@ -239,14 +239,14 @@ successfully lands in production. Complete production validation, exact merge
 and CI cleanup, then stop. Phase 2 requires further discussion of all realtime
 patches and is not authorized to start automatically.
 
-**Progress:** The current candidate passed DEV, installed acceptance and teardown.
-Production CI stopped before transfer in a local-provider health-check test. A
-standalone reproduction confirms the test server does not read the request and
-can miss the client's disconnect on Node 26.13.1. The fixture now drains the
-request while keeping its response unfinished and its original closure assertion.
-The no-cancellation control still fails. The application cleanup is unchanged.
-Affected tests and retained review are running before a fresh build and DEV pass.
-CI closed the failed submission; production is unchanged. Phase 2 stays paused.
+**Progress:** The refreshed candidate passed DEV, installed acceptance and teardown.
+Production CI then stopped in four application scenarios before transfer or
+deployment. The repairs adapt tests to native async helpers, Workshop's retired
+proposal export, and one-time peer replies without an extra announcement turn.
+The watcher fixture also waits for traffic readiness before invoking tools after
+restart. These are fixture changes, not runtime patches. Focused qualification
+and retained review precede a fresh build and DEV pass. CI closed the failed
+submission; production is unchanged. Phase 2 stays paused.
 
 ## Agent section
 
@@ -437,3 +437,26 @@ resuming the request, and no close when cancellation is omitted. Node 26.1.0
 happens to observe closure with the original fixture. The retained lifecycle
 patch adds only request draining and a comment to this test. Runtime cleanup and
 the test's timeout and assertions stay unchanged.
+
+### Candidate scenario compatibility
+
+Candidate `d912b01f9aecf7686ce41b6c0db0176895e9af322ef690a5ea1bdc148ed8861e`
+passed DEV `gh-43953011833-1`. Production workflow `gh-43955294419-1` stopped
+in the candidate scenario group before transfer. Its source submission closed,
+transfer cleanup was already clean, and no target transaction was created.
+
+The native plugin registry and Talk target/session helpers are async. Fixtures
+now await them and compare stable routing fields while exercising their current
+authority guards. Native skipped delivery no longer contains an announce mode.
+Workshop Doctor now exports pending drafts to the owning agent's retired-draft
+archive and removes obsolete proposal storage. The fixture checks exact draft
+content, owner isolation, unchanged applied skills and repeatability.
+
+The communication reproduction received main's reply once, then timed out
+waiting for a removed announcement turn. Pinned upstream
+`docs/concepts/session-tool.md` and `src/agents/tools/sessions-send-tool.a2a.ts`
+explicitly require one-time peer replies without another target turn. The fixture
+asserts that contract for the upgraded release, including recovered reports.
+It uses `/readyz` before tools: `docs/gateway/health.md` distinguishes traffic
+readiness from `/healthz` HTTP liveness, which can precede database admission.
+No runtime code, patch, permission or delivery layer changes for these repairs.
