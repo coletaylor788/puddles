@@ -1179,3 +1179,23 @@ index 9ab3002dac0..341669ad490 100644
  @@ -282,2 +278,2 @@
  -    "chars": 879,
  -    "roughTokens": 220
+diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
+--- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
++++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
+@@ -6,6 +6,7 @@
+       "inputSchema": {
+         "properties": {
+           "agentId": {
++            "description": "Target agent profile. Native scheduled/cron callers require it by default. ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile; same-profile omission requires policy to allow it.",
+             "type": "string"
+           },
+           "attachAs": {
+@@ -198,7 +199,7 @@
+             "type": "string"
+           },
+           "taskName": {
+-            "description": "Stable later-target alias; starts lowercase letter; then lowercase/digit/_/-.",
++            "description": "Stable later-target alias; does not select an agent profile; starts lowercase letter; then lowercase/digit/_/-.",
+             "type": "string"
+           },
+           "thinking": {
