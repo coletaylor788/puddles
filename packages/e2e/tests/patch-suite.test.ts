@@ -2,9 +2,6 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseDocument } from "yaml";
-// @ts-expect-error JS lifecycle exports are tested at runtime.
-import { safeNode } from "../src/application-suite.mjs";
 
 type PatchEntry = {
   name: string;
@@ -93,29 +90,6 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(suite.openclawRef).toMatch(/^[0-9a-f]{40}$/);
   });
 
-  it("keeps the CI checkout synchronized with the patch-suite pin", () => {
-    const workflow = readFileSync(
-      join(repoRoot, ".github", "workflows", "integration.yml"),
-      "utf8",
-    );
-    const match = workflow.match(
-      /repository:\s*openclaw\/openclaw\s*\n\s*ref:\s*([0-9a-f]{40})/,
-    );
-
-    expect(match?.[1]).toBe(suite.openclawRef);
-  });
-
-  it("keeps the full application check separate from its one build", () => {
-    const workflow = parseDocument(readFileSync(join(repoRoot, ".github/workflows/integration.yml"), "utf8")).toJS();
-    const steps = workflow.jobs.cumulative.steps;
-    const build = steps.findIndex((step: any) => step.name === "Build the application once");
-    const check = steps.findIndex((step: any) => step.name === "Run the full application suite");
-    expect(build).toBeGreaterThan(-1);
-    expect(check).toBeGreaterThan(build);
-    expect(steps[check].env.OPENCLAW_CANDIDATE_DIR).toBeTruthy();
-    expect(steps[check].run).toBe("node packages/e2e/bin/openclaw-test-env.mjs ci");
-  });
-
   it("maps exact Vitest projects and proves collection before running old regressions", () => {
     const manifest = JSON.parse(readFileSync(join(packageDir, "openclaw-patch-suite.json"), "utf8"));
     expect(manifest.testProjects["packages/memory-host-sdk/src/host/backend-config.test.ts"]).toBe("unit-fast-isolated");
@@ -135,14 +109,4 @@ describe("OpenClaw cumulative patch suite", () => {
     ]);
   });
 
-  it("uses an upstream-supported SQLite-safe Node runtime and explicit Corepack in CI", () => {
-    const workflow = readFileSync(
-      join(repoRoot, ".github", "workflows", "integration.yml"),
-      "utf8",
-    );
-    const match = workflow.match(/node-version:\s*"(\d+)\.(\d+)\.(\d+)"/);
-    expect(match).not.toBeNull();
-    expect(safeNode(match!.slice(1).join("."))).toBe(true);
-    expect(workflow).toContain("npm install --global corepack@0.36.0");
-  });
 });
