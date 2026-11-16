@@ -197,10 +197,10 @@ successfully lands in production. Complete production validation, exact merge
 and CI cleanup, then stop. Phase 2 requires further discussion of all realtime
 patches and is not authorized to start automatically.
 
-**Progress:** The removal diff is implemented and reviewed. The sandbox handoff
-is implemented and source-reviewed. Earlier Docker-node tests are not qualification of this
-patch. A new build, focused real-path tests, retained review, DEV and the normal
-production CI lifecycle are required. Production is unchanged.
+**Progress:** The removal diff and sandbox handoff are implemented and reviewed.
+The rebuilt installed CLI/Gateway/Docker path passes file, shell, nested MCP,
+background completion, role restrictions and cleanup checks with synthetic
+inference. DEV and the production CI lifecycle remain required. Production is unchanged.
 
 ## Agent section
 
@@ -313,6 +313,9 @@ The retained reviewer cleared the complete source and exact patch export.
 The ordered 36-patch composition passes at the pinned stable base. Nine public
 manifest checks pass. Native backend checks cover capability provenance, final
 launch fencing, real grant revocation, and existing removal semantics.
-The combined CLI, Gateway and native admission run passes all 220 tests. Core
-and extension runtime types pass. Remaining test-type validation and rebuilt
-installed qualification precede the next CI submission. No production acceptance or Phase 2 work is claimed.
+The combined CLI, Gateway and native admission run passes all 220 tests. Core,
+extension and affected test types pass. The installed check passes 21 operations
+across four real agent containers in 50.5 seconds, including native background
+completion, direct and nested MCP, read-only mounts, role limits and cleanup.
+Inference is synthetic; subscription qualification remains a DEV/TEST gate.
+No production acceptance or Phase 2 work is claimed.
