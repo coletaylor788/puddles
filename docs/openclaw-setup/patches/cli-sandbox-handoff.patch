@@ -1984,7 +1984,7 @@ index 8e3596ef653ae7df62065a4dea9b6b66d8831c0e..3f6cef00b75cf276af402f4db40deb6a
      } finally {
        await session.dispose();
 diff --git a/src/gateway/mcp-grant-store.test.ts b/src/gateway/mcp-grant-store.test.ts
-index 0049ebb7c9f20b201083948970fc4c237f7d57bc..e9133de5e333325b4dbb952add83aa293f0af4e8 100644
+index 0049ebb7c9f20b201083948970fc4c237f7d57bc..bf358ca2b9bfc8f9c5eee96452c0dfdc3ea982dc 100644
 --- a/src/gateway/mcp-grant-store.test.ts
 +++ b/src/gateway/mcp-grant-store.test.ts
 @@ -5,6 +5,8 @@ import {
@@ -1996,12 +1996,12 @@ index 0049ebb7c9f20b201083948970fc4c237f7d57bc..e9133de5e333325b4dbb952add83aa29
  import type { SkillLibraryAuthoringCapability } from "../skills/library/authoring.js";
  import {
    activateMcpLoopbackClientGrantCapture,
-@@ -98,6 +100,36 @@ describe("mcp-grant-store", () => {
+@@ -98,6 +100,37 @@ describe("mcp-grant-store", () => {
      expect(resolveMcpLoopbackClientGrant(params)).toBeUndefined();
    });
  
 +  it("keeps sandbox custody host-only and tied to the exact live capture", async () => {
-+    const sandboxExecution = {
++    const sandboxExecution: PreparedCliSandboxExecution = {
 +      sandbox: createSandboxTestContext(),
 +      effectiveCwd: "/projected",
 +      effectiveWorkspace: "/projected",
@@ -2009,10 +2009,11 @@ index 0049ebb7c9f20b201083948970fc4c237f7d57bc..e9133de5e333325b4dbb952add83aa29
 +      sessionPermissionRoot: "/projected",
 +      sessionPermissionPolicy: undefined,
 +      effectiveFsWorkspaceOnly: true,
++      sandboxReport: { mode: "all", sandboxed: true },
 +      sandboxSessionKey: "agent:main:first",
 +      sessionAgentId: "main",
 +      [Symbol.dispose]: () => {},
-+    } satisfies PreparedCliSandboxExecution;
++    };
 +    const grant = mintClient({
 +      sandboxExecution,
 +      admittedRunContext: await admitted("sandbox-run"),
