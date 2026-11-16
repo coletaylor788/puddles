@@ -201,8 +201,10 @@ patches and is not authorized to start automatically.
 before deployment when the combined native test process exhausted its heap. CI
 now runs original native test projects in separate, sequential processes, retaining
 all tests and each project's setup, worker policy and teardown. This CI-only
-change is reviewed; real native execution qualification is in progress. The exact
-OOM trigger remains uncertain. Production is unchanged; Phase 2 remains paused.
+change is reviewed. Native execution exposed a stale macOS port-range assertion
+in the retained service-lifecycle patch; the corrected test passes all 23 cases.
+The remaining native projects are being qualified. The exact OOM trigger remains
+uncertain. Production is unchanged; Phase 2 remains paused.
 
 ## Agent section
 

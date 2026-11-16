@@ -43,3 +43,8 @@ packaging configuration and verifies the artifact has no native runtime imports.
 Like upstream packaging tests, it runs in the native `tooling` project and
 `test-root-scripts` type graph. Keeping the build configuration out of the core
 test graph preserves the existing extension import boundary.
+
+The service fixtures keep listener blocks outside the kernel client-port ranges
+on Linux and macOS. The macOS tests assert the ranges returned by the mocked
+`sysctl`, real socket bindability, and no overlap with existing listeners. They
+do not assume the older fixed 30000–64999 allocation range.

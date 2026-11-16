@@ -1511,7 +1511,7 @@ index 0ec2fd69ec10a98d7bf37f714a7d3cbb1479e67b..433794393a68468e0427f350a1fd0440
      params.assertCurrent?.();
      const [startupResult, secretDeliveryResult] = await Promise.allSettled([
 diff --git a/src/test-utils/ports.test.ts b/src/test-utils/ports.test.ts
-index 46b6871e32532f9f91d699501c9eada6834a2ca4..3fa948a9713b112782880b5775dfaa60c4a493e0 100644
+index 46b6871e32532f9f91d699501c9eada6834a2ca4..28a32a0576b2d7dd737f477cf8d263d222f4f93d 100644
 --- a/src/test-utils/ports.test.ts
 +++ b/src/test-utils/ports.test.ts
 @@ -7,6 +7,7 @@ const host = vi.hoisted(() => ({
@@ -1548,7 +1548,19 @@ index 46b6871e32532f9f91d699501c9eada6834a2ca4..3fa948a9713b112782880b5775dfaa60
    host.rejectPort.mockReset();
    host.cacheKey = Symbol("test port host");
  });
-@@ -194,6 +207,29 @@ describe("deterministic test port blocks", () => {
+@@ -149,8 +162,9 @@ describe("deterministic test port blocks", () => {
+           () => getDeterministicFreePortBlock(),
+         );
+         if (os === "darwin") {
+-          expect(port).toBeGreaterThanOrEqual(30000);
+-          expect(port + 4).toBeLessThanOrEqual(64999);
++          expect(port).toBeGreaterThanOrEqual(1024);
++          expect(port + 4).toBeLessThan(49152);
++          expect(host.sysctl).toHaveBeenCalledTimes(1);
+           expect(host.reads).not.toHaveBeenCalled();
+         }
+         for (const offset of [0, 1, 2, 3, 4]) {
+@@ -194,6 +208,29 @@ describe("deterministic test port blocks", () => {
      },
    );
  
@@ -1578,7 +1590,7 @@ index 46b6871e32532f9f91d699501c9eada6834a2ca4..3fa948a9713b112782880b5775dfaa60
    it.each([
      { deniedOffset: 0, permissionFallback: false },
      { deniedOffset: 1, permissionFallback: true },
-@@ -287,6 +323,18 @@ describe("deterministic test port blocks", () => {
+@@ -287,6 +324,18 @@ describe("deterministic test port blocks", () => {
      },
    );
  
@@ -1597,7 +1609,7 @@ index 46b6871e32532f9f91d699501c9eada6834a2ca4..3fa948a9713b112782880b5775dfaa60
    it("skips HTTP-blocked derived ports before accepting a denied Linux block", async () => {
      host.range = "1 1711";
      host.rejectPort.mockReturnValue("EPERM");
-@@ -306,9 +354,15 @@ describe("deterministic test port blocks", () => {
+@@ -306,9 +355,15 @@ describe("deterministic test port blocks", () => {
      host.platform.mockReturnValue(os);
      host.rejectPort.mockReturnValue("EACCES");
      const { getFreePortBlockWithPermissionFallback } = await import("./ports.js");
