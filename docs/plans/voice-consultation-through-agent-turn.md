@@ -320,15 +320,15 @@ repair was implemented. The requester subsequently approved stock backup
 behavior with accepted degradation. Retire backup-only overlays and parity
 requirements while preserving primary Claude and all shared access controls.
 
-**Progress:** The post-install migration repair passed DEV with teardown and source
-cleanup closed. Production CI then stopped in the source test lane before target
-deployment. All installed checks passed, including native migration. One
-communication fixture exceeded its 180-second execution limit. The unchanged
-fixture passes locally; workload contention is not yet established as the cause.
-The test repair bounds HTTP requests, reports elapsed stages and joins its owned
-Gateway before deleting fixture state. The execution limit and behavior assertions
-stay intact. Fresh qualification and production acceptance remain required.
-Phase 2 stays paused until Phase 1 acceptance, exact merge and eligible cleanup.
+**Progress:** The candidate passed DEV, the full application suite and TEST.
+Production preparation stopped at the exact predecessor check: an approved CI
+tooling activation had changed the temporary Gateway launcher's helper path after
+its fingerprint was frozen. The helper bytes are unchanged. The transaction and
+source cleanup are closed. Refresh the reviewed fingerprint and check these same
+production service inputs read-only during DEV and TEST preparation. Keep the
+production backup guard unchanged. Twenty focused checks and retained review pass.
+Fresh qualification and production acceptance remain required. Phase 2 stays paused
+until Phase 1 acceptance, exact merge and eligible cleanup.
 
 ## Agent section
 
@@ -336,20 +336,19 @@ Phase 2 stays paused until Phase 1 acceptance, exact merge and eligible cleanup.
 
 #### Current qualification repair
 
-DEV completed with exact terminal and cleanup evidence. The following production
-source suite stopped before deployment: installed checks passed in 2,699,233 ms,
-source checks failed in 1,867,048 ms, and both lanes joined in 2,699,272 ms.
-The only reported failing test was the communication heartbeat and restart fixture.
-Its unchanged standalone execution passed in 52 seconds and its Vitest test passed
-in 44 seconds. These results do not prove the cause of the loaded-run timeout.
+The full application suite now passes with both lanes joined. The communication
+fixture repair retains the 180-second execution bound, reports elapsed stages and
+joins owned children before cleanup. No runtime regression or contention cause
+was established for the earlier timeout.
 
-The fixture's HTTP waits were unbounded, and Vitest timeout could delete its root
-before its asynchronous Gateway stopped. Bound startup by elapsed wall time and
-bound tool response bodies. Run the fixture through the existing owned-process
-runner with the same 180-second execution limit and 30 seconds for teardown.
-Keep stage diagnostics and all heartbeat, handoff, restart and access assertions.
-A local HTTP server regression verifies a stalled response body is cancelled.
-No product runtime or upstream patch changes.
+The next production attempt stopped because the frozen temporary service launcher
+fingerprint predated an approved CI activation. Only its installed helper path
+changed; old and new helper bytes match. Refresh that exact reviewed input.
+DEV and TEST preparation now validate the same service profile and launcher hashes
+read-only, before any preparation mutation. Production still requires exact original
+and backup fingerprints before changing either launcher. Focused controls pass
+20 checks, including drift rejection without writes and explicit refreshed-input
+acceptance. The retained reviewer cleared the change. No runtime patch changes.
 
 #### Stock backup qualification follow-up
 
