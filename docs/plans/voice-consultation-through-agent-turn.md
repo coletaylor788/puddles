@@ -321,8 +321,9 @@ requirements while preserving primary Claude and all shared access controls.
 
 **Progress:** The v2026.11.4 candidate builds. Native core and extension types,
 paired metadata and the focused 582-test native lane pass. The installed Claude
-CLI delegation boundary passes with scripted inference. Copilot qualification
-proves the two completion defects described above. The custom repair proposals
+CLI delegation boundary passes with scripted inference. Isolated composed-candidate
+Copilot scenarios exposed the two failures described above; a clean-stock or
+live-chat failure is not established. The custom repair proposals
 are withdrawn; backup-only overlay retirement and qualification updates are in
 progress under the new stock-backup instruction. Owner-gated MCP qualification
 passes. The native lane completed with four reviewed fixture mismatches; these
