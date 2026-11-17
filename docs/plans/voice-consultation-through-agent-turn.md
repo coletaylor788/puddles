@@ -195,6 +195,46 @@ working steering, unchanged transcript/provenance, untrusted result handling,
 current policy and stopped-plugin denial, and cancellation when session or
 source ownership changes. The full application and installed gates still apply.
 
+#### Stock backup behavior (approved)
+
+On 2026-11-16 the requester said: "Keep copilot cli stock and accept any
+degradation because it’s the backup path." Claude CLI remains the primary
+runtime. This authorizes retiring backup-only custom behavior and its parity
+requirements. It does not authorize either withdrawn completion repair.
+
+```mermaid
+flowchart LR
+  C[Chat and delegated work] --> O[Native OpenClaw coordination]
+  O --> A[Primary Claude CLI]
+  O --> B[Configured native backup runtime]
+  A --> R[Required completion behavior]
+  B --> L[Accept upstream backup limitations]
+```
+
+Keep the configured native plugin-to-SDK-to-CLI backup route. Do not silently
+switch to the built-in provider loop or create another adapter. Remove
+backup-specific prompt, usage, latency, memory-journal and yield overlays, plus
+backup extension hunks in mixed public patches. Split mixed cleanup and model
+patches by consumer before removing them. Preserve shared credential ownership,
+requester authorization, sandbox confinement, external-write approvals and
+recovery-safe deployment locks. No new runtime behavior is added to compensate
+for upstream backup limitations.
+
+| Qualification | Primary Claude CLI | Stock backup |
+| --- | --- | --- |
+| Direct tool result and untrusted input handling | Required | Required for supported tools |
+| Delayed result, spawn completion and yield | Required | Native limitations accepted; no custom parity repair |
+| Ordinary turn, resume and configured fallback/restore | Required | Required |
+| Workspace/shell confinement and external-write approval | Required | Required or capability unavailable; never bypassed |
+| Realtime steering and proactive completion | Phase 2 qualification | Degraded native behavior accepted |
+
+Retire assertions tied only to removed backup enhancements. Keep primary
+assertions and all safety checks. Record known limitations explicitly rather
+than report an unexercised or degraded path as equivalent. Rebuild and qualify
+the reduced composition through the normal DEV and PROD process. Phase 1 still
+ends with production acceptance, exact merge and eligible CI cleanup, then a
+pause before Phase 2. Passing chat tests does not establish realtime acceptance.
+
 #### Phase 2: realtime coordination
 
 After Phase 1 production, merge and cleanup close, pause for requester review
@@ -275,15 +315,18 @@ and CI cleanup, then stop. Phase 2 requires further discussion of all realtime
 patches and is not authorized to start automatically.
 
 **Additional repair decision:** Rejected by the requester on 2026-11-16. Neither
-repair was implemented. Investigate removal of custom interference and supported
-native OpenClaw behavior. Do not request approval for the withdrawn proposals.
+repair was implemented. The requester subsequently approved stock backup
+behavior with accepted degradation. Retire backup-only overlays and parity
+requirements while preserving primary Claude and all shared access controls.
 
 **Progress:** The v2026.11.4 candidate builds. Native core and extension types,
 paired metadata and the focused 582-test native lane pass. The installed Claude
 CLI delegation boundary passes with scripted inference. Copilot qualification
 proves the two completion defects described above. The custom repair proposals
-are withdrawn; exact stock-versus-patched investigation continues. Owner-gated
-MCP qualification passes, and the remaining native qualification continues.
+are withdrawn; backup-only overlay retirement and qualification updates are in
+progress under the new stock-backup instruction. Owner-gated MCP qualification
+passes. The native lane completed with four reviewed fixture mismatches; these
+will be retired or corrected according to the final reduced composition.
 The last production workflow failed before deployment and its cleanup is closed.
 Production is unchanged. No successor deployment has been submitted. Phase 2
 stays paused.
@@ -680,3 +723,25 @@ is unchanged from upstream. Use exact stock-versus-patched reproduction where
 possible. Prefer deletion of unnecessary patches, supported configuration and
 upstream stable behavior. Do not implement custom context exits, delivery,
 steering, replay or completion injection. Phase 2 remains paused.
+
+### Stock backup implementation checkpoint
+
+Requester authorization on 2026-11-16 explicitly accepts degraded stock Copilot
+CLI backup behavior. The configured route remains native Copilot plugin, SDK
+and CLI, selected through existing model runtime bindings. Do not add a new
+provider adapter or change the separately approved capacity-routing service.
+
+Retire Copilot extension-only overlay hunks after exact composition review.
+Private skills, usage, latency, yield and detached-memory overlays are candidates
+for full removal. Mixed cleanup, shared model policy, Code Mode and harness
+authority changes require per-hunk consumer checks so primary Claude and shared
+access controls stay intact. The retained reviewer owns the complete reduced
+diff review. No prepared source or artifact mutation occurs before composition
+and preservation checks. Rebuild invalidates affected installed evidence.
+
+Installed completion qualification retains all four Claude modes. The stock
+backup still exercises direct result framing, ordinary turn/resume and fallback
+restoration; automatic private-result projection and custom yield guarantees
+are accepted limitations. Remove obsolete backup-only parity assertions
+explicitly. Never loosen primary completion assertions or either runtime's
+credential, workspace, shell or external-write boundaries.
