@@ -138,3 +138,17 @@ bound, a 128 MiB database cap (plus at most that much rollback journal), and FUL
 auto-vacuum after removal. Each inventory is limited to one million entries.
 Unknown paths are retained for diagnosis; cleanup does not infer ownership from a
 filename. These checks preserve the existing registry lock and collector API.
+
+## Post-install state migration
+
+A DEV, TEST or PROD target can declare an optional `postInstall` command using
+exactly the same bounded command shape as `prepare`. Deployment stops the service,
+runs preparation, copies and verifies the frozen runtime, runs `postInstall`,
+verifies the runtime is still unchanged, then starts the service and runs health
+and acceptance checks. Use this boundary for state migration that must invoke the
+new CLI from the registered installed location. Keep artifact bytes immutable.
+The phase is `dev-post-install`, `test-post-install` or `prod-post-install`.
+
+A failed hook fails the existing deployment stage. Production restores runtime
+and state through its existing backup recovery; neither rollback nor standalone
+backup recovery invokes the hook. Omitted hooks preserve the previous lifecycle.

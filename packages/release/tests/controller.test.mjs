@@ -428,3 +428,50 @@ test('snapshot hashing retains existing digests while artifact links stay strict
     rmSync(join(artifact, 'invalid'));
   }
 });
+
+for (const name of ['dev', 'test', 'prod']) test(`${name} post-install sees verified new bytes before start`, async t => {
+  const f = fixture(t), target = name === 'dev' ? { ...f.config.test, runtime: join(f.root, 'dev') } : f.config[name];
+  target.prepare = target.stop; target.postInstall = target.stop;
+  const events = [];
+  const execute = async (_, env) => {
+    const phase = env.PUDDLES_RELEASE_PHASE; events.push(phase);
+    if (phase === name + '-post-install') {
+      assert.equal(treeHash(target.runtime), treeHash(f.ticket.artifact));
+      assert.equal(readFileSync(join(target.runtime, 'version'), 'utf8'), 'new');
+      assert.ok(events.includes(name + '-prepare'));
+      assert.ok(!events.includes(name + '-start'));
+    }
+  };
+  if (name === 'dev') await deployDev(f.config, f.ticket, target, execute);
+  else { enqueue(f.config.root, f.ticket); assert.equal((await runNext(f.config, execute)).status, 'released'); }
+  assert.ok(events.indexOf(name + '-prepare') < events.indexOf(name + '-post-install'));
+  assert.ok(events.indexOf(name + '-post-install') < events.indexOf(name + '-start'));
+});
+
+for (const failure of ['throws', 'mutates runtime']) test(`post-install ${failure} restores production state without rerunning migration`, async t => {
+  const f = fixture(t); f.config.prod.postInstall = f.config.prod.stop;
+  enqueue(f.config.root, f.ticket);
+  const result = await runNext(f.config, async (_, env) => {
+    const phase = env.PUDDLES_RELEASE_PHASE; f.seen.push(phase);
+    if (phase === 'prod-post-install') {
+      writeFileSync(join(f.root, 'state/history'), 'migrated');
+      if (failure === 'throws') throw new Error('migration failed');
+      writeFileSync(join(f.config.prod.runtime, 'version'), 'changed');
+    }
+  });
+  assert.equal(result.status, 'failed');
+  assert.equal(readFileSync(join(f.root, 'state/history'), 'utf8'), 'preserved');
+  assert.equal(readFileSync(join(f.config.prod.runtime, 'version'), 'utf8'), 'old');
+  assert.ok(!f.seen.includes('prod-start') && !f.seen.includes('merge'));
+  assert.ok(f.seen.includes('restore-health'));
+  assert.equal(f.seen.filter(phase => phase.endsWith('-post-install')).length, 1);
+  assert.equal(readQueue(f.config.root).active, null);
+});
+
+for (const name of ['dev', 'test', 'prod']) test(`${name} rejects invalid post-install command before stopping a service`, async t => {
+  const f = fixture(t), target = name === 'dev' ? { ...f.config.test, runtime: join(f.root, 'dev') } : f.config[name];
+  target.postInstall = null;
+  if (name === 'dev') await assert.rejects(deployDev(f.config, f.ticket, target, f.execute), /Command requires/);
+  else assert.throws(() => validateConfiguration(f.config), /Command requires/);
+  assert.deepEqual(f.seen, []);
+});
