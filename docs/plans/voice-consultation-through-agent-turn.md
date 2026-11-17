@@ -164,6 +164,49 @@ recovery and cleanup. A passed workflow is not a terminal deployment receipt.
 Recovery keeps the current CLI baseline and never overwrites new live writes
 or restores an older runtime over migrated state.
 
+#### Additional completion repairs (proposed, awaiting approval)
+
+Qualification found two defects that prevent the upgraded application from
+preserving current asynchronous delegation. Production is unchanged. The native
+CLI route passes direct, delayed, spawn and yield checks; the plugin harness
+still needs these two narrow repairs before this upgrade can ship.
+
+1. **Give independent continuations a fresh plugin invocation.** A completed
+   caller leaves its closed plugin invocation in asynchronous local context.
+   Delayed session replies and independently admitted session maintenance then
+   fail while resolving the current harness. Use the existing native
+   `pluginInvocationContext.exit` pattern at those two detached-work boundaries.
+   Keep their work owners, cancellation, session/database checks and fresh plugin
+   admission. A stopped plugin must remain unavailable; do not revive the caller's
+   old authority. Native session-event delivery already uses this pattern.
+2. **Include completed child results in the plugin harness's model input.**
+   OpenClaw delivers the completion event, but Copilot omits its payload when
+   preparing the next prompt. Extend the existing SDK prompt helper with optional
+   event/context inputs and let Copilot's ordinary-turn branch pass them. Reuse
+   OpenClaw's own event formatting, escaping and protected context envelope.
+   Keep the canonical hidden transcript entry, provenance, existing inbound
+   context and native delivery/steering. Raw model calls and finalization retain
+   their current behavior. No new SDK export, queue or configuration switch is
+   needed.
+
+Upstream [PR #199618](https://github.com/openclaw/openclaw/pull/199618) confirms
+the released-scope problem, but its broad merged fix depends on later refactors
+and changes 28 files. Do not copy it wholesale onto stable. The narrower open
+[PR #198487](https://github.com/openclaw/openclaw/pull/198487) concerns retained
+continuation authority and does not directly cover the measured harness lookup.
+Use stable's existing detachment pattern at the two proven independent boundaries.
+
+These are additional runtime patches beyond the approved sandbox handoff.
+Implementation is not approved yet. If approved, complete Phase 1 through the
+normal build, DEV, full suite, TEST and PROD process, then pause as requested.
+Phase 2 and the broader realtime patch review remain deferred.
+
+Acceptance must prove one result after direct, delayed, spawned and yielded
+work; unchanged canonical transcript/provenance; escaped untrusted child data;
+no duplicate context or final replies; current policy and stopped-plugin denial;
+and maintenance cancellation when its session or source changes. The full
+application and installed gates remain required.
+
 #### Phase 2: realtime coordination
 
 After Phase 1 production, merge and cleanup close, pause for requester review
@@ -243,16 +286,15 @@ successfully lands in production. Complete production validation, exact merge
 and CI cleanup, then stop. Phase 2 requires further discussion of all realtime
 patches and is not authorized to start automatically.
 
-**Progress:** Candidate `89033b24` passed DEV. PROD CI failed during the full
-application suite before transfer or deployment; source cleanup is closed and
-production is unchanged. The four original unit failures are repaired and the
-private suite passes. Reader, memory, Wiki and provider fixture repairs passed
-focused qualification. Further MCP qualification exposed the native owner-identity
-bug. The v2026.11.4 patch audit and port are complete; the selected 36 patches
-apply in order and source review is clear. Rebuilt-artifact qualification remains open.
-Copilot child completion still appears to omit the child report from the parent
-model input. Verify that finding on the rebuilt artifact before proposing any
-additional runtime change. No successor candidate has been submitted. Phase 2
+**Additional repair decision:** The two completion repairs above are proposed, not approved.
+
+**Progress:** The v2026.11.4 candidate builds. Native core and extension types,
+paired metadata and the focused 582-test native lane pass. The installed Claude
+CLI delegation boundary passes with scripted inference. Copilot qualification
+proves two completion defects described above; their additional repairs await
+approval. Remaining native and owner-gated MCP qualification continues.
+The last production workflow failed before deployment and its cleanup is closed.
+Production is unchanged. No successor deployment has been submitted. Phase 2
 stays paused.
 
 ## Agent section
@@ -607,3 +649,29 @@ The hidden continuation row alone has no research report. This finding remains
 a release blocker to reproduce on the composed artifact. A repair would be a
 separate runtime change requiring review under the current patch limit. Do not
 add delivery, replay or steering machinery, and do not start Phase 2.
+
+### Completion qualification on v2026.11.4
+
+The new artifact builds with both native core and extension type checks passing.
+The focused native lane collected all 20 files and passed 582 tests, with 10
+native skips. The remaining selected native regressions are still running.
+Claude CLI passes the installed direct, delayed, spawn and yield boundary case
+with scripted inference, including exactly one parent continuation and untrusted
+result framing. This does not claim live subscription or production acceptance.
+
+Copilot's installed delayed-reply flow fails at the native plugin invocation
+lookup after the producer scope closes. The installed stack reaches harness
+availability resolution. A source-level reproduction using the actual stable
+scope classes and detached helpers verifies that leaving the old invocation
+allows fresh live-instance admission, while a quiesced instance remains denied.
+The same stale-scope failure appears in independently owned session maintenance.
+
+A separate spawn-only diagnostic confirms that the child finishes and the native
+announcement wakes the parent, but the model input lacks the report. The host
+transcript retains its hidden continuation entry. The existing SDK prompt helper
+has no event/context input, although the harness attempt already carries those
+fields. This supports the proposed prompt-preparation correction above.
+
+The approved sandbox patch and retained patch ports remain source-reviewed.
+No additional completion repair has been implemented and no successor DEV run
+has been submitted. Current production remains unchanged.
