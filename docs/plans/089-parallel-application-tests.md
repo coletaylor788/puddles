@@ -1,7 +1,7 @@
 # Parallel application qualification
 
 Status: Production approved; implementation in progress
-Issue: Pending
+Issue: https://github.com/coletaylor788/puddles/issues/368
 Last updated: 2026-11-17
 
 ## Human section
@@ -27,7 +27,7 @@ Both lanes settle before qualification returns, including when either fails. Exi
 
 ### Status
 
-**Approval:** Production approved. **Approval reference:** “Approved the parallel two lane. Park the shared fixtures agree it’s not proven. Ship the two lane.” Implementation and focused regression coverage are in progress. Independent review, qualification and landing remain outstanding.
+**Approval:** Production approved. **Approval reference:** “Approved the parallel two lane. Park the shared fixtures agree it’s not proven. Ship the two lane.” Implementation, typechecking and all 322 application harness tests pass, including concurrent cancellation. Independent review cleared the integrated bounded native-test batching correction. Exact-candidate qualification and landing remain outstanding.
 
 ## Agent section
 
@@ -55,7 +55,7 @@ Update application orchestration, focused application-suite regressions and comp
 
 ### Validation
 
-Pending focused overlap, failure, declaration and cleanup regressions; complete relevant harness tests; exact-candidate qualification and measured timing.
+The complete e2e package passes: 35 files, 322 tests, 34.68 seconds. Typechecking passes after building package declarations. Tests cover overlap, prerequisite ordering, both failure directions, aggregate failures, separated caches, exact batching coverage and real two-child SIGTERM cleanup. Exact-candidate qualification and resource measurements remain pending.
 
 ### Rollout and rollback
 
@@ -63,7 +63,7 @@ Use the normal reviewed source and CI lifecycle. Preserve active candidates and 
 
 ### Review log
 
-Retained independent adversarial review pending.
+Retained independent review cleared the complete public/private diff, including the integrated batching correction, with no actionable findings.
 
 ### Checklist
 
