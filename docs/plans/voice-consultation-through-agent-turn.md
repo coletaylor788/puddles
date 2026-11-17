@@ -225,6 +225,7 @@ for upstream backup limitations.
 | Direct tool result and untrusted input handling | Required | Required for supported tools |
 | Delayed result, spawn completion and yield | Required | Native limitations accepted; no custom parity repair |
 | Ordinary turn, resume and configured fallback/restore | Required | Required |
+| Shared text/voice transcript storage | Required | Preserved; custom injection into the backup prompt is retired |
 | Workspace/shell confinement and external-write approval | Required | Required or capability unavailable; never bypassed |
 | Realtime steering and proactive completion | Phase 2 qualification | Degraded native behavior accepted |
 
@@ -328,13 +329,35 @@ are withdrawn; backup-only overlay retirement and qualification updates are in
 progress under the new stock-backup instruction. Owner-gated MCP qualification
 passes. The native lane completed with four reviewed fixture mismatches; these
 will be retired or corrected according to the final reduced composition.
-The last production workflow failed before deployment and its cleanup is closed.
-Production is unchanged. No successor deployment has been submitted. Phase 2
-stays paused.
+The reduced candidate passed installed DEV checks and teardown. Production CI
+then stopped in the full application suite before transfer. One candidate test
+still required the removed backup prompt injection. Its replacement checks native
+session resume, unchanged current requests, replay safety, and preserved shared
+transcript records. It makes no claim that the backup consumes voice history.
+Production is unchanged and the failed submission's queue is closed. The corrected
+test goes through a new build and DEV pass before production. Phase 2 stays paused.
 
 ## Agent section
 
 ### Sources and findings
+
+#### Stock backup qualification follow-up
+
+Candidate `dfd6580ef31f42bdd54483020232ec05401baaf706da5b7c9959e316130256ae`
+passed DEV run `gh-44004160443-1`, with `phase=complete`, no child process,
+and source queue/transfer cleanup closed. Production workflow `gh-44006779515-1`
+failed in the source application suite after 27 minutes, before transfer or a
+target transaction. The failing candidate group had 13 passing files and one
+failure in `shared-harness-context.mjs`.
+
+That scenario used a recording SDK with the compiled stock backup harness and
+still expected shared transcript text in its system prompt. This belonged to the
+retired backup hunk of `shared-conversation-context.patch`. The retained scenario
+checks one SDK session creation followed by two resumes, three exact current
+requests without replay, native journal validation, and ordered shared transcript
+records with voice provenance and no duplicates. The separate installed routing
+and shared history test stays required. Neither test establishes Claude realtime
+steering or proactive completion. No runtime patch changes for this correction.
 
 Stable target: `d843d6af39a42cd3c30084edbeabeece732fd93a` (v2026.11.4).
 Previous qualification used `847611dcaa3bf0e2783335f961dd1fd0580e4d9f` (v2026.11.3).
