@@ -41,7 +41,7 @@ the existing architecture. No recurring automation or new agent update permissio
 is included.
 
 The replacement image contains Chromium 156.0.8078.79 and Pacific timezone data.
-All 13 browser and plugin regressions and five migration checks pass. Managed
+All 13 browser and plugin regressions and six migration checks pass. Managed
 DEV and production validation remain pending. Production has not changed.
 
 ## Agent section
@@ -92,22 +92,31 @@ before and after recreation, alongside existing login and isolation checks.
 The replacement image reports Chromium 156.0.8078.79 and PST with offset -0800.
 Its browser entrypoint is unchanged. The frozen paired dependency install is
 restored. All 13 browser and plugin checks pass with the supported Node toolchain,
-as do five migration checks including the production preservation path.
+as do six migration checks including production preservation and whole-profile rollback.
 Retained review, DEV, the full application suite and TEST/PROD remain required.
 
 ### Rollout and rollback
 
 The existing lifecycle stops browser writers, backs up state, replaces the image
 and configuration, validates production read-only, merges exact source and closes
-cleanup. Preserve the old image/profile for rollback. Never mutate the running
+cleanup. Require whole-profile backup coverage before production. Consolidate the existing
+child entries into one profile-root entry during a reviewed idle controller
+configuration cutover. Keep the existing backup untouched until normal CI replaces
+it. A regression verifies rollback removes new root files and directories.
+Preserve the old image/profile for rollback. Never mutate the running
 container's package installation or inspect real authentication data.
 
 ### Review log
 
-The retained browser reviewer found no actionable issue in the current paired
-behavior diff. Final clearance requires the replacement image and installed
-proof. Every current profile child is covered by the production backup; the
-profile root itself is represented by explicit child entries.
+The retained browser reviewer found that individual profile-child backup entries
+miss files introduced by a newer browser. Whole-root coverage is now required by
+the maintenance control. The cutover must exclude concurrent CI admission, retain
+the old configuration and restore services on failure. Installed proof remains
+required.
+
+The application output built in 234 seconds. Registration stopped at the host
+storage reserve. Preserve the warm output and reclaim only eligible owned data
+before retrying; no deployment submission exists yet.
 
 ### Checklist
 
