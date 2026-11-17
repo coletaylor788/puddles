@@ -19,13 +19,77 @@ function setup() {
   const callTool = vi.fn(async () => ({ content:[{type:"text",text:'{"status":"ok"}'}], structuredContent:{private:"secret-canary"} }));
   const connect = vi.fn(async () => ({callTool,close:vi.fn(async()=>{})}));
   const cfg = {plugins:{entries:{"rocket-money":{enabled:true,config:{command:"/trusted/python",stateDir:"/trusted/state",llmProvider:"fixture",writesEnabled:true}}}}};
-  let factory: any; let stop: any;
-  createPlugin(connect as any, createBridgeRuntime()).register({config:cfg,registerTool:(f:any)=>{factory=f},registerService:(s:any)=>{stop=s.stop}} as any);
+  let factory: any; let stop: any; let start: any;
+  createPlugin(connect as any, createBridgeRuntime()).register({config:cfg,registerTool:(f:any)=>{factory=f},registerService:(s:any)=>{stop=s.stop;start=s.start}} as any);
   const ctx = {agentId:"main",sessionKey:"session",workspaceDir:"/workspace",getRuntimeConfig:()=>cfg};
-  return {callTool,connect,cfg,factory,ctx,stop};
+  return {callTool,connect,cfg,factory,ctx,stop,start};
 }
 
 describe("Rocket Money adapter", () => {
+ it("selects the packaged manifest for native gateway startup", async () => {
+   const require = createRequire(import.meta.url);
+   const dist = dirname(dirname(require.resolve("openclaw/plugin-sdk/core")));
+   const chunk = readdirSync(dist).find(name => /^gateway-startup-plugin-config-.*\.mjs$/.test(name));
+   expect(chunk).toBeDefined();
+   const native = await import(pathToFileURL(join(dist, chunk!)).href);
+   const select = Object.values(native).find((value: any) => value?.name === "shouldConsiderForGatewayStartup") as any;
+   expect(select).toBeTypeOf("function");
+   const manifest = JSON.parse(readFileSync(new URL("../openclaw.plugin.json", import.meta.url), "utf8"));
+   expect(select({manifest})).toBe(true);
+   const {activation, ...withoutStartup} = manifest;
+   expect(select({manifest:withoutStartup,plugin:{pluginId:"rocket-money",startup:{memory:false}},startupDreamingPluginIds:new Set()})).toBe(false);
+ });
+ it("starts one MCP on gateway startup without a tool or model call", async () => {
+   const {start,stop,connect,callTool,factory,ctx}=setup();
+   await start(); await start();
+   expect(connect).toHaveBeenCalledTimes(1);
+   expect(callTool).not.toHaveBeenCalled();
+   await factory(ctx)[0].execute("after-start",{});
+   expect(connect).toHaveBeenCalledTimes(1);
+   const caller=await connect.mock.results[0].value;
+   await stop();
+   expect(caller.close).toHaveBeenCalledTimes(1);
+ });
+ it("does not start a disabled service", async () => {
+   const {start,stop,cfg,connect}=setup();cfg.plugins.entries["rocket-money"].enabled=false;
+   await start(); expect(connect).not.toHaveBeenCalled(); await stop();
+ });
+ it("sanitizes startup failure and permits a later retry", async () => {
+   vi.useFakeTimers();
+   const {start,stop,connect}=setup();
+   try {
+     connect.mockRejectedValueOnce(new Error("credential-canary"));
+     await start(); expect(connect).toHaveBeenCalledTimes(1);
+     await vi.advanceTimersByTimeAsync(30_000);
+     expect(connect).toHaveBeenCalledTimes(2);
+   } finally { await stop(); vi.useRealTimers(); }
+ });
+ it("restarts after a tool transport failure without another tool call", async () => {
+   vi.useFakeTimers();
+   const {start,stop,connect,callTool,factory,ctx}=setup();
+   try {
+     await start();
+     callTool.mockRejectedValueOnce(new Error("private transport failure"));
+     await factory(ctx)[0].execute("lost",{});
+     expect(connect).toHaveBeenCalledTimes(1);
+     await vi.advanceTimersByTimeAsync(30_000);
+     expect(connect).toHaveBeenCalledTimes(2);
+     await stop();
+     await vi.advanceTimersByTimeAsync(90_000);
+     expect(connect).toHaveBeenCalledTimes(2);
+   } finally { await stop(); vi.useRealTimers(); }
+ });
+ it("reconnects after an idle subprocess exit", async () => {
+   vi.useFakeTimers();
+   const {start,stop,connect}=setup();
+   let closed=false;
+   connect.mockImplementation(async () => ({callTool:vi.fn(),close:vi.fn(async()=>{}),isClosed:()=>closed}));
+   try {
+     await start(); closed=true;
+     await vi.advanceTimersByTimeAsync(30_000);
+     expect(connect).toHaveBeenCalledTimes(2);
+   } finally { await stop(); vi.useRealTimers(); }
+ });
  it.each(["outbound-secret", "guard-failure"])("stops %s before opening or calling MCP", async (value) => {
    const {factory,ctx,callTool,connect}=setup();
    const read=factory(ctx).find((t:any)=>t.name==="rocket_money_read");
@@ -123,8 +187,8 @@ describe("Rocket Money adapter", () => {
 
 describe("shared gateway session", () => {
  function registration(plugin: ReturnType<typeof createPlugin>, cfg: any) {
-  let factory: any; let stop: () => Promise<void> = async () => {};
-  plugin.register({config:cfg,registerTool:(f:any)=>{factory=f},registerService:(s:any)=>{stop=s.stop}} as any);
+  let factory: any; let start: any; let stop: () => Promise<void> = async () => {};
+  plugin.register({config:cfg,registerTool:(f:any)=>{factory=f},registerService:(s:any)=>{stop=s.stop;start=s.start}} as any);
   const ctx={agentId:"main",sessionKey:"agent:main:main",workspaceDir:"/workspace",getRuntimeConfig:()=>cfg};
   return {invoke:()=>factory(ctx)[0].execute("request",{}),stop};
  }
