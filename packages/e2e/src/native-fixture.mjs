@@ -235,7 +235,10 @@ export async function runScenario(installedDir, scenario, options = {}) {
   try {
     if (options.providerFixture) {
       provider = await options.providerFixture({ context, nextResponse, scenario, installedDir, registerCleanup: cleanup => providerCleanups.add(cleanup) });
-    } else {
+      assert.ok(provider === undefined || provider !== null && typeof provider === "object", "invalid scenario provider fixture");
+    }
+    // A companion may explicitly leave a scenario on the native fixture.
+    if (provider === undefined) {
       await new Promise((yes, no) => { server.once("error", no); server.listen(0, "127.0.0.1", yes); });
     }
     const modelPort = server.address()?.port ?? 1;

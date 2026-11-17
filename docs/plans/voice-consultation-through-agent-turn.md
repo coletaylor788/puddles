@@ -340,6 +340,12 @@ the repeated member once instead of reopening it 7,500 times. Real oversized lis
 extraction, identity checks and all timeout bounds stay required. Production is
 unchanged and the failed submission's queue is closed. The corrected tests go through
 a new build and DEV pass before production. Phase 2 stays paused.
+That candidate passed DEV, then production CI stopped before transfer on a heartbeat
+fixture that still required the removed backup context injection. Keep the full
+native heartbeat notification-and-reply scenario unchanged on the native harness.
+Qualify stock backup delivery, session resume, prior user history and isolation in
+its own scenario. Only the backup expectation for externally generated notification
+text in the next provider request is retired. Runtime code and routing are unchanged.
 
 ## Agent section
 
@@ -374,6 +380,26 @@ and content once and generate the same number of real archive entries. The
 default 4 MiB capture rejection, production `installRuntime` listing and extraction,
 exact runtime digest, 15-second setup and 30-second command bounds remain.
 The corrected focused test passed in 4.48 seconds. No runtime implementation changed.
+
+Candidate `1b5c6f315fda224245323c36eb3cd84969e8895fa8bcb9b8d4fdda3370565985`
+passed DEV `gh-44016559134-1`. Production `gh-44018953570-1` failed before transfer
+in `heartbeat-native-main-reply`; source queue and transfer cleanup closed. Exact
+reproduction showed the backup's next request contained its earlier user message
+and current reply, but not the notification from the embedded heartbeat. Native
+external delivery queues target awareness instead of appending an assistant message
+to the target transcript. Do not invent a canonical transcript assertion for that path.
+
+The companion now explicitly leaves the canonical scenario on the built-in fixture.
+Only an undefined provider result chooses that fixture; invalid results and setup
+errors fail. A separately named stock backup scenario preserves real delivery,
+quiet tails, fresh heartbeat sessions, one resumed main session, current and prior
+user input, tool boundaries and continuation. The unchanged native scenario passed
+with ten model requests, three sends and two tool calls. This is native heartbeat
+and stock backup qualification, not Claude realtime acceptance. The separately owned
+native fallback conversion is excluded from this candidate. The complete companion
+provider fixture file passed 15/15 tests in 60.43 seconds, including real SDK
+transport, ordinary-turn refusal and fail-closed provider selection. Independent
+review cleared the final behavior diff. Fresh build and DEV are still required.
 
 Stable target: `d843d6af39a42cd3c30084edbeabeece732fd93a` (v2026.11.4).
 Previous qualification used `847611dcaa3bf0e2783335f961dd1fd0580e4d9f` (v2026.11.3).
