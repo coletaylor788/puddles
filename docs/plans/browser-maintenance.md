@@ -129,6 +129,13 @@ its registered Node version differed from the current CI toolchain. No target
 transaction or production deployment occurred, and source cleanup closed. Rebuild
 with the configured toolchain and repeat affected DEV validation.
 
+A narrow build-qualification prerequisite aligns the exact Node pin with current
+CI while retaining the existing pnpm pin. Fourteen packaging and overlay tests
+pass. This does not migrate the production Gateway interpreter. Historical
+delivery commands are recovery-only; preserved recovery continues to use its
+original immutable source, toolchain and artifacts. The current application
+suite uses its maintained CI entrypoints, not the retired delivery route.
+
 ### Checklist
 
 - [x] Diagnose the running browser and timezone.
