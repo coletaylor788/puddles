@@ -51,12 +51,15 @@ The replacement image contains Chromium 156.0.8078.79 and Pacific timezone data.
 The archive fixture repair, provider qualification repair and earlier browser
 checks passed focused validation and retained review. Production has not changed.
 
-The latest DEV run stopped before provider checks because Docker could not mount
-recreated CI state. Disposable probes reproduced the stale path with the original
-bind syntax. Native volume syntax read the correct host data and passed six
-populated browser recreation cycles on the first attempt. The correction retains
-the existing two-bind boundary and adds an installed host-marker regression.
-Fresh DEV and production validation remain required.
+DEV passed with native volume mounts, the recreated-state regression and provider
+checks. The production submission then stopped before transfer because the broad
+native regression process exhausted its JavaScript heap. Production is unchanged
+and cleanup closed. The test runner now uses bounded batches with fresh processes,
+preserving every project/file pair and the existing isolation settings. Focused
+checks and retained review pass. The first native batch exposed an older
+OpenClaw health-response fixture failure. Its correction belongs to the separately
+approved upgrade; this browser change will consume it after that release lands.
+Full validation and production deployment remain required.
 
 ## Agent section
 
@@ -155,6 +158,31 @@ Read must return a correlated permission error and disclose no canary in model
 requests or either transcript. Generic errors and missing files cannot pass.
 The real subscription navigation, eval, Bash and authentication-refusal checks
 remain required. Both fixture processes share the existing verified cleanup path.
+
+The full mapped regression run exhausted V8 heap in its combined Vitest process.
+The custom combined configuration bypasses upstream's bounded-process handling.
+Partition its sorted project/file pairs into batches of at most 64. Verify exact
+discovery for every batch before executing any, then run each in a fresh native
+process. Keep each project's pool, isolation, setup and serial settings, the
+four-worker limit, and the separate e2e transport path. Do not increase global
+heap limits or patch upstream. Any discovery or execution failure fails the gate
+and retains the normal joined-process cleanup.
+
+A native Vitest 5 probe found that `--shard` can omit one project mode and repeat
+another when the same file belongs to two projects. Explicit per-project includes
+avoid that ambiguity. The replacement probe ran all 66 pairs exactly once across
+two fresh processes. Committed regressions cover duplicate modes, the 64-pair
+boundary, discovery failure before any execution, and execution-failure cleanup.
+All 14 focused checks and package type checking pass. Retained review independently
+passed the focused checks, including the native duplicate-mode regression. The
+first real batch completed 64 files without heap exhaustion: 2,471 tests passed
+and one health-response fixture failed. The failure reproduces with that file
+alone. Its raw server never drains the incoming request, so Node 26.13.1 does not
+observe socket closure within the unchanged one-second assertion. The separately
+approved upgrade corrects that fixture. Do not copy its patch into this older
+source under the browser task's approval. Finish independent harness validation,
+then refresh from the landed upgrade and repeat affected qualification. The full
+mapped set remains the memory-recovery acceptance check.
 
 ### Rollout and rollback
 

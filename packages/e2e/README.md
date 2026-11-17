@@ -85,6 +85,12 @@ explicitly before any tests. Gmail and Rocket Money remain separate because thei
 runtime dependency versions can differ. Chrome, Docker and embedding fixture inputs
 remain explicit host prerequisites; the suite does not install those services.
 
+Mapped native regressions run in fresh processes with at most 64 project/file
+pairs each. Every batch must discover its exact selection before any tests run.
+Explicit project includes preserve files tested in more than one mode. Existing
+project isolation, serial execution settings and the separate e2e transport path
+remain in effect. Any failed batch fails the application gate.
+
 The standalone command owns one deterministic `<artifact>.tests` scratch tree and
 bounded SQLite control files under `<artifact>.tests.lock`, all within the feature
 workspace. Success, failure and catchable signals join children before removing
