@@ -320,15 +320,15 @@ repair was implemented. The requester subsequently approved stock backup
 behavior with accepted degradation. Retire backup-only overlays and parity
 requirements while preserving primary Claude and all shared access controls.
 
-**Progress:** The candidate passed DEV, the full application suite and TEST.
-Production preparation stopped at the exact predecessor check: an approved CI
-tooling activation had changed the temporary Gateway launcher's helper path after
-its fingerprint was frozen. The helper bytes are unchanged. The transaction and
-source cleanup are closed. Refresh the reviewed fingerprint and check these same
-production service inputs read-only during DEV and TEST preparation. Keep the
-production backup guard unchanged. Twenty focused checks and retained review pass.
-Fresh qualification and production acceptance remain required. Phase 2 stays paused
-until Phase 1 acceptance, exact merge and eligible cleanup.
+**Progress:** The refreshed candidate passed DEV, including the early predecessor
+checks. Its production submission stopped in the local installed tests before
+any target deployment. The Gmail discovery fixture closed its input while the
+packaged MCP server could still be answering. The fixture now uses the packaged
+MCP client to finish initialization and discovery before closing. The real package,
+delayed-response and error cases pass, as do all six installed plugin checks.
+Installed groups now retain full logs and include named, bounded diagnostics in
+the final failure. Production acceptance and fresh CI qualification remain open.
+Phase 2 stays paused until Phase 1 acceptance, exact merge and eligible cleanup.
 
 ## Agent section
 
@@ -336,19 +336,26 @@ until Phase 1 acceptance, exact merge and eligible cleanup.
 
 #### Current qualification repair
 
-The full application suite now passes with both lanes joined. The communication
-fixture repair retains the 180-second execution bound, reports elapsed stages and
-joins owned children before cleanup. No runtime regression or contention cause
-was established for the earlier timeout.
+The previous full application suite and TEST passed. Its production preparation
+caught an exact service-launcher fingerprint changed by a reviewed CI activation.
+The refreshed fingerprint and read-only early DEV/TEST checks passed DEV.
 
-The next production attempt stopped because the frozen temporary service launcher
-fingerprint predated an approved CI activation. Only its installed helper path
-changed; old and new helper bytes match. Refresh that exact reviewed input.
-DEV and TEST preparation now validate the same service profile and launcher hashes
-read-only, before any preparation mutation. Production still requires exact original
-and backup fingerprints before changing either launcher. Focused controls pass
-20 checks, including drift rejection without writes and explicit refreshed-input
-acceptance. The retained reviewer cleared the change. No runtime patch changes.
+The next source qualification passed its source lane but failed one installed
+plugin test. Preserved fixture diagnostics identify packaged Gmail tool discovery.
+The old test sent initialization and discovery together and closed stdin without
+waiting. The packaged MCP server cancels in-flight handlers on transport closure.
+Use its shipped client session to await initialization and tool discovery before
+closing. Keep the existing no-network/no-subprocess guard and bounded execution.
+Normal local repetitions of the old test passed, so the intermittent scheduling
+condition was not reproduced. A delayed synthetic peer now verifies the required
+handshake and open channel, alongside real packaged discovery and error handling.
+The old fixture fails against that same delayed peer; the repaired fixture passes.
+
+The installed runner saves each group's full output in its owned directory and
+retains the group name and a bounded tail in the final aggregate. Sequential
+execution, failure joining and all test groups remain unchanged. Six diagnostics
+and inventory checks, three discovery cases and all six configured-plugin checks
+pass. The latter completed in 46.6 seconds. No runtime patch changes.
 
 #### Stock backup qualification follow-up
 
