@@ -39,3 +39,10 @@ The preceding local-service lifecycle patch already supplies the owned-lease
 result and the final readiness check. This patch consumes that contract without
 reapplying it. Its runtime warmup owner and complete gateway fixture remain
 explicit files in this patch.
+
+
+## v2026.11.4 audit
+
+No native warmupOnGatewayStart. Preserve .4 plugin-services startup before orphan scanning; existing managed embeddings warmup runs after both and before channel readiness. Do not restore the older parallel orphan scan.
+
+Composition is qualified separately from installed runtime behavior. The registered regressions remain required.

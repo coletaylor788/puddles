@@ -20,7 +20,7 @@ Idle maintenance forwards the admitted persisted native session binding into the
 
 Snapshot restoration requires a resolved session-store path. The caller uses the same native store resolver as ordinary memory saves, honoring either an explicit path or the configured default while keeping a distinct internal session identity.
 
-On v2026.11.3, retained input enters native memory-flush preparation. Native plan
+On v2026.11.4, retained input enters native memory-flush preparation. Native plan
 selection, memory audience delegation, tool projection and release remain the
 owners. The retained job records the source session incarnation and compaction
 count and session restrictions. Its saver reads the canonical source through the

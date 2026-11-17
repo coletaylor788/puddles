@@ -1,7 +1,7 @@
 # CLI tools in the native OpenClaw sandbox
 
 Managed CLI turns call OpenClaw file and shell tools through its MCP bridge.
-Stable v2026.11.3 lacks the prepared sandbox at this boundary. This patch binds
+Stable v2026.11.4 lacks the prepared sandbox at this boundary. This patch binds
 the existing native workspace/sandbox owner to the host-only MCP grant and coding
 tool factory. The Gateway and CLI remain on the host; native Docker supplies
 file and shell containment. Existing exec/process handles, background completion,

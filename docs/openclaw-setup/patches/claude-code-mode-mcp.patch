@@ -1,6 +1,6 @@
 diff --git a/src/agents/cli-runner/code-mode-skills.test.ts b/src/agents/cli-runner/code-mode-skills.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..80fd37824e830c448330e2618bb05e4ac4c662f8
+index 00000000..80fd3782
 --- /dev/null
 +++ b/src/agents/cli-runner/code-mode-skills.test.ts
 @@ -0,0 +1,57 @@
@@ -63,7 +63,7 @@ index 0000000000000000000000000000000000000000..80fd37824e830c448330e2618bb05e4a
 +});
 diff --git a/src/agents/cli-runner/code-mode-skills.ts b/src/agents/cli-runner/code-mode-skills.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..bce80868ac216f1dbf41c72f03560168fdcca93c
+index 00000000..bce80868
 --- /dev/null
 +++ b/src/agents/cli-runner/code-mode-skills.ts
 @@ -0,0 +1,24 @@
@@ -92,7 +92,7 @@ index 0000000000000000000000000000000000000000..bce80868ac216f1dbf41c72f03560168
 +  return skills;
 +}
 diff --git a/src/agents/cli-runner/prepare-mcp.test-support.ts b/src/agents/cli-runner/prepare-mcp.test-support.ts
-index f8a575f0d85478356708ee6744a55a7a065c7848..131ea831276269a884db9e08c4c332b73eeb9bd5 100644
+index 06b945c8..396c91ce 100644
 --- a/src/agents/cli-runner/prepare-mcp.test-support.ts
 +++ b/src/agents/cli-runner/prepare-mcp.test-support.ts
 @@ -135,6 +135,9 @@ export function registerCliMcpPreparationTests({
@@ -105,15 +105,15 @@ index f8a575f0d85478356708ee6744a55a7a065c7848..131ea831276269a884db9e08c4c332b7
        context: {
          sessionKey: "agent:main:telegram:group:chat123",
          runtimePolicySessionKey: "agent:worker:discord:default:direct:canonical-sender",
-@@ -148,6 +151,7 @@ export function registerCliMcpPreparationTests({
-         messageProvider: "telegram",
+@@ -149,6 +152,7 @@ export function registerCliMcpPreparationTests({
+         requester: { channel: "telegram", senderId: "canonical-sender" },
          clientCaps: ["tool-events", "inline-widgets"],
          pinnedWidgetAuthoring: true,
 +        conversationToolPolicy: undefined,
          currentChannelId: "telegram:-100123:topic:42",
          currentThreadTs: "42",
          currentMessageId: "reply-message-1",
-@@ -188,6 +192,9 @@ export function registerCliMcpPreparationTests({
+@@ -189,6 +193,9 @@ export function registerCliMcpPreparationTests({
          groupId: "chat123",
          groupChannel: "ops",
          groupSpace: "workspace-a",
@@ -124,7 +124,7 @@ index f8a575f0d85478356708ee6744a55a7a065c7848..131ea831276269a884db9e08c4c332b7
        },
        runtimeOwnerToken: "loopback-owner-token",
 diff --git a/src/agents/cli-runner/prepare-mcp.ts b/src/agents/cli-runner/prepare-mcp.ts
-index d00197c253aa47526a36e7f90dd338b1f89d12c9..f04f02d642c988507497392ce33ced290c538996 100644
+index d00197c2..f04f02d6 100644
 --- a/src/agents/cli-runner/prepare-mcp.ts
 +++ b/src/agents/cli-runner/prepare-mcp.ts
 @@ -88,14 +88,14 @@ export async function prepareCliMcpToolProjection(
@@ -179,7 +179,7 @@ index d00197c253aa47526a36e7f90dd338b1f89d12c9..f04f02d642c988507497392ce33ced29
        Boolean(projectNativeToolAuthority),
        run,
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 6084207f4cf9e1803c8356a2db976e8b69032ce2..5e2f22d8ae00464d7bff384b4b560f5ef04b695e 100644
+index 6084207f..5e2f22d8 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
 @@ -44,6 +44,7 @@ import {
@@ -374,7 +374,7 @@ index 6084207f4cf9e1803c8356a2db976e8b69032ce2..5e2f22d8ae00464d7bff384b4b560f5e
      "isolates %s caller memory through outer normalization and real CLI execution",
      (scenario, { signal }) =>
 diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index 7ea677ace74cd99604833e44a2a4e15eec4dce89..f13b35b5f6a260120e62f65cc4542970eb4035de 100644
+index 7ea677ac..f13b35b5 100644
 --- a/src/agents/cli-runner/prepare.ts
 +++ b/src/agents/cli-runner/prepare.ts
 @@ -23,6 +23,7 @@ import {
@@ -606,7 +606,7 @@ index 7ea677ace74cd99604833e44a2a4e15eec4dce89..f13b35b5f6a260120e62f65cc4542970
        resolveRuntimeChannelPromptContext({
          cfg: params.config,
 diff --git a/src/agents/cli-runner/prepare.web-search.test.ts b/src/agents/cli-runner/prepare.web-search.test.ts
-index 8ef9e80c5d1cca8bb43479f05ac9485e87693179..877279a308a60d6d785dabc5738f87150acd2c95 100644
+index 8ef9e80c..877279a3 100644
 --- a/src/agents/cli-runner/prepare.web-search.test.ts
 +++ b/src/agents/cli-runner/prepare.web-search.test.ts
 @@ -1,11 +1,14 @@
@@ -800,7 +800,7 @@ index 8ef9e80c5d1cca8bb43479f05ac9485e87693179..877279a308a60d6d785dabc5738f8715
 +  );
 +});
 diff --git a/src/agents/cli-runner/skills-prompt.ts b/src/agents/cli-runner/skills-prompt.ts
-index da73354ffe63413b247414597efe09901bb2bf54..0f64c6c30a469a395c3d4c4e426cac6c50e08a95 100644
+index da73354f..0f64c6c3 100644
 --- a/src/agents/cli-runner/skills-prompt.ts
 +++ b/src/agents/cli-runner/skills-prompt.ts
 @@ -1,9 +1,12 @@
@@ -883,7 +883,7 @@ index da73354ffe63413b247414597efe09901bb2bf54..0f64c6c30a469a395c3d4c4e426cac6c
 +  };
  }
 diff --git a/src/gateway/mcp-grant-store.test.ts b/src/gateway/mcp-grant-store.test.ts
-index 2fdfe590cd3816725d92df56b7a4d45bfcff1c9e..79f9acfcac397d0be4ae2a78f39a0767c334bf23 100644
+index 2fdfe590..79f9acfc 100644
 --- a/src/gateway/mcp-grant-store.test.ts
 +++ b/src/gateway/mcp-grant-store.test.ts
 @@ -137,6 +137,7 @@ describe("mcp-grant-store", () => {
@@ -916,7 +916,7 @@ index 2fdfe590cd3816725d92df56b7a4d45bfcff1c9e..79f9acfcac397d0be4ae2a78f39a0767
    });
  
 diff --git a/src/gateway/mcp-grant-store.ts b/src/gateway/mcp-grant-store.ts
-index bf2d4ca6490b27f2357b7aefb87b123a60cc692c..c492f8ff4e656c2fa1f05fca18fd197404d68517 100644
+index 7d1932cb..41a820a7 100644
 --- a/src/gateway/mcp-grant-store.ts
 +++ b/src/gateway/mcp-grant-store.ts
 @@ -6,6 +6,7 @@ import {
@@ -927,7 +927,7 @@ index bf2d4ca6490b27f2357b7aefb87b123a60cc692c..c492f8ff4e656c2fa1f05fca18fd1974
  import type { DelegationCapability } from "../agents/delegation-capability.js";
  import type { ExecPolicyOverrides, ExecSessionDefaults } from "../agents/exec-defaults.js";
  import type { PreparedQuestionAnswerAuthority } from "../agents/harness/host-private-capabilities.js";
-@@ -42,6 +43,9 @@ export type McpLoopbackRequestContext = {
+@@ -47,6 +48,9 @@ export type McpLoopbackRequestContext = {
    inputProvenance?: InputProvenance;
    sessionKey: string;
    runtimePolicySessionKey?: string;
@@ -937,7 +937,7 @@ index bf2d4ca6490b27f2357b7aefb87b123a60cc692c..c492f8ff4e656c2fa1f05fca18fd1974
    /** Agent whose execution policy applies when it differs from the durable session owner. */
    runtimePolicyAgentId?: string;
    agentId?: string;
-@@ -80,6 +84,10 @@ export type McpLoopbackRequestContext = {
+@@ -85,6 +89,10 @@ export type McpLoopbackRequestContext = {
     * hard enforcement. Unset keeps the full session-scoped surface.
     */
    toolsAllow?: string[];
@@ -948,7 +948,7 @@ index bf2d4ca6490b27f2357b7aefb87b123a60cc692c..c492f8ff4e656c2fa1f05fca18fd1974
    /** Host-minted search exclusion; independent of coding-tool authority in toolsAllow. */
    webSearchDisabled?: true;
    /** Canonical observed native authority; null awaits this turn's initialization. */
-@@ -167,6 +175,7 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
+@@ -172,6 +180,7 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
    assertCurrent?: () => void;
    /** Original CLI policy, rebound only to this stored row's exact lifetime. */
    bindQuestionAnswerAuthority?: (assertActive: () => void) => PreparedQuestionAnswerAuthority;
@@ -956,7 +956,7 @@ index bf2d4ca6490b27f2357b7aefb87b123a60cc692c..c492f8ff4e656c2fa1f05fca18fd1974
    skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
    /** Configured MCP tools owned by the minting CLI run; disposed with that run. */
    bundledTools?: readonly AnyAgentTool[];
-@@ -174,6 +183,7 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
+@@ -179,6 +188,7 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
    /** Effective attempt authority, including plugin-owned timeout and cancellation. */
    assertCaptureCurrent?: () => void;
    toolAuth?: McpLoopbackToolAuth;
@@ -964,7 +964,7 @@ index bf2d4ca6490b27f2357b7aefb87b123a60cc692c..c492f8ff4e656c2fa1f05fca18fd1974
  };
  
  type McpLoopbackClientGrantRevocation = {
-@@ -301,6 +311,7 @@ export function mintMcpLoopbackClientGrant(
+@@ -306,6 +316,7 @@ export function mintMcpLoopbackClientGrant(
      cronRequesterGrantIssuer: params.cronRequesterGrantIssuer,
      cronAuthorityCheck: params.cronAuthorityCheck,
      abortSignal: params.abortSignal,
@@ -972,7 +972,7 @@ index bf2d4ca6490b27f2357b7aefb87b123a60cc692c..c492f8ff4e656c2fa1f05fca18fd1974
      assertCurrent: params.assertCurrent,
      bindQuestionAnswerAuthority: params.bindQuestionAnswerAuthority,
      skillLibraryAuthoring: params.skillLibraryAuthoring,
-@@ -504,7 +515,9 @@ export function resolveMcpLoopbackClientGrant(params: {
+@@ -509,7 +520,9 @@ export function resolveMcpLoopbackClientGrant(params: {
        skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
        bundledTools?: readonly AnyAgentTool[];
        isCurrent: () => boolean;
@@ -982,7 +982,7 @@ index bf2d4ca6490b27f2357b7aefb87b123a60cc692c..c492f8ff4e656c2fa1f05fca18fd1974
      }
    | undefined {
    const { token, runtimeOwnerToken, captureKey } = params;
-@@ -553,6 +566,8 @@ export function resolveMcpLoopbackClientGrant(params: {
+@@ -558,6 +571,8 @@ export function resolveMcpLoopbackClientGrant(params: {
          }
        : undefined,
      questionAnswerAuthority,
@@ -993,7 +993,7 @@ index bf2d4ca6490b27f2357b7aefb87b123a60cc692c..c492f8ff4e656c2fa1f05fca18fd1974
      isCurrent,
 diff --git a/src/gateway/mcp-http.code-mode.test.ts b/src/gateway/mcp-http.code-mode.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..ef4ddb5604138a88413f78b5478d209cb0e4dc6b
+index 00000000..ef4ddb56
 --- /dev/null
 +++ b/src/gateway/mcp-http.code-mode.test.ts
 @@ -0,0 +1,150 @@
@@ -1149,7 +1149,7 @@ index 0000000000000000000000000000000000000000..ef4ddb5604138a88413f78b5478d209c
 +});
 diff --git a/src/gateway/mcp-http.code-mode.ts b/src/gateway/mcp-http.code-mode.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..20ed1b498f19775415331aad11b981e41863c4ca
+index 00000000..20ed1b49
 --- /dev/null
 +++ b/src/gateway/mcp-http.code-mode.ts
 @@ -0,0 +1,55 @@
@@ -1209,7 +1209,7 @@ index 0000000000000000000000000000000000000000..20ed1b498f19775415331aad11b981e4
 +  };
 +}
 diff --git a/src/gateway/mcp-http.handlers.ts b/src/gateway/mcp-http.handlers.ts
-index 2c9de998143eeb9310d704dfbfcaa432942de6d8..b8ef7808605f8d9fca59e2fa0e04abbfd7061fe8 100644
+index 2c9de998..b8ef7808 100644
 --- a/src/gateway/mcp-http.handlers.ts
 +++ b/src/gateway/mcp-http.handlers.ts
 @@ -4,10 +4,28 @@ import crypto from "node:crypto";
@@ -1658,7 +1658,7 @@ index 2c9de998143eeb9310d704dfbfcaa432942de6d8..b8ef7808605f8d9fca59e2fa0e04abbf
      }
      default:
 diff --git a/src/gateway/mcp-http.runtime.test.ts b/src/gateway/mcp-http.runtime.test.ts
-index 5a910a39c5b6fb084a46e38040929dc2d108bef1..da1fe35637eb0a52f94f246078831e65842d8e29 100644
+index 5a910a39..da1fe356 100644
 --- a/src/gateway/mcp-http.runtime.test.ts
 +++ b/src/gateway/mcp-http.runtime.test.ts
 @@ -156,6 +156,30 @@ describe("resolveMcpLoopbackScopedTools", () => {
@@ -1693,7 +1693,7 @@ index 5a910a39c5b6fb084a46e38040929dc2d108bef1..da1fe35637eb0a52f94f246078831e65
      const cache = new McpLoopbackToolCache();
      const params = scopeParams({ toolsAllow: ["sessions"] });
 diff --git a/src/gateway/mcp-http.runtime.ts b/src/gateway/mcp-http.runtime.ts
-index fb28074fa62c795c5457441f93b1e48d6010d4a6..b685a29974ecf00026a7ccc3fd4e6195474a050c 100644
+index fb28074f..b685a299 100644
 --- a/src/gateway/mcp-http.runtime.ts
 +++ b/src/gateway/mcp-http.runtime.ts
 @@ -7,6 +7,7 @@ import {
@@ -1888,7 +1888,7 @@ index fb28074fa62c795c5457441f93b1e48d6010d4a6..b685a29974ecf00026a7ccc3fd4e6195
      this.#grantConfigScopes.clear();
    }
 diff --git a/src/gateway/mcp-http.test.ts b/src/gateway/mcp-http.test.ts
-index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..b08a60ccc91de99746b158ce85059b615fdd6828 100644
+index f584a535..eb41274a 100644
 --- a/src/gateway/mcp-http.test.ts
 +++ b/src/gateway/mcp-http.test.ts
 @@ -21,6 +21,7 @@ import {
@@ -1899,15 +1899,18 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..b08a60ccc91de99746b158ce85059b61
  import {
    addSession,
    appendOutput,
-@@ -32,6 +33,7 @@ import { createProcessSessionFixture } from "../agents/bash-process-registry.tes
+@@ -30,8 +31,10 @@ import {
+ } from "../agents/bash-process-registry.js";
+ import { createProcessSessionFixture } from "../agents/bash-process-registry.test-helpers.js";
  import { createProcessTool } from "../agents/bash-tools.process.js";
++import { buildCliMcpGrantContext } from "../agents/cli-runner/mcp-grant-context.js";
  import type { AnyAgentTool } from "../agents/tools/common.js";
  import { getGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
 +import { createInstalledSkillTools } from "../agents/tools/installed-skill-tools.js";
  import {
    drainSystemEventEntries,
    enqueueSystemEventWithReceipt,
-@@ -43,12 +45,12 @@ import type { resolveGatewayScopedTools } from "./tool-resolution.js";
+@@ -43,12 +46,12 @@ import type { resolveGatewayScopedTools } from "./tool-resolution.js";
  
  const activeAdmissions: PreparedAgentRunAdmission[] = [];
  
@@ -1922,16 +1925,7 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..b08a60ccc91de99746b158ce85059b61
        ingress: { kind: "system", boundary: "mcp-http-test", state: "present" },
      },
      operationalRunInstance: createOperationalRunInstanceRef(runId),
-@@ -67,7 +69,7 @@ type ScopedToolsCall = Parameters<typeof resolveGatewayScopedTools>[0] & {
- type BeforeToolCallHookInput = Parameters<typeof runBeforeToolCallHook>[0];
- 
- const runBeforeToolCallHookMock = vi.hoisted(() =>
--  vi.fn(async (args: { params: unknown }): Promise<MockBeforeToolCallHookResult> => ({
-+  vi.fn(async (args: BeforeToolCallHookInput): Promise<MockBeforeToolCallHookResult> => ({
-     blocked: false,
-     params: args.params,
-   })),
-@@ -96,7 +98,9 @@ const loadNodeExecAvailabilityMock = vi.hoisted(() =>
+@@ -96,7 +99,9 @@ const loadNodeExecAvailabilityMock = vi.hoisted(() =>
  
  const logWarnMock = vi.hoisted(() => vi.fn<(message: string) => void>());
  const sessionEntries = vi.hoisted(() => new Map<string, Record<string, unknown>>());
@@ -1942,7 +1936,7 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..b08a60ccc91de99746b158ce85059b61
  
  // Partial: the real gateway resolver reaches other exports of this module when a
  // test drives it instead of the mock below.
-@@ -130,7 +134,8 @@ vi.mock("../config/sessions/session-accessor.entry.js", async (importOriginal) =
+@@ -130,7 +135,8 @@ vi.mock("../config/sessions/session-accessor.entry.js", async (importOriginal) =
    };
  });
  
@@ -1952,7 +1946,7 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..b08a60ccc91de99746b158ce85059b61
    runBeforeToolCallHook: (...args: Parameters<typeof runBeforeToolCallHookMock>) =>
      runBeforeToolCallHookMock(...args),
  }));
-@@ -930,6 +935,7 @@ describe("mcp loopback server", () => {
+@@ -938,6 +944,7 @@ describe("mcp loopback server", () => {
        sourceReplyDeliveryMode: "message_tool_only",
        sourceReplyOnly: true,
        toolsAllow: ["message"],
@@ -1960,7 +1954,7 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..b08a60ccc91de99746b158ce85059b61
        nativeCronCreatorToolAllowlist: ["read", "write", "edit", "apply_patch", "exec", "process"],
        // The delegation gate lives in resolveGatewayScopedTools, so dropping
        // this field at the HTTP mapping silently disables it for CLI backends.
-@@ -976,6 +982,7 @@ describe("mcp loopback server", () => {
+@@ -984,6 +991,7 @@ describe("mcp loopback server", () => {
          headers: jsonHeaders({
            ...(captureKey ? { "x-openclaw-cli-capture-key": captureKey } : {}),
            "x-session-key": "agent:main:main",
@@ -1968,7 +1962,7 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..b08a60ccc91de99746b158ce85059b61
            "x-openclaw-session-id": "session-spoofed",
            "x-openclaw-message-channel": "telegram",
            "x-openclaw-client-caps": "inline-widgets,admin",
-@@ -1937,6 +1944,47 @@ describe("mcp loopback server", () => {
+@@ -1945,6 +1953,47 @@ describe("mcp loopback server", () => {
      expect(execute).toHaveBeenCalledWith(expect.stringMatching(/^mcp-/), {}, undefined);
    });
  
@@ -2016,7 +2010,7 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..b08a60ccc91de99746b158ce85059b61
    it("closes a pending startup once for concurrent shutdown callers", async () => {
      const starting = ensureMcpLoopbackServer();
      const closing = Promise.allSettled([closeMcpLoopbackServer(), closeMcpLoopbackServer()]);
-@@ -2536,3 +2584,435 @@ describe("createMcpLoopbackServerConfig", () => {
+@@ -2544,3 +2593,520 @@ describe("createMcpLoopbackServerConfig", () => {
    });
  });
  /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
@@ -2425,6 +2419,91 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..b08a60ccc91de99746b158ce85059b61
 +      status: "completed",
 +      value: 91,
 +    });
++    execute.mockClear();
++    for (const identity of ["owner", "guest", "absent"] as const) {
++      const hasSender = identity !== "absent";
++      const runId = `ptc-${identity}-run`;
++      const identityContext = {
++        ...buildCliMcpGrantContext({
++          run: {
++            sessionKey: `agent:reader:ptc-${identity}`,
++            sessionId: `ptc-${identity}-session`,
++            runId,
++            sessionFile: `/fixture/ptc-${identity}.jsonl`,
++            workspaceDir: "/fixture/ptc-workspace",
++            provider: "fixture-cli",
++            prompt: "Requester policy check",
++            timeoutMs: 1_000,
++            ...(hasSender
++              ? {
++                  messageChannel: "discord",
++                  agentAccountId: "verified-account",
++                  senderId: "verified-sender",
++                  senderIsOwner: identity === "owner",
++                }
++              : {}),
++          },
++          config,
++          requireExplicitMessageTarget: false,
++          agentId: "reader",
++          modelProvider: "fixture-provider",
++          modelId: "fixture-model",
++        }),
++        toolsAllow: context.toolsAllow,
++        codeMode: true,
++      } satisfies McpLoopbackRequestContext;
++      const identityGrant = mintMcpLoopbackClientGrant({
++        context: identityContext,
++        runtimeOwnerToken: runtime.ownerToken,
++        admittedRunContext: await activeAdmission(runId, "reader"),
++        codeModeSkills,
++        bundledTools,
++      });
++      const captureKey = `ptc-${identity}-capture`;
++      expect(
++        activateMcpLoopbackClientGrantCapture({
++          token: identityGrant.token,
++          runtimeOwnerToken: runtime.ownerToken,
++          captureKey,
++        }),
++      ).toBeTruthy();
++      const identityScope = {
++        token: identityGrant.token,
++        headers: { "x-openclaw-cli-capture-key": captureKey },
++      };
++      const identityCalls: BeforeToolCallHookInput[] = [];
++      runBeforeToolCallHookMock.mockImplementation(async (args: BeforeToolCallHookInput) => {
++        identityCalls.push(args);
++        return { blocked: false, params: args.params };
++      });
++      await readOkMcpPayload(
++        await sendLoopbackToolCall({ ...identityScope, name: "fixture", args: { value: 10 } }),
++      );
++      const nested = await readOkMcpPayload(
++        await sendLoopbackToolCall({
++          ...identityScope,
++          name: "code_exec",
++          args: { code: "return await fixture({value: 11});" },
++        }),
++      );
++      expect(JSON.parse(String(nested.result?.content?.[0]?.text))).toMatchObject({
++        status: "completed",
++      });
++      const expectedRequester = hasSender
++        ? {
++            channel: "discord",
++            accountId: "verified-account",
++            senderId: "verified-sender",
++            senderIsOwner: identity === "owner",
++          }
++        : undefined;
++      expect(identityCalls.filter((call) => call.toolName === "fixture")).toHaveLength(2);
++      for (const call of identityCalls.filter((entry) => entry.toolName === "fixture")) {
++        expect(call.ctx?.requester).toEqual(expectedRequester);
++      }
++      revokeMcpLoopbackClientGrant(identityGrant.token);
++    }
++    execute.mockClear();
 +    revokeMcpLoopbackClientGrant(otherGrant.token);
 +    revokeMcpLoopbackClientGrant(grant.token);
 +    expect(
@@ -2449,11 +2528,11 @@ index c9e7155e17b33211fa753fa9a1cc85a0fb477bb3..b08a60ccc91de99746b158ce85059b61
 +      (await sendLoopbackToolCall({ ...scope, name: "code_wait", args: { runId: parkedId } }))
 +        .status,
 +    ).toBe(401);
-+    expect(execute).toHaveBeenCalledTimes(2);
++    expect(execute).not.toHaveBeenCalled();
 +  });
 +});
 diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
-index 236a1005bbd0512115d0fb2581c709f8eb94d278..f82f4d5224ef60030151f8810f77f211259c4095 100644
+index 6931bc31..f4133b25 100644
 --- a/src/gateway/mcp-http.ts
 +++ b/src/gateway/mcp-http.ts
 @@ -2,6 +2,7 @@ import crypto from "node:crypto";
@@ -2481,7 +2560,7 @@ index 236a1005bbd0512115d0fb2581c709f8eb94d278..f82f4d5224ef60030151f8810f77f211
      { McpLoopbackToolCache },
      { assertCompletionGrantLineage, createCompletionGrantLineageAdmission },
    ] = await Promise.all([
-@@ -331,6 +333,79 @@ async function startMcpLoopbackServer(
+@@ -331,6 +333,80 @@ async function startMcpLoopbackServer(
              throw error;
            }
  
@@ -2492,6 +2571,7 @@ index 236a1005bbd0512115d0fb2581c709f8eb94d278..f82f4d5224ef60030151f8810f77f211
 +            sessionKey: requestContext.sessionKey,
 +            sessionId: requestContext.sessionId,
 +            runId: requestContext.runId,
++            ...(requestContext.requester ? { requester: requestContext.requester } : {}),
 +            approvalReviewerDeviceId: requestContext.approvalReviewerDeviceId,
 +            channelId: requestContext.currentChannelId,
 +            turnSourceChannel: requestContext.messageProvider,
@@ -2561,7 +2641,7 @@ index 236a1005bbd0512115d0fb2581c709f8eb94d278..f82f4d5224ef60030151f8810f77f211
            // Discovery may outlive the requesting connection or grant.
            requestAbort.signal.throwIfAborted();
            if (boundClientGrant && !boundClientGrant.isCurrent()) {
-@@ -392,24 +467,7 @@ async function startMcpLoopbackServer(
+@@ -392,25 +468,7 @@ async function startMcpLoopbackServer(
                    tools: scopedTools.tools,
                    toolSchema: scopedTools.toolSchema,
                    ...(serverInstructions ? { serverInstructions } : {}),
@@ -2572,6 +2652,7 @@ index 236a1005bbd0512115d0fb2581c709f8eb94d278..f82f4d5224ef60030151f8810f77f211
 -                    sessionKey: requestContext.sessionKey,
 -                    sessionId: requestContext.sessionId,
 -                    runId: requestContext.runId,
+-                    ...(requestContext.requester ? { requester: requestContext.requester } : {}),
 -                    approvalReviewerDeviceId: requestContext.approvalReviewerDeviceId,
 -                    channelId: requestContext.currentChannelId,
 -                    turnSourceChannel: requestContext.messageProvider,

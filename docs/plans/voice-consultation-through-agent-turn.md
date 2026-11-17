@@ -8,14 +8,18 @@ Last updated: 2026-11-16
 
 ### Design
 
-Upgrade to **OpenClaw v2026.11.3**, use native CLI execution and remove redundant
+Upgrade to **OpenClaw v2026.11.4**, use native CLI execution and remove redundant
 integration patches. Preserve current integrations, sessions, permissions and
 sandboxing. Finish that production release, then pause for review of realtime delegation,
 steering and all existing realtime patches.
 
-The approved target remains v2026.11.3. A later release check found v2026.11.4;
-that does not change this frozen upgrade scope. Moving main is not the deployment
-target.
+The selected target is v2026.11.4, published on November 16. Qualification of
+v2026.11.3 exposed a native MCP bug: plugin hooks lost the owner's identity.
+The newer stable release fixes that path natively in
+[PR #190138](https://github.com/openclaw/openclaw/pull/190138). Use that release
+within the approved latest-stable upgrade, preserving its CLI startup and OAuth
+lock fixes too. Re-audit retained patches and repeat affected qualification.
+This adds no custom identity patch and does not start Phase 2.
 
 ```mermaid
 flowchart LR
@@ -93,7 +97,7 @@ path. The harness/history follow-up category will evaluate this native replaceme
 after both phases, with cold resume, history and compaction proofs. Bind the existing login root in
 the Gateway environment. The upstream fix uses it only without an explicit
 offline `homeDir`; check Doctor, TUI and cold/history callers before retiring
-profile plumbing. It is not part of v2026.11.3. Keep credentials in their existing
+profile plumbing. It is not part of v2026.11.4. Keep credentials in their existing
 native profile.
 
 Workspace-only policy is a hard boundary. It does not reproduce our old
@@ -239,21 +243,25 @@ successfully lands in production. Complete production validation, exact merge
 and CI cleanup, then stop. Phase 2 requires further discussion of all realtime
 patches and is not authorized to start automatically.
 
-**Progress:** Candidate `62d94385` passed DEV and cleanup. Production CI passed
-the candidate group, then stopped before transfer in installed recall fixtures.
-Those fixtures now declare native ownership, account routing and workspaces
-explicitly. Broader installed checks also found that the two quiet-group cases
-must opt into native group silence. The repairs change test configuration only;
-permissions, unexpected-request rejection and visible direct replies remain
-checked. Installed qualification and retained review precede a fresh build and
-DEV pass. Production is unchanged. Phase 2 stays paused.
+**Progress:** Candidate `89033b24` passed DEV. PROD CI failed during the full
+application suite before transfer or deployment; source cleanup is closed and
+production is unchanged. The four original unit failures are repaired and the
+private suite passes. Reader, memory, Wiki and provider fixture repairs passed
+focused qualification. Further MCP qualification exposed the native owner-identity
+bug. The v2026.11.4 patch audit and port are complete; the selected 36 patches
+apply in order and source review is clear. Rebuilt-artifact qualification remains open.
+Copilot child completion still appears to omit the child report from the parent
+model input. Verify that finding on the rebuilt artifact before proposing any
+additional runtime change. No successor candidate has been submitted. Phase 2
+stays paused.
 
 ## Agent section
 
 ### Sources and findings
 
-Stable target: `847611dcaa3bf0e2783335f961dd1fd0580e4d9f` (v2026.11.3).
-The GitHub latest-release API was reconfirmed 2026-11-15. The earlier source pin
+Stable target: `d843d6af39a42cd3c30084edbeabeece732fd93a` (v2026.11.4).
+Previous qualification used `847611dcaa3bf0e2783335f961dd1fd0580e4d9f` (v2026.11.3).
+The official v2026.11.4 release and exact source were checked 2026-11-16. The earlier source pin
 was `eb377ac59e6c9fd6c7705028034812becf00271b`. Read the pinned native
 `docs/gateway/cli-backends.md`; the website fetch failed in this environment.
 Newer main was inspected at `5370661901a61a4aa5c7e9f76174e50eb1ee597b`.
@@ -284,8 +292,10 @@ admission without a reviewed containment and authority contract.
 
 Keep the removal list, patch order, digests and direct native regression targets
 synchronized. Preserve the existing profile, configured-MCP and additive scripting
-patches while their category work is deferred. Do not implement earlier proposed
-shrinks or history substitutions merely because the old audit suggested them.
+patches while their category work is deferred. Remove demonstrably equivalent
+native overlap when porting to the selected stable release, while preserving
+the same capabilities. Do not use the port for broader category redesigns or
+unqualified history substitutions suggested by the older audit.
 Keep credentials in the existing profile and protect retained recovery state.
 
 Workshop uses native edits, version history and Doctor export. Preserve agent
@@ -386,7 +396,7 @@ The retained reviewer compared the exact unpatched source. The new config
 parameter and read come from `untrusted-agent-results.patch`, so this is our
 compatibility obligation. The latest-release API was checked during this repair;
 v2026.11.4 was published 2026-11-16 UTC. Its unchanged test does not establish an
-upstream defect. The approved upgrade remains pinned to v2026.11.3. The delta is
+upstream defect. At that checkpoint the candidate remained pinned to v2026.11.3; the later native owner-identity finding now selects v2026.11.4. The delta is
 one explicit `config` argument in the retained patch's test adaptation. On
 2026-11-16 the owner corrected its earlier approval interpretation: existing
 approval remains valid within the recorded retained-patch scope. The additional
@@ -488,3 +498,112 @@ strictly group-only fixture option. Unexpected model requests still fail, and
 the direct-chat continuation case still requires a visible reply. Production
 configuration is unchanged. This behavior was already documented in the native
 v2026.9.6 release notes; the tests must state their intended policy explicitly.
+
+
+### Companion compatibility checks after installed message acceptance
+
+Candidate `89033b24ce4606c7ffd13c3451e314bc18b2f78a47d3d8c851d2f9b8cd42ac23`
+passed DEV `gh-43973348081-1` with complete target and source cleanup.
+Production workflow `gh-43975420824-1` passed the maintained installed message
+stage, then failed four companion unit tests. That suite reported 700 passes
+and 17 skips. Transfer and deployment did not start; source cleanup closed.
+The remaining installed application inventory completed locally on the unchanged
+artifact. Its failures are being repaired and requalified before another
+submission. This does not replace the full production CI suite or authorize
+Phase 2.
+
+
+### Remaining installed qualification after the compatibility gate
+
+The complete local inventory reached every group on the unchanged application.
+The Household owner-routing cases passed, as did all 23 native Docker/MCP
+operations across four containers. This is scripted inference and does not
+replace the separate subscription or production acceptance checks.
+
+Reader fixtures now wait for native pending-input persistence before capturing
+recovery digests. Current Doctor preservation and recovery of historical cleared
+selections are distinct cases. The restart test checks both actual startup modes,
+then separately updates a derived display label through the native SDK. All
+history, pin, delivery, activity and tamper checks remain. Reader migration passed
+three cases; application preparation and restart preservation passed four.
+
+The stopped schedule controls supply the native scheduler dependency without
+starting jobs. Isolated Wiki acceptance uses normal startup, declared local model
+assets, native readiness and the supported no-auto-update setting. Both environment
+rows pass authenticated schedule acceptance and the actual no-network record check.
+These are native API and qualification adaptations, not new OpenClaw patches.
+
+The provider qualification proxy recognizes the newer CLI's exact read-only
+managed-settings query. It forwards the policy response and retains request,
+credential and size limits. Focused proxy tests and the installed 16-turn synthetic
+quality run pass. Approval and memory fixtures remain under qualification.
+
+
+### Native point-release qualification
+
+The v2026.11.3 MCP grant contained trusted `senderIsOwner`, but its HTTP dispatch
+hook context omitted `requester`. The maintained owner-gated integration rejects
+that call. A synthetic approval hook keyed only by reviewer device would hide the
+failure and is not acceptance. v2026.11.4 commit
+`1c0bec9af6083cba10e61a7c0114292ed3fed102` captures the requester from the native
+host run and forwards it to plugin hooks. Preserve that field through direct and
+nested Code Mode calls. Test both owner and non-owner behavior through a real
+maintained plugin hook with recorded external effects.
+
+All 25 public and 11 private retained patches are being checked against exact
+v2026.11.4 source. Preserve upstream startup ordering, detached-tool cleanup,
+requester identity and fs-safe 0.26.7 containment. Remove overlapping implementation
+where the native feature provides the same contract. Rebase only the remaining
+approved behavior. Refresh source pins and build only after ordered composition
+and retained review. Prior artifact-dependent proofs remain historical until
+repeated on the new artifact. CI still owns shared deployment and completion.
+
+
+### v2026.11.4 infrastructure and conversation audit
+
+These decisions preserve existing behavior. A successful patch application is not
+runtime acceptance. Retained registered regressions and affected native checks
+will run on the composed artifact.
+
+| Patch | Decision | Evidence and integration requirement |
+| --- | --- | --- |
+| managed-local-service-lifecycle | Retain | Touched source is unchanged in .4. Native service relay still lacks the retained descendant group shutdown contract. Preserve cancellation and parent-death joining tests. |
+| gateway-memory-warmup | Retain and rebase | No native warmupOnGatewayStart. Preserve .4 plugin-services startup before orphan scanning; existing managed embeddings warmup runs after both and before channel readiness. Do not restore the older parallel orphan scan. |
+| file-lock-stale-reclaim-guard | Retain and retarget dependency | Native fs-safe0.26.7 still uses mkdir/rmdir reclaim occupancy, with no Darwin kernel guard. Identical reviewed nested patch applies to0.26.7. Preserve its new filesystem containment implementation and update only patch dependency identity, never downgrade to0.26.5. |
+| subagent-cross-agent-spawn-fix | Retain | Native requireAgentId option is not the explicit target/inherited tool contract. Preserve new .4 projectRequester authority passed to initial subagent sessions. |
+| skill-workshop-sandbox-fix | Retain reduced scope | Touched source unchanged. Native immediate saves/history/undo already adopted; remaining patch supplies configured sandbox access and diagnostic policy only. |
+| imessage-message-part-coalescing | Retain behavior, shrink packaging delta | Native text debounce does not group text/link/media parts; retired option still removed natively. Preserve durable queue/claim ownership. Root package delta is reduced to iMessage bundle inclusion only; discard unrelated native metadata/script/dependency changes carried in old patch. Preserve native .4 package identities. |
+| browser-userdata-dir-fix | Retain | Entrypoint unchanged; native image still lacks maintained selectable userdata directory and singleton cleanup behavior. |
+| native-heartbeat-response | Retain | Native .4 detached cleanup and runtimeArtifact capture are independent of using the actual submitted heartbeat prompt and current input context. Three-way port preserves those new paths. Audit later additive prompt hunk interaction separately. |
+| stopped-state-migration-sdk | Retain | Touched files unchanged. Native APIs still do not expose this exact bounded stopped config/cron migration and targeted write surface consumed by deployment. |
+| core-declaration-portability | Retain portable signatures | Native .4 adds streamed transcript digest and restart input preservation; preserve both. Import merge retains createHash and portable query types. Final declaration build is required before claiming portability. |
+| facetime-talk-client | Retain | Native carrier remains separate from shared Talk controls/history. Preserve .4 plugin instance custody and loader scope changes. Runtime behavior remains current FaceTime integration, not Phase2 redesign. |
+| talk-overlap-recovery | Retain | Touched source unchanged. Existing failed control handoff recovery remains absent in stock. |
+| talk-conversation-progress | Retain | Touched source unchanged. Existing asynchronous public progress and conversation behavior remains absent in stock. |
+| shared-conversation-context | Retain | Native .4 exports replay group reads and improves detached settlement, but persistent Copilot attempt context hydration still absent. Preserve both native additions. |
+| wiki-get-mutation-metadata | Retain | Touched source unchanged. Native wiki_get still lacks the full citation/claim metadata required by preserving updates. |
+| untrusted-agent-results | Retain | Native .4 autoApproveChanges and DB write admission do not supply configured source-agent fencing. Preserve them while retaining model-facing result boundaries. |
+| talk-request-recovery | Retain | Touched source unchanged. Per-request pending/failed lifecycle and fresh-request recovery still require existing patch. No additional Phase2 behavior. |
+
+### v2026.11.4 composition checkpoint
+
+The ordered 25 public and 11 private patches compose to tree
+`3989b347ea2c37d7730622abcc6a150ede46a9d9` on exact stable
+`d843d6af39a42cd3c30084edbeabeece732fd93a`. This is source composition proof,
+not build, installed behavior or deployment acceptance. The previous prepared
+source is preserved before replacement.
+
+The port preserves native requester capture, the cloned conversation-policy
+snapshot and accepted-tool settlement. Added regressions cover owner, non-owner
+and missing requester through direct and nested MCP calls, plus delayed direct
+and Code Mode control calls during settlement. Private cleanup keeps the native
+runtime artifact, detached settlement and session-deletion behavior alongside
+existing durable cleanup receipts. Qualification must execute these on the final
+composed source and then verify the real maintained plugin owner gate.
+
+Source inspection found that Copilot receives `internalEvents` but does not put
+the child-result context into its model prompt. The built-in and Claude paths do.
+The hidden continuation row alone has no research report. This finding remains
+a release blocker to reproduce on the composed artifact. A repair would be a
+separate runtime change requiring review under the current patch limit. Do not
+add delivery, replay or steering machinery, and do not start Phase 2.

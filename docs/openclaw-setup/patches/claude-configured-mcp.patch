@@ -714,7 +714,7 @@ index 00000000..c0314420
 +  });
 +});
 diff --git a/test/vitest/vitest.gateway-server-paths.mjs b/test/vitest/vitest.gateway-server-paths.mjs
-index cd88e35d..86927f02 100644
+index fc94ce3d..063ab231 100644
 --- a/test/vitest/vitest.gateway-server-paths.mjs
 +++ b/test/vitest/vitest.gateway-server-paths.mjs
 @@ -115,6 +115,7 @@ export const gatewayDatabaseWorkerTestFiles = [

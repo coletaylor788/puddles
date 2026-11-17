@@ -99,7 +99,7 @@ index b342b80d..62256910 100644
    const clientToolCallSlots: EmbeddedAttemptClientToolCallSlot[] = [];
    const clientToolCallSlotsById = new Map<string, EmbeddedAttemptClientToolCallSlot>();
 diff --git a/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts b/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts
-index f48f7824..595fa59f 100644
+index 49494aba..51fcbd8c 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts
 @@ -47,7 +47,10 @@ import { log } from "../logger.js";
@@ -208,17 +208,18 @@ index 3921eaa6..5a5a21e7 100644
  const NORMALIZED_STRING_FIELDS = [
    "spec",
 diff --git a/src/config/sessions/session-accessor.sqlite-read.ts b/src/config/sessions/session-accessor.sqlite-read.ts
-index 967c61b4..54f71429 100644
+index dcd68377..0ae43f7d 100644
 --- a/src/config/sessions/session-accessor.sqlite-read.ts
 +++ b/src/config/sessions/session-accessor.sqlite-read.ts
-@@ -1,5 +1,6 @@
+@@ -1,6 +1,7 @@
+ import { createHash } from "node:crypto";
  import { parseDateFirstTimestampMs } from "@openclaw/normalization-core/number-coercion";
  import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 +import type { SelectQueryBuilder } from "kysely";
  import {
    executeSqliteQuerySync,
    executeSqliteQueryTakeFirstSync,
-@@ -30,6 +31,7 @@ import type {
+@@ -31,6 +32,7 @@ import type {
  import { readSessionStateDeleteSnapshot } from "./session-accessor.sqlite-delete-snapshot.js";
  import type { SessionStateDeleteSnapshot } from "./session-accessor.sqlite-delete-snapshot.types.js";
  import { readTranscriptExportInSlices } from "./session-accessor.sqlite-export-slices.js";
@@ -226,7 +227,7 @@ index 967c61b4..54f71429 100644
  import {
    getSessionKysely,
    resolveSqliteTranscriptReadScope,
-@@ -432,7 +434,7 @@ export function prepareTranscriptEventReadQuery(
+@@ -433,7 +435,7 @@ export function prepareTranscriptEventReadQuery(
      afterEventSeq?: number;
      maxEventBytes?: number;
    } = {},
@@ -333,64 +334,6 @@ index 10727b80..fbf7aefb 100644
    return getNodeSqliteKysely<CanonicalSessionDatabase>(database.db)
      .selectFrom("session_nodes")
      .leftJoin("session_windows as retained_window", (join) =>
-diff --git a/src/config/sessions/session-sharing-store.kernel.ts b/src/config/sessions/session-sharing-store.kernel.ts
-index f6fbf9b4..ccf5e683 100644
---- a/src/config/sessions/session-sharing-store.kernel.ts
-+++ b/src/config/sessions/session-sharing-store.kernel.ts
-@@ -1,3 +1,4 @@
-+import type { Kysely } from "kysely";
- import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../infra/kysely-sync.js";
- import { runSqliteReadSnapshotSync } from "../../infra/sqlite-transaction.js";
- import type { DB as OpenClawAgentKyselyDatabase } from "../../state/openclaw-agent-db.generated.js";
-@@ -47,6 +48,8 @@ export function listSessionMembersInDatabase(
- 
- type SessionMemberDatabase = Pick<OpenClawAgentKyselyDatabase, "session_members">;
- 
--export function getSessionMemberKysely(database: Pick<OpenClawAgentDatabase, "db">) {
-+export function getSessionMemberKysely(
-+  database: Pick<OpenClawAgentDatabase, "db">,
-+): Kysely<SessionMemberDatabase> {
-   return getNodeSqliteKysely<SessionMemberDatabase>(database.db);
- }
-diff --git a/src/gateway/github-publication-store.worker.ts b/src/gateway/github-publication-store.worker.ts
-index 5cfe0d4f..60095593 100644
---- a/src/gateway/github-publication-store.worker.ts
-+++ b/src/gateway/github-publication-store.worker.ts
-@@ -1,3 +1,4 @@
-+import type { Kysely } from "kysely";
- import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
- import {
-   executeSqliteQuerySync,
-@@ -42,8 +43,9 @@ type GitHubPublicationDatabase = Pick<
-   | "github_publication_session_lifecycles"
-   | "worker_session_placements"
- >;
--export const githubPublicationDatabase = (db: EngineConnection) =>
--  getNodeSqliteKysely<GitHubPublicationDatabase>(db);
-+export const githubPublicationDatabase = (
-+  db: EngineConnection,
-+): Kysely<GitHubPublicationDatabase> => getNodeSqliteKysely<GitHubPublicationDatabase>(db);
- 
- export function readGitHubPublicationRequest(
-   db: EngineConnection,
-diff --git a/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts b/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts
-index 5d5ac352..d77695f0 100644
---- a/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts
-+++ b/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts
-@@ -53,7 +53,12 @@ import { createDeferredCore } from "../../../shared/deferred.js";
- import * as ttsRuntime from "../../../tts/tts.js";
- 
- /** Real process poll producer and notification queue, with a synthetic completed process. */
--export function createProcessPollDeliveryContract(sessionId: string) {
-+export function createProcessPollDeliveryContract(sessionId: string): {
-+  tool: ReturnType<typeof createProcessTool>;
-+  pollArguments: { action: string; sessionId: string };
-+  pendingNotifications: () => string[];
-+  close: () => void;
-+} {
-   const sessionKey = `agent:main:${sessionId}`;
-   const session = createProcessSessionFixture({ id: sessionId, backgrounded: true });
-   session.scopeKey = sessionKey;
 diff --git a/src/config/sessions/session-declaration-portability.test.ts b/src/config/sessions/session-declaration-portability.test.ts
 new file mode 100644
 index 00000000..0e23dc3b
@@ -676,6 +619,64 @@ index 00000000..0e23dc3b
 +  expectTypeOf<SessionRuntimeMatchesAnnotation>().toEqualTypeOf<true>();
 +  expectTypeOf<AnnotationMatchesSessionRuntime>().toEqualTypeOf<true>();
 +});
+diff --git a/src/config/sessions/session-sharing-store.kernel.ts b/src/config/sessions/session-sharing-store.kernel.ts
+index f6fbf9b4..ccf5e683 100644
+--- a/src/config/sessions/session-sharing-store.kernel.ts
++++ b/src/config/sessions/session-sharing-store.kernel.ts
+@@ -1,3 +1,4 @@
++import type { Kysely } from "kysely";
+ import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../infra/kysely-sync.js";
+ import { runSqliteReadSnapshotSync } from "../../infra/sqlite-transaction.js";
+ import type { DB as OpenClawAgentKyselyDatabase } from "../../state/openclaw-agent-db.generated.js";
+@@ -47,6 +48,8 @@ export function listSessionMembersInDatabase(
+ 
+ type SessionMemberDatabase = Pick<OpenClawAgentKyselyDatabase, "session_members">;
+ 
+-export function getSessionMemberKysely(database: Pick<OpenClawAgentDatabase, "db">) {
++export function getSessionMemberKysely(
++  database: Pick<OpenClawAgentDatabase, "db">,
++): Kysely<SessionMemberDatabase> {
+   return getNodeSqliteKysely<SessionMemberDatabase>(database.db);
+ }
+diff --git a/src/gateway/github-publication-store.worker.ts b/src/gateway/github-publication-store.worker.ts
+index 5cfe0d4f..60095593 100644
+--- a/src/gateway/github-publication-store.worker.ts
++++ b/src/gateway/github-publication-store.worker.ts
+@@ -1,3 +1,4 @@
++import type { Kysely } from "kysely";
+ import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
+ import {
+   executeSqliteQuerySync,
+@@ -42,8 +43,9 @@ type GitHubPublicationDatabase = Pick<
+   | "github_publication_session_lifecycles"
+   | "worker_session_placements"
+ >;
+-export const githubPublicationDatabase = (db: EngineConnection) =>
+-  getNodeSqliteKysely<GitHubPublicationDatabase>(db);
++export const githubPublicationDatabase = (
++  db: EngineConnection,
++): Kysely<GitHubPublicationDatabase> => getNodeSqliteKysely<GitHubPublicationDatabase>(db);
+ 
+ export function readGitHubPublicationRequest(
+   db: EngineConnection,
+diff --git a/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts b/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts
+index 5d5ac352..d77695f0 100644
+--- a/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts
++++ b/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts
+@@ -53,7 +53,12 @@ import { createDeferredCore } from "../../../shared/deferred.js";
+ import * as ttsRuntime from "../../../tts/tts.js";
+ 
+ /** Real process poll producer and notification queue, with a synthetic completed process. */
+-export function createProcessPollDeliveryContract(sessionId: string) {
++export function createProcessPollDeliveryContract(sessionId: string): {
++  tool: ReturnType<typeof createProcessTool>;
++  pollArguments: { action: string; sessionId: string };
++  pendingNotifications: () => string[];
++  close: () => void;
++} {
+   const sessionKey = `agent:main:${sessionId}`;
+   const session = createProcessSessionFixture({ id: sessionId, backgrounded: true });
+   session.scopeKey = sessionKey;
 diff --git a/test/tsconfig/tsconfig.core.test.declaration-portability.json b/test/tsconfig/tsconfig.core.test.declaration-portability.json
 new file mode 100644
 index 00000000..ec1d06db

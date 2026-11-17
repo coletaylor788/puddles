@@ -5,8 +5,8 @@ runner applies them in a detached worktree, builds the real runtime, runs the
 cumulative regressions, and rehearses the installed package. It never modifies
 the configured source checkout or patches installed distribution chunks.
 
-The selected stable release is OpenClaw 2026.11.3 at
-`847611dcaa3bf0e2783335f961dd1fd0580e4d9f`. It requires Node 24.16.0 or later
+The selected stable release is OpenClaw 2026.11.4 at
+`d843d6af39a42cd3c30084edbeabeece732fd93a`. It requires Node 24.16.0 or later
 on 24.x, or Node 26.1.0 or later. Earlier runtimes can truncate SQLite text.
 Use the same exact Node binary for packaging, installed rehearsal, and the
 activated gateway. Keep the previous interpreter available for rollback.

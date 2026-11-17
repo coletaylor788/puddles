@@ -19,7 +19,7 @@ after the host closes, cleanup after construction failure, and awaiting cleanup.
 Installed qualification uses real provider clients and the official Link CLI
 against local response fixtures.
 
-The v2026.11.3 port keeps upstream's asynchronous host constructor, SDK dispatch
+The v2026.11.4 port keeps upstream's asynchronous host constructor, SDK dispatch
 context, and event-chain joins. It awaits the native capability profile before
 applying policy. The neutral facade reuses the shared session runtime without
 changing Codex's separate approval contract. The port does not replace stable's

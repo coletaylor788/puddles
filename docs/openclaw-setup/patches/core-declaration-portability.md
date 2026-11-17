@@ -30,3 +30,10 @@ exercises the private QA declaration build in the cumulative gate.
 This repair is separate from the older gateway protocol portability patch. That
 patch now retains tests for the current protocol registry and does not restore
 obsolete source annotations.
+
+
+## v2026.11.4 audit
+
+Native .4 adds streamed transcript digest and restart input preservation; preserve both. Import merge retains createHash and portable query types. Final declaration build is required before claiming portability.
+
+Composition is qualified separately from installed runtime behavior. The registered regressions remain required.

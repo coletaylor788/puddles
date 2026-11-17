@@ -1,6 +1,6 @@
 # Configured MCP in restricted CLI runs
 
-OpenClaw 2026.11.3 natively prepares configured MCP tools through the session
+OpenClaw 2026.11.4 natively prepares configured MCP tools through the session
 runtime and serves them through its loopback bridge. Its host-only grant stores
 the tools, preserves server instructions, applies ordinary agent and requester
 policy, and owns cleanup. Ordinary HTTP callers do not receive the extra tools.

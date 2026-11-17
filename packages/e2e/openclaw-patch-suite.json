@@ -1,5 +1,5 @@
 {
-  "openclawRef": "847611dcaa3bf0e2783335f961dd1fd0580e4d9f",
+  "openclawRef": "d843d6af39a42cd3c30084edbeabeece732fd93a",
   "testProjects": {
     "src/agents/provider-local-service.test.ts": "agents-core",
     "src/agents/provider-local-service.shutdown.test.ts": "agents-core",

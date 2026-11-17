@@ -1,76 +1,70 @@
 diff --git a/extensions/copilot/src/attempt-cleanup.ts b/extensions/copilot/src/attempt-cleanup.ts
-index 1d97d2c8..43ed02a6 100644
+index 8ae70b18..16b7f393 100644
 --- a/extensions/copilot/src/attempt-cleanup.ts
 +++ b/extensions/copilot/src/attempt-cleanup.ts
-@@ -54,7 +54,7 @@ export async function deferBackgroundCompactionCleanup(params: {
+@@ -90,7 +90,7 @@ export async function deferBackgroundCompactionCleanup(params: {
    handle: PooledClient;
    pool: CopilotClientPool;
    cleanupByokProxy?: () => Promise<void>;
 -  cleanupToolBridge?: () => void;
 +  cleanupToolBridge?: () => void | Promise<void>;
    deleteSessionOnIncompleteCleanup: boolean;
+   deleteSessionOnCleanup?: boolean;
    sdkSessionId?: string;
-   session: SessionLike;
-@@ -79,8 +79,14 @@ export async function deferBackgroundCompactionCleanup(params: {
-     try {
-       await params.session.disconnect();
-     } catch {}
+@@ -114,7 +114,11 @@ export async function deferBackgroundCompactionCleanup(params: {
+     }
+     params.bridge.detach();
+     await params.bridge.awaitAgentEventChain();
 -    params.cleanupToolBridge?.();
--    await params.cleanupByokProxy?.();
-+    const cleanupErrors: unknown[] = [];
-+    for (const cleanup of [params.cleanupToolBridge, params.cleanupByokProxy]) {
-+      try {
-+        await cleanup?.();
-+      } catch (error) {
-+        cleanupErrors.push(error);
-+      }
++    try {
++      await params.cleanupToolBridge?.();
++    } catch (error) {
++      cleanupError ??= toCopilotError(error);
 +    }
-     if (outcome !== "completed" && params.deleteSessionOnIncompleteCleanup && params.sdkSessionId) {
-       try {
-         await params.handle.client.deleteSession(params.sdkSessionId);
-@@ -89,6 +95,9 @@ export async function deferBackgroundCompactionCleanup(params: {
      try {
-       await params.pool.release(params.handle);
-     } catch {}
-+    if (cleanupErrors.length) {
-+      throw new AggregateError(cleanupErrors, "Copilot deferred cleanup failed");
-+    }
-   }
-   return outcome;
- }
+       await params.cleanupByokProxy?.();
+     } catch (error) {
 diff --git a/extensions/copilot/src/attempt-execution.ts b/extensions/copilot/src/attempt-execution.ts
-index c40758dd..66fc737f 100644
+index 1e413708..e1fe93ee 100644
 --- a/extensions/copilot/src/attempt-execution.ts
 +++ b/extensions/copilot/src/attempt-execution.ts
-@@ -111,7 +111,7 @@ export async function runCopilotExecution(context: {
+@@ -115,7 +115,7 @@ export async function runCopilotExecution(context: {
    let initialSdkUserValidated = false;
    let activeRunHandleRef: ReturnType<typeof registerCopilotActiveRun> | undefined;
    let userInputBridgeRef: CopilotUserInputBridge | undefined;
 -  let cleanupToolBridge: (() => void) | undefined;
 +  let cleanupToolBridge: (() => void | Promise<void>) | undefined;
+   let settleToolCalls: (() => Promise<void>) | undefined;
+   const detached = input.sessionPersistence === "detached";
    let releaseError: Error | undefined;
-   let downgradedFromResume = false;
-   let resumeFailureRecovered = false;
-@@ -597,8 +597,15 @@ export async function runCopilotExecution(context: {
+@@ -628,14 +628,17 @@ export async function runCopilotExecution(context: {
        await bridge?.awaitCompactionChain();
        bridge?.detach();
        await bridge?.awaitAgentEventChain();
 -      cleanupToolBridge?.();
--      await cleanupByokProxy?.();
+-      try {
+-        await cleanupByokProxy?.();
+-      } catch (error) {
+-        if (detached) {
+-          promptError = preserveCopilotAttemptCleanupError(promptError, error);
+-        } else {
+-          releaseError = toCopilotError(error);
 +      for (const cleanup of [cleanupToolBridge, cleanupByokProxy]) {
 +        try {
 +          await cleanup?.();
 +        } catch (error) {
-+          promptError = promptError
-+            ? new AggregateError([promptError, error], "Copilot attempt and cleanup failed")
-+            : toCopilotError(error);
-+        }
-+      }
++          if (detached) {
++            promptError = preserveCopilotAttemptCleanupError(promptError, error);
++          } else {
++            releaseError = releaseError
++              ? new AggregateError([releaseError, error], "Copilot cleanup failed")
++              : toCopilotError(error);
++          }
+         }
+       }
        params.abortSignal?.removeEventListener("abort", abortActiveSession);
-       if (session) {
-         try {
 diff --git a/extensions/copilot/src/attempt.test.ts b/extensions/copilot/src/attempt.test.ts
-index db6517bd..27d41e4d 100644
+index bdc10601..ae19e6f1 100644
 --- a/extensions/copilot/src/attempt.test.ts
 +++ b/extensions/copilot/src/attempt.test.ts
 @@ -175,7 +175,7 @@ function makeSdkTool(name: string): SdkTool {
@@ -82,7 +76,7 @@ index db6517bd..27d41e4d 100644
  ) {
    return {
      ...extras,
-@@ -2726,6 +2726,25 @@ describe("runCopilotAttempt", () => {
+@@ -2725,6 +2725,25 @@ describe("runCopilotAttempt", () => {
      );
      expect(requireCreateSessionConfig(sdk).availableTools).toEqual(expected);
    });
@@ -252,7 +246,7 @@ index 9dce6d8e..eac8143a 100644
 +  });
 +});
 diff --git a/extensions/copilot/src/tool-bridge.ts b/extensions/copilot/src/tool-bridge.ts
-index bb135cdf..7d1caeeb 100644
+index 836c9d81..90164d3c 100644
 --- a/extensions/copilot/src/tool-bridge.ts
 +++ b/extensions/copilot/src/tool-bridge.ts
 @@ -25,6 +25,7 @@ import {
@@ -269,10 +263,10 @@ index bb135cdf..7d1caeeb 100644
  interface CopilotToolBridge {
 -  cleanup?: () => void;
 +  cleanup?: () => void | Promise<void>;
+   settle?: () => Promise<void>;
    codeModeEngaged?: boolean;
    promptToolPolicy: {
-     requireExplicitMessageTarget?: boolean;
-@@ -182,104 +183,157 @@ export async function createCopilotToolBridge(
+@@ -183,119 +184,172 @@ export async function createCopilotToolBridge(
    if (!createToolSurfaceAsync) {
      throw new Error("Copilot tool construction requires a current host capability");
    }
@@ -321,9 +315,10 @@ index bb135cdf..7d1caeeb 100644
 -  const runInAttemptContext = AsyncLocalStorage.snapshot();
 -  let sequentialBarrier = Promise.resolve();
 -  const pendingCalls = new Set<Promise<void>>();
+-  let acceptingCalls = true;
 -  const scheduleToolExecution: ScheduleToolExecution = (sourceTool, execute) => {
--    // Native controls must enter before pending direct calls settle so they can
--    // yield. Native direct projections already share the catalog scheduler.
+-    if (!acceptingCalls) {
+-      return Promise.reject(new Error("[copilot-tool-bridge] attempt is closing"));
 +  let configuredMcp:
 +    | Awaited<ReturnType<typeof materializeConfiguredMcpToolsForHarnessRun>>
 +    | undefined;
@@ -335,7 +330,9 @@ index bb135cdf..7d1caeeb 100644
 +      await toolSurfaceRuntime.cleanup();
 +    } finally {
 +      await configuredMcp?.dispose();
-+    }
+     }
+-    // Native controls must enter before pending direct calls settle so they can
+-    // yield. Native direct projections already share the catalog scheduler.
 +  };
 +  try {
 +    const sourceTools = await createToolSurfaceAsync(toolOptions, bindingOptions);
@@ -346,7 +343,7 @@ index bb135cdf..7d1caeeb 100644
 +      !attemptParams.forceRestartSafeTools &&
 +      Object.keys(attemptParams.config?.mcp?.servers ?? {}).length
      ) {
--      return runInAttemptContext(execute);
+-      const run = runInAttemptContext(execute);
 +      const workspaceDir = toolOptions.workspaceDir ?? input.workspaceDir ?? bindingCwd;
 +      if (!workspaceDir) throw new Error("Configured MCP requires an explicit workspace");
 +      configuredMcp = await materializeConfiguredMcpToolsForHarnessRun({
@@ -370,26 +367,14 @@ index bb135cdf..7d1caeeb 100644
 +        },
 +      });
 +      sourceTools.push(...hostCapabilities.bindToolSurface(configuredMcp.tools, bindingOptions));
-     }
--    const executionMode = sourceTool.executionMode;
--    // SDK handlers arrive independently. An exclusive call waits for earlier
--    // work across the attempt and blocks later calls, regardless of tool name.
--    const ready = executionMode === "sequential" ? Promise.all(pendingCalls) : sequentialBarrier;
--    const run = ready.then(() => runInAttemptContext(execute));
--    const settled = run.then(
--      () => undefined,
--      () => undefined,
++    }
 +    const boundSourceTools = new Set(sourceTools);
 +
 +    const allowedSourceTools = applyEmbeddedAttemptToolsAllow(
 +      sourceTools,
 +      toolSurfaceRuntime.runtimeToolAllowlist,
 +      { toolMeta: getPluginToolMeta },
-     );
--    pendingCalls.add(settled);
--    void settled.then(() => pendingCalls.delete(settled));
--    if (executionMode === "sequential") {
--      sequentialBarrier = settled;
++    );
 +    const compactedTools = toolSurfaceRuntime.compactTools(allowedSourceTools, {
 +      localModelLeanApplied: true,
 +      codeModeSkills,
@@ -406,33 +391,7 @@ index bb135cdf..7d1caeeb 100644
 +        : newlyConstructedTools;
 +    if (boundNewlyConstructedTools.length !== newlyConstructedTools.length) {
 +      throw new Error("Copilot host capability changed the tool surface length.");
-     }
--    return run;
--  };
--  const sdkTools = exposedTools.map((sourceTool) =>
--    convertOpenClawToolToSdkTool(sourceTool, input, scheduleToolExecution),
--  );
--  return {
--    cleanup: toolSurfaceRuntime.cleanup,
--    // Report the resolved auto mode, which only the tool-surface owner knows.
--    codeModeEngaged: toolSurfaceRuntime.codeModeControlsEnabled,
--    promptToolPolicy: {
--      requireExplicitMessageTarget: toolOptions.requireExplicitMessageTarget,
--      apply: (params: { toolsAllow?: string[]; forceToolNames?: readonly string[] } = {}) => {
--        const result = compactedTools.promptToolPolicy.apply({
--          ...params,
--          toolsAllow: buildEmbeddedAttemptToolRunContext({
--            ...attemptParams,
--            toolsAllow: params.toolsAllow,
--            forceMessageTool: shouldForceCopilotMessageTool(attemptParams),
--          }).runtimeToolAllowlist,
--        });
--        const directToolNames = new Set(result.tools.map((tool) => tool.name));
--        return {
--          tools: sdkTools.filter((tool) => directToolNames.has(tool.name)),
--          callableToolNames: result.callableToolNames,
--          toolSchemaDirectoryPrompt: result.toolSchemaDirectoryPrompt,
--        };
++    }
 +    const newlyBoundTools = new Map<AnyAgentTool, AnyAgentTool>();
 +    for (let index = 0; index < newlyConstructedTools.length; index += 1) {
 +      newlyBoundTools.set(newlyConstructedTools[index]!, boundNewlyConstructedTools[index]!);
@@ -452,36 +411,98 @@ index bb135cdf..7d1caeeb 100644
 +    const runInAttemptContext = AsyncLocalStorage.snapshot();
 +    let sequentialBarrier = Promise.resolve();
 +    const pendingCalls = new Set<Promise<void>>();
++    let acceptingCalls = true;
 +    const scheduleToolExecution: ScheduleToolExecution = (sourceTool, execute) => {
++      if (!acceptingCalls) {
++        return Promise.reject(new Error("[copilot-tool-bridge] attempt is closing"));
++      }
 +      // Native controls must enter before pending direct calls settle so they can
 +      // yield. Native direct projections already share the catalog scheduler.
 +      if (
 +        isCodeModeControlTool(sourceTool) ||
 +        resolveScheduledDirectToolSource(sourceTool) !== sourceTool
 +      ) {
-+        return runInAttemptContext(execute);
++        const run = runInAttemptContext(execute);
++        const settled = run.then(
++          () => undefined,
++          () => undefined,
++        );
++        pendingCalls.add(settled);
++        void settled.then(() => pendingCalls.delete(settled));
++        return run;
 +      }
 +      const executionMode = sourceTool.executionMode;
 +      // SDK handlers arrive independently. An exclusive call waits for earlier
 +      // work across the attempt and blocks later calls, regardless of tool name.
 +      const ready = executionMode === "sequential" ? Promise.all(pendingCalls) : sequentialBarrier;
 +      const run = ready.then(() => runInAttemptContext(execute));
-+      const settled = run.then(
-+        () => undefined,
-+        () => undefined,
-+      );
-+      pendingCalls.add(settled);
-+      void settled.then(() => pendingCalls.delete(settled));
+       const settled = run.then(
+         () => undefined,
+         () => undefined,
+       );
+       pendingCalls.add(settled);
+       void settled.then(() => pendingCalls.delete(settled));
 +      if (executionMode === "sequential") {
 +        sequentialBarrier = settled;
 +      }
-+      return run;
+       return run;
+-    }
+-    const executionMode = sourceTool.executionMode;
+-    // SDK handlers arrive independently. An exclusive call waits for earlier
+-    // work across the attempt and blocks later calls, regardless of tool name.
+-    const ready = executionMode === "sequential" ? Promise.all(pendingCalls) : sequentialBarrier;
+-    const run = ready.then(() => runInAttemptContext(execute));
+-    const settled = run.then(
+-      () => undefined,
+-      () => undefined,
 +    };
 +    const sdkTools = exposedTools.map((sourceTool) =>
 +      convertOpenClawToolToSdkTool(sourceTool, input, scheduleToolExecution),
-+    );
+     );
+-    pendingCalls.add(settled);
+-    void settled.then(() => pendingCalls.delete(settled));
+-    if (executionMode === "sequential") {
+-      sequentialBarrier = settled;
+-    }
+-    return run;
+-  };
+-  const sdkTools = exposedTools.map((sourceTool) =>
+-    convertOpenClawToolToSdkTool(sourceTool, input, scheduleToolExecution),
+-  );
+-  return {
+-    cleanup: toolSurfaceRuntime.cleanup,
+-    settle: async () => {
+-      acceptingCalls = false;
+-      await Promise.all(pendingCalls);
+-    },
+-    // Report the resolved auto mode, which only the tool-surface owner knows.
+-    codeModeEngaged: toolSurfaceRuntime.codeModeControlsEnabled,
+-    promptToolPolicy: {
+-      requireExplicitMessageTarget: toolOptions.requireExplicitMessageTarget,
+-      apply: (params: { toolsAllow?: string[]; forceToolNames?: readonly string[] } = {}) => {
+-        const result = compactedTools.promptToolPolicy.apply({
+-          ...params,
+-          toolsAllow: buildEmbeddedAttemptToolRunContext({
+-            ...attemptParams,
+-            toolsAllow: params.toolsAllow,
+-            forceMessageTool: shouldForceCopilotMessageTool(attemptParams),
+-          }).runtimeToolAllowlist,
+-        });
+-        const directToolNames = new Set(result.tools.map((tool) => tool.name));
+-        return {
+-          tools: sdkTools.filter((tool) => directToolNames.has(tool.name)),
+-          callableToolNames: result.callableToolNames,
+-          toolSchemaDirectoryPrompt: result.toolSchemaDirectoryPrompt,
+-        };
 +    return {
 +      cleanup,
++      settle: async () => {
++        acceptingCalls = false;
++        await Promise.all(pendingCalls);
+       },
+-    },
+-    sourceTools: exposedTools,
+-  };
 +      // Report the resolved auto mode, which only the tool-surface owner knows.
 +      codeModeEngaged: toolSurfaceRuntime.codeModeControlsEnabled,
 +      promptToolPolicy: {
@@ -502,10 +523,7 @@ index bb135cdf..7d1caeeb 100644
 +            toolSchemaDirectoryPrompt: result.toolSchemaDirectoryPrompt,
 +          };
 +        },
-       },
--    },
--    sourceTools: exposedTools,
--  };
++      },
 +      sourceTools: exposedTools,
 +    };
 +  } catch (error) {

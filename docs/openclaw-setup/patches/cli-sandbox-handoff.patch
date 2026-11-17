@@ -1,5 +1,5 @@
 diff --git a/extensions/mxc/src/fs-bridge.ts b/extensions/mxc/src/fs-bridge.ts
-index 739eeeab98ffdafbb42d2919070f6f09b11ba71c..d07cf892f66438c24f296652e72b524932dddef3 100644
+index 739eeeab..d07cf892 100644
 --- a/extensions/mxc/src/fs-bridge.ts
 +++ b/extensions/mxc/src/fs-bridge.ts
 @@ -57,6 +57,8 @@ class MxcFsBridge implements SandboxFsBridge {
@@ -74,7 +74,7 @@ index 739eeeab98ffdafbb42d2919070f6f09b11ba71c..d07cf892f66438c24f296652e72b5249
  
    async stat(params: { filePath: string; cwd?: string }): Promise<SandboxFsStat | null> {
 diff --git a/extensions/mxc/src/mxc-backend.ts b/extensions/mxc/src/mxc-backend.ts
-index b2f2fb976cad628c13aa31ca5335df5462c18ee7..bc433c3b9d557081008c4a942566d7c1e374c1b5 100644
+index b2f2fb97..bc433c3b 100644
 --- a/extensions/mxc/src/mxc-backend.ts
 +++ b/extensions/mxc/src/mxc-backend.ts
 @@ -4,7 +4,7 @@ import path from "node:path";
@@ -117,7 +117,7 @@ index b2f2fb976cad628c13aa31ca5335df5462c18ee7..bc433c3b9d557081008c4a942566d7c1
            if (cmdParams.signal?.aborted) {
              throw cmdParams.signal.reason instanceof Error
 diff --git a/extensions/mxc/test/fs-bridge.test.ts b/extensions/mxc/test/fs-bridge.test.ts
-index f43785a732961b06c596eb5e0716e7f34a79cfe5..c8724afd72ec7951f625acc3253073a508e52972 100644
+index f43785a7..c8724afd 100644
 --- a/extensions/mxc/test/fs-bridge.test.ts
 +++ b/extensions/mxc/test/fs-bridge.test.ts
 @@ -316,3 +316,78 @@ describe("MXC public coding-tool composition", () => {
@@ -200,7 +200,7 @@ index f43785a732961b06c596eb5e0716e7f34a79cfe5..c8724afd72ec7951f625acc3253073a5
 +  );
 +});
 diff --git a/extensions/openshell/src/backend.exec-workdir.test.ts b/extensions/openshell/src/backend.exec-workdir.test.ts
-index 25363c83734b3222c2f16f79374137b584a5f449..3acab36a5b43eaeaf4273d765f856e10226aa0e1 100644
+index 71bf275a..7f9b451d 100644
 --- a/extensions/openshell/src/backend.exec-workdir.test.ts
 +++ b/extensions/openshell/src/backend.exec-workdir.test.ts
 @@ -3,6 +3,7 @@ import fs from "node:fs/promises";
@@ -219,7 +219,7 @@ index 25363c83734b3222c2f16f79374137b584a5f449..3acab36a5b43eaeaf4273d765f856e10
  import { createOpenShellSandboxBackendFactory } from "./backend.js";
  import { resolveOpenShellPluginConfig } from "./config.js";
  import { createOpenShellBackendSandboxConfig } from "./openshell.test-support.js";
-@@ -715,6 +717,28 @@ describe("openshell backend exec workdir validation", () => {
+@@ -723,6 +725,28 @@ describe("openshell backend exec workdir validation", () => {
    });
  
    describe("remote-mode seed across gateway restart", () => {
@@ -249,7 +249,7 @@ index 25363c83734b3222c2f16f79374137b584a5f449..3acab36a5b43eaeaf4273d765f856e10
        "starts remote operations on %s while an earlier command is still running",
        async (handleKind) => {
 diff --git a/extensions/openshell/src/backend.ts b/extensions/openshell/src/backend.ts
-index 50da72126ad148fb179c7881e3eecc15b2722361..5fb22ed4578fde6ee9761fc54f60c414608831eb 100644
+index 2427ddf0..8adb7d0a 100644
 --- a/extensions/openshell/src/backend.ts
 +++ b/extensions/openshell/src/backend.ts
 @@ -9,6 +9,7 @@ import {
@@ -292,7 +292,7 @@ index 50da72126ad148fb179c7881e3eecc15b2722361..5fb22ed4578fde6ee9761fc54f60c414
        get pathMappings() {
          return bridge.pathMappings;
        },
-@@ -508,11 +513,16 @@ class OpenShellSandboxBackendImpl {
+@@ -509,11 +514,16 @@ class OpenShellSandboxBackendImpl {
      return await this.runRemoteShellScriptInternal(params);
    }
  
@@ -310,7 +310,7 @@ index 50da72126ad148fb179c7881e3eecc15b2722361..5fb22ed4578fde6ee9761fc54f60c414
      });
    }
  
-@@ -522,6 +532,7 @@ class OpenShellSandboxBackendImpl {
+@@ -523,6 +533,7 @@ class OpenShellSandboxBackendImpl {
        recursive?: boolean;
        signal?: AbortSignal;
        ignoreMissing?: boolean;
@@ -318,7 +318,7 @@ index 50da72126ad148fb179c7881e3eecc15b2722361..5fb22ed4578fde6ee9761fc54f60c414
      },
    ): Promise<void> {
      const target = this.resolveRemoteTarget(remotePath);
-@@ -538,6 +549,7 @@ class OpenShellSandboxBackendImpl {
+@@ -539,6 +550,7 @@ class OpenShellSandboxBackendImpl {
        ],
        ignoreMissingParent: params?.ignoreMissing,
        signal: params?.signal,
@@ -326,7 +326,7 @@ index 50da72126ad148fb179c7881e3eecc15b2722361..5fb22ed4578fde6ee9761fc54f60c414
      });
    }
  
-@@ -545,6 +557,7 @@ class OpenShellSandboxBackendImpl {
+@@ -546,6 +558,7 @@ class OpenShellSandboxBackendImpl {
      fromRemotePath: string,
      toRemotePath: string,
      signal?: AbortSignal,
@@ -334,7 +334,7 @@ index 50da72126ad148fb179c7881e3eecc15b2722361..5fb22ed4578fde6ee9761fc54f60c414
    ): Promise<void> {
      const from = this.resolveRemoteTarget(fromRemotePath);
      const to = this.resolveRemoteTarget(toRemotePath);
-@@ -560,6 +573,7 @@ class OpenShellSandboxBackendImpl {
+@@ -561,6 +574,7 @@ class OpenShellSandboxBackendImpl {
          "1",
        ],
        signal,
@@ -342,7 +342,7 @@ index 50da72126ad148fb179c7881e3eecc15b2722361..5fb22ed4578fde6ee9761fc54f60c414
      });
    }
  
-@@ -570,35 +584,46 @@ class OpenShellSandboxBackendImpl {
+@@ -571,35 +585,46 @@ class OpenShellSandboxBackendImpl {
        context: this.params.execContext,
      });
      try {
@@ -404,7 +404,7 @@ index 50da72126ad148fb179c7881e3eecc15b2722361..5fb22ed4578fde6ee9761fc54f60c414
        return;
      }
      await this.runPinnedRemotePathMutation({
-@@ -609,8 +634,12 @@ class OpenShellSandboxBackendImpl {
+@@ -610,8 +635,12 @@ class OpenShellSandboxBackendImpl {
            ? ""
            : path.posix.dirname(target.relativePath),
        ],
@@ -418,7 +418,7 @@ index 50da72126ad148fb179c7881e3eecc15b2722361..5fb22ed4578fde6ee9761fc54f60c414
    }
  
    private async uploadFileToRemote(localPath: string, remotePath: string): Promise<void> {
-@@ -644,6 +673,7 @@ class OpenShellSandboxBackendImpl {
+@@ -645,6 +674,7 @@ class OpenShellSandboxBackendImpl {
      args: string[];
      ignoreMissingParent?: boolean;
      signal?: AbortSignal;
@@ -426,7 +426,7 @@ index 50da72126ad148fb179c7881e3eecc15b2722361..5fb22ed4578fde6ee9761fc54f60c414
    }): Promise<SandboxBackendCommandResult> {
      return await this.runRemoteShellScript({
        script: 'python_script="$1"; shift; python3 -c "$python_script" "$@"',
-@@ -654,6 +684,7 @@ class OpenShellSandboxBackendImpl {
+@@ -655,6 +685,7 @@ class OpenShellSandboxBackendImpl {
          ...params.args,
        ],
        signal: params.signal,
@@ -435,7 +435,7 @@ index 50da72126ad148fb179c7881e3eecc15b2722361..5fb22ed4578fde6ee9761fc54f60c414
    }
  
 diff --git a/extensions/openshell/src/backend.types.ts b/extensions/openshell/src/backend.types.ts
-index 82df60dbccbb71ba85f6e86bd5607157c0111777..697bbb56183cbeb2ad769ac6fa06bc36f156a4a8 100644
+index 82df60db..697bbb56 100644
 --- a/extensions/openshell/src/backend.types.ts
 +++ b/extensions/openshell/src/backend.types.ts
 @@ -11,19 +11,29 @@ export type OpenShellSandboxBackend = SandboxBackendHandle &
@@ -471,7 +471,7 @@ index 82df60dbccbb71ba85f6e86bd5607157c0111777..697bbb56183cbeb2ad769ac6fa06bc36
 -  syncLocalPathToRemote(localPath: string, remotePath: string): Promise<void>;
  };
 diff --git a/extensions/openshell/src/fs-bridge.ts b/extensions/openshell/src/fs-bridge.ts
-index 4dcde15c1590d3127fb39bc4702d0cf40c44f354..77a21889016f727f42571e23a4af7129aa5b3d49 100644
+index 4dcde15c..77a21889 100644
 --- a/extensions/openshell/src/fs-bridge.ts
 +++ b/extensions/openshell/src/fs-bridge.ts
 @@ -48,6 +48,8 @@ class OpenShellFsBridge implements SandboxFsBridge {
@@ -593,7 +593,7 @@ index 4dcde15c1590d3127fb39bc4702d0cf40c44f354..77a21889016f727f42571e23a4af7129
            ? { recursive: true, order: "sorted" as const, maxEntries: Infinity, maxDepth: Infinity }
            : {}),
 diff --git a/extensions/openshell/src/openshell-mirror-fs-bridge.test.ts b/extensions/openshell/src/openshell-mirror-fs-bridge.test.ts
-index 4a3e15a4a36e13a6bd995b9d2273a3d5a9750a7b..06d0199b0d027b3809cb9e798928c21f7a44e765 100644
+index 4a3e15a4..06d0199b 100644
 --- a/extensions/openshell/src/openshell-mirror-fs-bridge.test.ts
 +++ b/extensions/openshell/src/openshell-mirror-fs-bridge.test.ts
 @@ -54,6 +54,62 @@ describe("openshell mirror fs bridges", () => {
@@ -703,7 +703,7 @@ index 4a3e15a4a36e13a6bd995b9d2273a3d5a9750a7b..06d0199b0d027b3809cb9e798928c21f
      await expectPathMissing(local("~/file.txt"));
      await bridge.remove({ filePath: ".", recursive: true });
 diff --git a/src/agents/agent-tools.read.ts b/src/agents/agent-tools.read.ts
-index 5b8fb20c2f6ca32a7cc8333238747556b2d3d292..bf47689c7d308cc6d607006c36075a6b9fcf7e5d 100644
+index 5b8fb20c..bf47689c 100644
 --- a/src/agents/agent-tools.read.ts
 +++ b/src/agents/agent-tools.read.ts
 @@ -1254,14 +1254,22 @@ function createSandboxMutationOperations(params: SandboxToolParams) {
@@ -731,7 +731,7 @@ index 5b8fb20c2f6ca32a7cc8333238747556b2d3d292..bf47689c7d308cc6d607006c36075a6b
        },
        readFile: (absolutePath: string) =>
 diff --git a/src/agents/apply-patch-file-ops.ts b/src/agents/apply-patch-file-ops.ts
-index eb7b3bebc0a3e3008e923d4a694ba5b9e6d054ca..bf583e557f95bc7c28ef842f7af1639d33f57456 100644
+index eb7b3beb..bf583e55 100644
 --- a/src/agents/apply-patch-file-ops.ts
 +++ b/src/agents/apply-patch-file-ops.ts
 @@ -74,7 +74,13 @@ export async function resolvePatchFileOps(options: ApplyPatchFileOptions): Promi
@@ -782,7 +782,7 @@ index eb7b3bebc0a3e3008e923d4a694ba5b9e6d054ca..bf583e557f95bc7c28ef842f7af1639d
      });
    }
 diff --git a/src/agents/apply-patch.test.ts b/src/agents/apply-patch.test.ts
-index 080788c247d63194a1ccb9cf28fb3f401298c6a1..d8f0f4f5a0616951af6627c02ea1d98f8b309d85 100644
+index 080788c2..d8f0f4f5 100644
 --- a/src/agents/apply-patch.test.ts
 +++ b/src/agents/apply-patch.test.ts
 @@ -946,4 +946,72 @@ describe("apply_patch mutation authority", () => {
@@ -859,7 +859,7 @@ index 080788c247d63194a1ccb9cf28fb3f401298c6a1..d8f0f4f5a0616951af6627c02ea1d98f
 +  });
  });
 diff --git a/src/agents/cli-runner/prepare-mcp.ts b/src/agents/cli-runner/prepare-mcp.ts
-index 94928bbdded92e6d5a08319c4be98107fd7661d0..7292d92bdd540958d7068cbcb976a996d489eb68 100644
+index 94928bbd..7292d92b 100644
 --- a/src/agents/cli-runner/prepare-mcp.ts
 +++ b/src/agents/cli-runner/prepare-mcp.ts
 @@ -68,6 +68,7 @@ export async function prepareCliMcpToolProjection(
@@ -872,7 +872,7 @@ index 94928bbdded92e6d5a08319c4be98107fd7661d0..7292d92bdd540958d7068cbcb976a996
        | "authProfileStore"
 diff --git a/src/agents/cli-runner/prepare-sandbox.test.ts b/src/agents/cli-runner/prepare-sandbox.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..90f83737a0a6269664f3dded7d65884dbb61ce99
+index 00000000..90f83737
 --- /dev/null
 +++ b/src/agents/cli-runner/prepare-sandbox.test.ts
 @@ -0,0 +1,106 @@
@@ -984,7 +984,7 @@ index 0000000000000000000000000000000000000000..90f83737a0a6269664f3dded7d65884d
 +});
 diff --git a/src/agents/cli-runner/prepare-sandbox.ts b/src/agents/cli-runner/prepare-sandbox.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..0add308c037b65b627848b43cb95c9a7b3ad92cf
+index 00000000..0add308c
 --- /dev/null
 +++ b/src/agents/cli-runner/prepare-sandbox.ts
 @@ -0,0 +1,95 @@
@@ -1084,7 +1084,7 @@ index 0000000000000000000000000000000000000000..0add308c037b65b627848b43cb95c9a7
 +  }
 +}
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 11d99f383b62ed7444d91b1f6f642a978a0bfb6a..7284efcbe39512c83b004f42bc497b26cf1294bf 100644
+index 11d99f38..7284efcb 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
 @@ -43,8 +43,8 @@ import {
@@ -1214,7 +1214,7 @@ index 11d99f383b62ed7444d91b1f6f642a978a0bfb6a..7284efcbe39512c83b004f42bc497b26
      getFixture: () => fixture,
      setBackend: setCliBackendForPrepareTest,
 diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index 3a03dafa051beb904579036b83d72a64fe22084c..7bc747e3282153e9725968e9fc1c4fa9ba45469c 100644
+index 3a03dafa..7bc747e3 100644
 --- a/src/agents/cli-runner/prepare.ts
 +++ b/src/agents/cli-runner/prepare.ts
 @@ -1,11 +1,11 @@
@@ -1291,7 +1291,7 @@ index 3a03dafa051beb904579036b83d72a64fe22084c..7bc747e3282153e9725968e9fc1c4fa9
        injectedWorkspaceFiles: bootstrapInjectionStats,
        skillsPrompt: preparedSkills.prompt,
 diff --git a/src/agents/sandbox/backend-handle.types.ts b/src/agents/sandbox/backend-handle.types.ts
-index 2fff5c6247e177be4d6dcc043d973fd4edee9568..1c1612baf6a1698ac680ce37a3af120e39aaebc1 100644
+index 2fff5c62..1c1612ba 100644
 --- a/src/agents/sandbox/backend-handle.types.ts
 +++ b/src/agents/sandbox/backend-handle.types.ts
 @@ -24,6 +24,8 @@ export type SandboxBackendCommandParams = {
@@ -1321,7 +1321,7 @@ index 2fff5c6247e177be4d6dcc043d973fd4edee9568..1c1612baf6a1698ac680ce37a3af120e
      command: string;
      workdir?: string;
 diff --git a/src/agents/sandbox/docker-backend.test.ts b/src/agents/sandbox/docker-backend.test.ts
-index 19af6cbaeaf7c83e2e543db4e85196ebdfa7136e..5694c05064b9a53d8b374e746e021aee7b107039 100644
+index 19af6cba..5694c050 100644
 --- a/src/agents/sandbox/docker-backend.test.ts
 +++ b/src/agents/sandbox/docker-backend.test.ts
 @@ -202,6 +202,21 @@ describe("docker sandbox backend manager", () => {
@@ -1347,7 +1347,7 @@ index 19af6cbaeaf7c83e2e543db4e85196ebdfa7136e..5694c05064b9a53d8b374e746e021aee
      "settles retained cleanup only for confirmed generation termination: %s",
      async (state) => {
 diff --git a/src/agents/sandbox/docker-backend.ts b/src/agents/sandbox/docker-backend.ts
-index 40993d13b49615b9c8418427b186fd2258e2e9fd..863cd60654c466309a79a80da7829b1f4645f7fd 100644
+index 40993d13..863cd606 100644
 --- a/src/agents/sandbox/docker-backend.ts
 +++ b/src/agents/sandbox/docker-backend.ts
 @@ -1,4 +1,5 @@
@@ -1384,7 +1384,7 @@ index 40993d13b49615b9c8418427b186fd2258e2e9fd..863cd60654c466309a79a80da7829b1f
  
 diff --git a/src/agents/sandbox/fs-bridge.mutation-fence.test.ts b/src/agents/sandbox/fs-bridge.mutation-fence.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..bf08dfeb3691e7bd35f22ae4ff046da1ed1eee2b
+index 00000000..bf08dfeb
 --- /dev/null
 +++ b/src/agents/sandbox/fs-bridge.mutation-fence.test.ts
 @@ -0,0 +1,118 @@
@@ -1507,7 +1507,7 @@ index 0000000000000000000000000000000000000000..bf08dfeb3691e7bd35f22ae4ff046da1
 +  });
 +});
 diff --git a/src/agents/sandbox/fs-bridge.ts b/src/agents/sandbox/fs-bridge.ts
-index 2881a02fdbb650a5a91a6feb41adbda6ee688420..c67195357bbab32e3fe9d3cb8d824fc0f2fdba27 100644
+index 2881a02f..c6719535 100644
 --- a/src/agents/sandbox/fs-bridge.ts
 +++ b/src/agents/sandbox/fs-bridge.ts
 @@ -76,6 +76,10 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
@@ -1589,7 +1589,7 @@ index 2881a02fdbb650a5a91a6feb41adbda6ee688420..c67195357bbab32e3fe9d3cb8d824fc0
    }
  
 diff --git a/src/agents/sandbox/fs-bridge.types.ts b/src/agents/sandbox/fs-bridge.types.ts
-index ab671f16f4eb034a0f7c1c7dd699cbb68e18a4d5..eade7d1b766e6f54289fad2e059033a7ea54e0d5 100644
+index ab671f16..eade7d1b 100644
 --- a/src/agents/sandbox/fs-bridge.types.ts
 +++ b/src/agents/sandbox/fs-bridge.types.ts
 @@ -13,6 +13,8 @@ export type SandboxFsStat = {
@@ -1644,7 +1644,7 @@ index ab671f16f4eb034a0f7c1c7dd699cbb68e18a4d5..eade7d1b766e6f54289fad2e059033a7
      cwd?: string;
 diff --git a/src/agents/sandbox/mcp-grant-mutation-fence.test.ts b/src/agents/sandbox/mcp-grant-mutation-fence.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..3303038c6137ea86af6e0b503ba920665ef16c08
+index 00000000..3303038c
 --- /dev/null
 +++ b/src/agents/sandbox/mcp-grant-mutation-fence.test.ts
 @@ -0,0 +1,116 @@
@@ -1765,7 +1765,7 @@ index 0000000000000000000000000000000000000000..3303038c6137ea86af6e0b503ba92066
 +  });
 +});
 diff --git a/src/agents/sandbox/remote-fs-bridge.test.ts b/src/agents/sandbox/remote-fs-bridge.test.ts
-index 7de28c019f88571311b239f8c3dc27d8d807f293..cdd70276a4f1814905789b2b5b0b21497c8e6252 100644
+index 7de28c01..cdd70276 100644
 --- a/src/agents/sandbox/remote-fs-bridge.test.ts
 +++ b/src/agents/sandbox/remote-fs-bridge.test.ts
 @@ -77,6 +77,26 @@ function createWorkspaceBridge(workspaceDir: string) {
@@ -1796,7 +1796,7 @@ index 7de28c019f88571311b239f8c3dc27d8d807f293..cdd70276a4f1814905789b2b5b0b2149
    it.runIf(process.platform !== "win32")(
      "does not classify a parent alias into a protected mount as workspace memory",
 diff --git a/src/agents/sandbox/remote-fs-bridge.ts b/src/agents/sandbox/remote-fs-bridge.ts
-index c5c6d518c1f974e3020b45b03b5d6177cc6c5083..1437e63db1874eb48d0c0fe9b3146baab649edbe 100644
+index c5c6d518..1437e63d 100644
 --- a/src/agents/sandbox/remote-fs-bridge.ts
 +++ b/src/agents/sandbox/remote-fs-bridge.ts
 @@ -63,6 +63,10 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
@@ -1861,7 +1861,7 @@ index c5c6d518c1f974e3020b45b03b5d6177cc6c5083..1437e63db1874eb48d0c0fe9b3146baa
        script: [
          "set -eu",
 diff --git a/src/agents/sandbox/remote-fs-bridge.types.ts b/src/agents/sandbox/remote-fs-bridge.types.ts
-index 372bf97e153109d0a8248837dadea47c80264888..93cf6b8035016ce6411ce6fba16308c85cb189ee 100644
+index 372bf97e..93cf6b80 100644
 --- a/src/agents/sandbox/remote-fs-bridge.types.ts
 +++ b/src/agents/sandbox/remote-fs-bridge.types.ts
 @@ -13,5 +13,7 @@ export type ResolvedRemotePath = SandboxResolvedPath & {
@@ -1873,7 +1873,7 @@ index 372bf97e153109d0a8248837dadea47c80264888..93cf6b8035016ce6411ce6fba16308c8
    runRemoteShellScript(params: SandboxBackendCommandParams): Promise<SandboxBackendCommandResult>;
  };
 diff --git a/src/agents/sandbox/remote-shell-backend.test.ts b/src/agents/sandbox/remote-shell-backend.test.ts
-index bcb40d942db8d475c60443631c01e1d533bd11ec..7e0bead841b15583bc73574b26349a1bff595c1f 100644
+index bcb40d94..7e0bead8 100644
 --- a/src/agents/sandbox/remote-shell-backend.test.ts
 +++ b/src/agents/sandbox/remote-shell-backend.test.ts
 @@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
@@ -1932,7 +1932,7 @@ index bcb40d942db8d475c60443631c01e1d533bd11ec..7e0bead841b15583bc73574b26349a1b
    it.each(["clear", "upload"] as const)(
      "cancels the skills %s and joins it and session disposal before rejecting",
 diff --git a/src/agents/sandbox/remote-shell-backend.ts b/src/agents/sandbox/remote-shell-backend.ts
-index 8e3596ef653ae7df62065a4dea9b6b66d8831c0e..3f6cef00b75cf276af402f4db40deb6afc425ffc 100644
+index 8e3596ef..3f6cef00 100644
 --- a/src/agents/sandbox/remote-shell-backend.ts
 +++ b/src/agents/sandbox/remote-shell-backend.ts
 @@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
@@ -1984,7 +1984,7 @@ index 8e3596ef653ae7df62065a4dea9b6b66d8831c0e..3f6cef00b75cf276af402f4db40deb6a
      } finally {
        await session.dispose();
 diff --git a/src/gateway/mcp-grant-store.test.ts b/src/gateway/mcp-grant-store.test.ts
-index 0049ebb7c9f20b201083948970fc4c237f7d57bc..bf358ca2b9bfc8f9c5eee96452c0dfdc3ea982dc 100644
+index 0049ebb7..bf358ca2 100644
 --- a/src/gateway/mcp-grant-store.test.ts
 +++ b/src/gateway/mcp-grant-store.test.ts
 @@ -5,6 +5,8 @@ import {
@@ -2035,7 +2035,7 @@ index 0049ebb7c9f20b201083948970fc4c237f7d57bc..bf358ca2b9bfc8f9c5eee96452c0dfdc
      expect(() => mintAttachGrant({ sessionKey: "  ", nowMs: T0 })).toThrow();
    });
 diff --git a/src/gateway/mcp-grant-store.ts b/src/gateway/mcp-grant-store.ts
-index 50e9539673615846830197a11e2f0909f528fcab..8da13060ebfffe54ed751e6e67a0e81506811a3c 100644
+index 814b6341..5b65d76a 100644
 --- a/src/gateway/mcp-grant-store.ts
 +++ b/src/gateway/mcp-grant-store.ts
 @@ -6,6 +6,7 @@ import {
@@ -2046,7 +2046,7 @@ index 50e9539673615846830197a11e2f0909f528fcab..8da13060ebfffe54ed751e6e67a0e815
  import type { CodeModeSkill } from "../agents/code-mode-skills.js";
  import type { DelegationCapability } from "../agents/delegation-capability.js";
  import type { ExecPolicyOverrides, ExecSessionDefaults } from "../agents/exec-defaults.js";
-@@ -179,6 +180,7 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
+@@ -184,6 +185,7 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
    /** Native memory capability retained on the host; never serialized to CLI context. */
    memoryAudience?: import("../plugins/memory-provider-types.js").MemoryAudience;
    memoryFlushTools?: import("../agents/agent-tools.memory-flush.types.js").MemoryFlushToolRunContext;
@@ -2054,7 +2054,7 @@ index 50e9539673615846830197a11e2f0909f528fcab..8da13060ebfffe54ed751e6e67a0e815
    skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
    /** Configured MCP tools owned by the minting CLI run; disposed with that run. */
    bundledTools?: readonly AnyAgentTool[];
-@@ -317,6 +319,7 @@ export function mintMcpLoopbackClientGrant(
+@@ -322,6 +324,7 @@ export function mintMcpLoopbackClientGrant(
      codeModeSkills: params.codeModeSkills,
      assertCurrent: params.assertCurrent,
      bindQuestionAnswerAuthority: params.bindQuestionAnswerAuthority,
@@ -2062,7 +2062,7 @@ index 50e9539673615846830197a11e2f0909f528fcab..8da13060ebfffe54ed751e6e67a0e815
      skillLibraryAuthoring: params.skillLibraryAuthoring,
      memoryAudience: params.memoryAudience,
      memoryFlushTools: params.memoryFlushTools,
-@@ -517,6 +520,7 @@ export function resolveMcpLoopbackClientGrant(params: {
+@@ -522,6 +525,7 @@ export function resolveMcpLoopbackClientGrant(params: {
        mintCronRequesterGrant?: (signal?: AbortSignal) => CronCreatorAuthorityGrant;
        cronAuthorityCheck?: () => boolean;
        questionAnswerAuthority?: PreparedQuestionAnswerAuthority;
@@ -2070,7 +2070,7 @@ index 50e9539673615846830197a11e2f0909f528fcab..8da13060ebfffe54ed751e6e67a0e815
        skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
        memoryAudience?: import("../plugins/memory-provider-types.js").MemoryAudience;
        memoryFlushTools?: import("../agents/agent-tools.memory-flush.types.js").MemoryFlushToolRunContext;
-@@ -575,6 +579,7 @@ export function resolveMcpLoopbackClientGrant(params: {
+@@ -580,6 +584,7 @@ export function resolveMcpLoopbackClientGrant(params: {
      questionAnswerAuthority,
      abortSignal: grant.abortSignal,
      codeModeSkills: grant.codeModeSkills,
@@ -2079,7 +2079,7 @@ index 50e9539673615846830197a11e2f0909f528fcab..8da13060ebfffe54ed751e6e67a0e815
      memoryAudience: grant.memoryAudience,
      memoryFlushTools: grant.memoryFlushTools,
 diff --git a/src/gateway/mcp-http.runtime.ts b/src/gateway/mcp-http.runtime.ts
-index 07d1e0da3d4499630ca296f884270be631c42a3c..24b7d8c1acba8f9ebf20160e14b1e2ee98737a0d 100644
+index 07d1e0da..24b7d8c1 100644
 --- a/src/gateway/mcp-http.runtime.ts
 +++ b/src/gateway/mcp-http.runtime.ts
 @@ -8,6 +8,7 @@ import {
@@ -2119,7 +2119,7 @@ index 07d1e0da3d4499630ca296f884270be631c42a3c..24b7d8c1acba8f9ebf20160e14b1e2ee
      agentDir: params.authProfileStoreAgentDir,
      conversationReadOrigin: "delegated",
 diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
-index 476aed3b392bb0b9f16e7afbff388564bf00aa38..b02cada1ae685239e6da68309cbf4eaa2a337ee8 100644
+index dd356d32..31e19f8e 100644
 --- a/src/gateway/mcp-http.ts
 +++ b/src/gateway/mcp-http.ts
 @@ -306,6 +306,7 @@ async function startMcpLoopbackServer(
@@ -2131,7 +2131,7 @@ index 476aed3b392bb0b9f16e7afbff388564bf00aa38..b02cada1ae685239e6da68309cbf4eaa
                    signal: requestAbort.signal,
                    authProfileStore: boundClientGrant?.toolAuth?.store,
 diff --git a/src/gateway/tool-resolution.test.ts b/src/gateway/tool-resolution.test.ts
-index ef9a8684b461556ab3ad4228408205349868f7f8..9328541d2f2f9698be589577be8ef861340048c7 100644
+index ef9a8684..9328541d 100644
 --- a/src/gateway/tool-resolution.test.ts
 +++ b/src/gateway/tool-resolution.test.ts
 @@ -8,6 +8,8 @@ import {
@@ -2209,7 +2209,7 @@ index ef9a8684b461556ab3ad4228408205349868f7f8..9328541d2f2f9698be589577be8ef861
      const result = await resolveTools({
        cfg: {
 diff --git a/src/gateway/tool-resolution.ts b/src/gateway/tool-resolution.ts
-index 47b85b76ed0173bb25aa86a4abf436f19fb9fd40..792f4c243cf450165c22ce1baf7bb4661be5ab31 100644
+index da0e4138..f72828f5 100644
 --- a/src/gateway/tool-resolution.ts
 +++ b/src/gateway/tool-resolution.ts
 @@ -12,6 +12,7 @@ import { resolveEffectiveToolPolicy } from "../agents/agent-tools.policy.js";
@@ -2217,7 +2217,7 @@ index 47b85b76ed0173bb25aa86a4abf436f19fb9fd40..792f4c243cf450165c22ce1baf7bb466
  import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
  import { nodeExecSchema } from "../agents/bash-tools.schemas.js";
 +import type { PreparedCliSandboxExecution } from "../agents/cli-runner/prepare-sandbox.js";
- import { resolveConversationCapabilityProfile } from "../agents/conversation-capability-profile.js";
+ import { prepareConversationCapabilityProfile } from "../agents/conversation-capability-profile.js";
  import { resolveCoreToolFactoryFamily } from "../agents/core-tool-factory-descriptors.js";
  import { applyDelegationCapability } from "../agents/delegation-capability.js";
 @@ -88,6 +89,7 @@ export async function resolveGatewayScopedTools(
@@ -2269,7 +2269,7 @@ index 47b85b76ed0173bb25aa86a4abf436f19fb9fd40..792f4c243cf450165c22ce1baf7bb466
            messageProvider: params.messageProvider,
            messageChannel: params.messageProvider,
            currentChannelId: params.currentChannelId,
-@@ -573,6 +596,11 @@ export async function resolveGatewayScopedTools(
+@@ -575,6 +598,11 @@ export async function resolveGatewayScopedTools(
          })
        : [];
    assertCurrent();
@@ -2282,7 +2282,7 @@ index 47b85b76ed0173bb25aa86a4abf436f19fb9fd40..792f4c243cf450165c22ce1baf7bb466
    // fixed to node so it cannot become a second path to Gateway-local execution.
    const baseTools = nodeExecSurface
 diff --git a/src/plugin-sdk/file-access-runtime.ts b/src/plugin-sdk/file-access-runtime.ts
-index e6635f68742117475e3e5fd6d0f9415d2b91cff6..311fe9149b492b64c706acb9b9ff52c776782316 100644
+index e6635f68..311fe914 100644
 --- a/src/plugin-sdk/file-access-runtime.ts
 +++ b/src/plugin-sdk/file-access-runtime.ts
 @@ -46,6 +46,7 @@ export const removePathWithinRoot: (params: {
@@ -2294,7 +2294,7 @@ index e6635f68742117475e3e5fd6d0f9415d2b91cff6..311fe9149b492b64c706acb9b9ff52c7
  export { basenameFromMediaSource, safeFileURLToPath } from "@openclaw/fs-safe/advanced";
  export { isPathInside, isPathStrictlyInside } from "../infra/path-guards.js";
 diff --git a/src/plugin-sdk/process-runtime.ts b/src/plugin-sdk/process-runtime.ts
-index 55afbbc38e2056e4f0850a8f4e34059431cfa415..97ce40571e6e294dd8a49a9e0642c96a5d696a57 100644
+index 55afbbc3..97ce4057 100644
 --- a/src/plugin-sdk/process-runtime.ts
 +++ b/src/plugin-sdk/process-runtime.ts
 @@ -15,6 +15,7 @@ export {

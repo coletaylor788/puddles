@@ -528,7 +528,7 @@ index 79e325c0..9d2e0512 100644
  
  it("waits for native transcript retention before acknowledging PreCompact, without waiting for memory inference", async () => {
 diff --git a/extensions/anthropic/cli-shared.ts b/extensions/anthropic/cli-shared.ts
-index 713a5a4b..090bce4f 100644
+index fa14e635..6063ff3e 100644
 --- a/extensions/anthropic/cli-shared.ts
 +++ b/extensions/anthropic/cli-shared.ts
 @@ -5,6 +5,7 @@ import {
@@ -538,8 +538,8 @@ index 713a5a4b..090bce4f 100644
 +  CliBackendNormalizeConfigContext,
    CliBackendResolveExecutionArgsContext,
  } from "openclaw/plugin-sdk/cli-backend";
- import { resolveExecModePolicy } from "openclaw/plugin-sdk/exec-approvals-runtime";
-@@ -13,6 +14,7 @@ import {
+ import {
+@@ -16,6 +17,7 @@ import {
    normalizeSortedUniqueTrimmedStringList,
  } from "openclaw/plugin-sdk/string-coerce-runtime";
  import { CLAUDE_CLI_BACKEND_ID, OPENCLAW_MCP_TOOL_PREFIX } from "./cli-constants.js";
@@ -591,7 +591,7 @@ index 713a5a4b..090bce4f 100644
 +  );
  }
 diff --git a/extensions/anthropic/cli.runtime.ts b/extensions/anthropic/cli.runtime.ts
-index 374afcef..dd814b4b 100644
+index 0c309e0f..d5b9c2c1 100644
 --- a/extensions/anthropic/cli.runtime.ts
 +++ b/extensions/anthropic/cli.runtime.ts
 @@ -90,6 +90,7 @@ async function authorizeTool(
@@ -1449,10 +1449,10 @@ index dcf6b423..691f59ac 100644
        const executionIterator = execution[Symbol.asyncIterator]();
        iterator = executionIterator;
 diff --git a/src/agents/cli-runner/execute.ts b/src/agents/cli-runner/execute.ts
-index 11e3d37b..ddb74817 100644
+index b0fcb29f..3d4b2ee3 100644
 --- a/src/agents/cli-runner/execute.ts
 +++ b/src/agents/cli-runner/execute.ts
-@@ -393,7 +393,7 @@ export async function executePreparedCliRun(
+@@ -392,7 +392,7 @@ export async function executePreparedCliRun(
        const env = sanitizeHostExecEnv({ baseEnv: process.env, blockPathOverrides: true });
        const preservedEnv = parseCliBackendPreserveEnv(process.env[CLI_BACKEND_PRESERVE_ENV]);
        for (const key of backend.clearEnv ?? []) {

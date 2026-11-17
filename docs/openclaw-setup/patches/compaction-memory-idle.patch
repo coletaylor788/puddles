@@ -508,13 +508,14 @@ index 74a7be91..79e325c0 100644
 +  expect(liveSession.current()).toBeUndefined();
 +});
 diff --git a/extensions/anthropic/cli-shared.test.ts b/extensions/anthropic/cli-shared.test.ts
-index d0885fc1..009df096 100644
+index 5b331790..1104310e 100644
 --- a/extensions/anthropic/cli-shared.test.ts
 +++ b/extensions/anthropic/cli-shared.test.ts
-@@ -150,6 +150,54 @@ it.each([
- });
+@@ -194,7 +194,68 @@ describe("resolveClaudeCliExecutionArgs", () => {
+     }
+   });
  
- describe("resolveClaudeCliExecutionArgs", () => {
+-  it("keeps per-agent exec policy for normal runs and omits only the injected mode for compaction", () => {
 +  it("keeps native compaction available under an exact ordinary-turn tool policy", () => {
 +    const context = {
 +      workspaceDir: "/tmp",
@@ -563,19 +564,24 @@ index d0885fc1..009df096 100644
 +    ).toThrow("resumed session");
 +  });
 +
-   it.each([
-     [undefined, true],
-     [{ mode: "full" }, true],
-@@ -163,7 +211,7 @@ describe("resolveClaudeCliExecutionArgs", () => {
-     },
-   );
- 
--  it("keeps per-agent exec policy for normal runs and omits only the injected mode for compaction", () => {
++  it.each([
++    [undefined, true],
++    [{ mode: "full" }, true],
++    [{ mode: "ask" }, false],
++    [{ security: "allowlist", ask: "always" }, false],
++  ] as const)(
++    "derives permission mode from global exec policy %j for normal runs",
++    (exec, bypass) => {
++      const args = executionArgs({ config: { tools: { exec } } });
++      expect(args.includes("bypassPermissions")).toBe(bypass);
++    },
++  );
++
 +  it("keeps per-agent exec policy for normal runs and uses default mode for resumed compaction", () => {
      const forAgent = (
        globalMode: "ask" | "full",
        agentMode: "ask" | "full",
-@@ -172,6 +220,7 @@ describe("resolveClaudeCliExecutionArgs", () => {
+@@ -203,6 +264,7 @@ describe("resolveClaudeCliExecutionArgs", () => {
        executionArgs({
          agentId: "worker",
          controlOperation,
@@ -583,7 +589,7 @@ index d0885fc1..009df096 100644
          config: {
            tools: { exec: { mode: globalMode } },
            agents: { entries: { worker: { tools: { exec: { mode: agentMode } } } } },
-@@ -195,8 +244,15 @@ describe("resolveClaudeCliExecutionArgs", () => {
+@@ -226,8 +288,15 @@ describe("resolveClaudeCliExecutionArgs", () => {
        expect(executionArgs(context)).toEqual(
          expect.arrayContaining(["--permission-mode", "bypassPermissions"]),
        );
@@ -600,7 +606,7 @@ index d0885fc1..009df096 100644
        expect(compactArgs).not.toContain("bypassPermissions");
      },
    );
-@@ -205,13 +261,19 @@ describe("resolveClaudeCliExecutionArgs", () => {
+@@ -236,13 +305,19 @@ describe("resolveClaudeCliExecutionArgs", () => {
      "--permission-mode acceptEdits",
      "--permission-mode=acceptEdits",
      "--permission-mode bypassPermissions",
@@ -624,7 +630,7 @@ index d0885fc1..009df096 100644
  
    it("keeps the real resumed manual-compaction command enabled", () => {
 diff --git a/extensions/anthropic/cli-shared.ts b/extensions/anthropic/cli-shared.ts
-index 527cb2fd..713a5a4b 100644
+index 510021de..fa14e635 100644
 --- a/extensions/anthropic/cli-shared.ts
 +++ b/extensions/anthropic/cli-shared.ts
 @@ -437,10 +437,36 @@ function resolveClaudeCliRestrictedExecutionArgs(
@@ -665,7 +671,7 @@ index 527cb2fd..713a5a4b 100644
    const baseArgs = context.hostOwnedTools?.includes("exec")
      ? [
 diff --git a/extensions/anthropic/cli.runtime.ts b/extensions/anthropic/cli.runtime.ts
-index 8b488fd6..374afcef 100644
+index 2474cdbe..0c309e0f 100644
 --- a/extensions/anthropic/cli.runtime.ts
 +++ b/extensions/anthropic/cli.runtime.ts
 @@ -10,6 +10,7 @@ import type {
@@ -697,14 +703,14 @@ index 8b488fd6..374afcef 100644
    if (request.callback_id === "PreToolUse" && input.hook_event_name === "PreToolUse") {
      if (
        turn &&
-@@ -652,6 +667,7 @@ export async function* executeClaudeCli(
-           hooks: {
-             UserPromptSubmit: [{ hookCallbackIds: ["UserPromptSubmit"] }],
-             PreToolUse: [{ hookCallbackIds: ["PreToolUse"] }],
+@@ -655,6 +670,7 @@ export async function* executeClaudeCli(
+             hooks: {
+               UserPromptSubmit: [{ hookCallbackIds: ["UserPromptSubmit"] }],
+               PreToolUse: [{ hookCallbackIds: ["PreToolUse"] }],
 +            PreCompact: [{ hookCallbackIds: ["PreCompact"] }],
+             },
            },
-         },
-         onMessage: (message) => acceptMessage(session, message),
+           onMessage: (message) => acceptMessage(session, message),
 diff --git a/src/agents/cli-runner.spawn.test.ts b/src/agents/cli-runner.spawn.test.ts
 index 1aab236d..532c9da4 100644
 --- a/src/agents/cli-runner.spawn.test.ts
@@ -733,10 +739,10 @@ index 1aab236d..532c9da4 100644
      const stateDir = tempDirs.make("openclaw-cli-agent-image-");
      const workspaceDir = path.join(stateDir, "workspace-arthur");
 diff --git a/src/agents/cli-runner.ts b/src/agents/cli-runner.ts
-index 3d4a7d90..f91baa40 100644
+index 4f6d88d2..1087aec2 100644
 --- a/src/agents/cli-runner.ts
 +++ b/src/agents/cli-runner.ts
-@@ -90,7 +90,7 @@ export async function isCliBindingFlushed(
+@@ -93,7 +93,7 @@ export async function isCliBindingFlushed(
    sessionId: string | undefined,
    provider: string | undefined,
    workspaceDir?: string,
@@ -745,7 +751,7 @@ index 3d4a7d90..f91baa40 100644
  ): Promise<boolean> {
    if (!provider || !isClaudeCliBackend(provider)) {
      return true;
-@@ -107,7 +107,13 @@ export async function isCliBindingFlushed(
+@@ -110,7 +110,13 @@ export async function isCliBindingFlushed(
      if (delayMs > 0) {
        await sleep(delayMs);
      }
@@ -760,7 +766,7 @@ index 3d4a7d90..f91baa40 100644
        return true;
      }
    }
-@@ -348,7 +354,11 @@ async function runPreparedCliAgentOwned(
+@@ -352,7 +358,11 @@ async function runPreparedCliAgentOwned(
        sessionBindingDisabled ||
        !isAgentRunDirectAbortReason(error) ||
        !isClaudeCliBackend(params.provider) ||
@@ -773,7 +779,7 @@ index 3d4a7d90..f91baa40 100644
      ) {
        return;
      }
-@@ -586,7 +596,12 @@ async function runPreparedCliAgentOwned(
+@@ -585,7 +595,12 @@ async function runPreparedCliAgentOwned(
                effectiveCliSessionId,
                params.provider,
                context.cwd ?? context.workspaceDir,
@@ -1132,10 +1138,10 @@ index b63fbe57..327e6a59 100644
      const raw = jsonl({ type: "system", subtype: "compacting" });
      mockOutput([raw]);
 diff --git a/src/agents/cli-runner/execute.ts b/src/agents/cli-runner/execute.ts
-index 84c43a02..11e3d37b 100644
+index 5a2236c3..b0fcb29f 100644
 --- a/src/agents/cli-runner/execute.ts
 +++ b/src/agents/cli-runner/execute.ts
-@@ -236,7 +236,11 @@ export async function executePreparedCliRun(
+@@ -235,7 +235,11 @@ export async function executePreparedCliRun(
      params.controlOperation === "compact" && context.backendResolved.manualCompaction
        ? { ...backend, input: context.backendResolved.manualCompaction.input }
        : backend;
@@ -1148,7 +1154,7 @@ index 84c43a02..11e3d37b 100644
    const baseArgs = useResume ? (backend.resumeArgs ?? backend.args ?? []) : (backend.args ?? []);
    const resolvedArgs = useResume
      ? baseArgs.map((entry) => entry.replaceAll("{sessionId}", resolvedSessionId ?? ""))
-@@ -496,6 +500,7 @@ export async function executePreparedCliRun(
+@@ -495,6 +499,7 @@ export async function executePreparedCliRun(
                    fastAutoOnSeconds: params.fastModeAutoOnSeconds,
                  }).enabled,
            executionMode: params.executionMode ?? "agent",
@@ -1173,21 +1179,23 @@ index 94c6297a..db34bb4c 100644
      : { kind: "process" };
  }
 diff --git a/src/agents/cli-runner/mcp-grant-context.test.ts b/src/agents/cli-runner/mcp-grant-context.test.ts
-index ca2bb50b..8b3736e8 100644
+index ca2bb50b..7a57d8ae 100644
 --- a/src/agents/cli-runner/mcp-grant-context.test.ts
 +++ b/src/agents/cli-runner/mcp-grant-context.test.ts
-@@ -36,6 +36,26 @@ function buildGrant(
+@@ -36,6 +36,28 @@ function buildGrant(
  }
  
  describe("buildCliMcpGrantContext source-reply authority", () => {
 +  it("carries a host memory target and source policy without granting native tools", () => {
++    const conversationToolPolicy = { deny: ["write"] };
 +    const grant = buildGrant({
 +      trigger: "memory",
 +      memoryFlushWritePath: "memory/2026-01-01.md",
 +      initialTurnTainted: true,
 +      runtimePolicySessionKey: "agent:main:source",
-+      conversationToolPolicy: { deny: ["write"] },
++      conversationToolPolicy,
 +    });
++    conversationToolPolicy.deny[0] = "read";
 +    expect(grant).toMatchObject({
 +      memoryFlushWritePath: "memory/2026-01-01.md",
 +      initialTurnTainted: true,
@@ -1204,10 +1212,10 @@ index ca2bb50b..8b3736e8 100644
      const requesterModel = {
        provider: "selected-provider",
 diff --git a/src/agents/cli-runner/mcp-grant-context.ts b/src/agents/cli-runner/mcp-grant-context.ts
-index 39c936fc..b3b7b3e2 100644
+index bec289bd..d4e90210 100644
 --- a/src/agents/cli-runner/mcp-grant-context.ts
 +++ b/src/agents/cli-runner/mcp-grant-context.ts
-@@ -28,6 +28,8 @@ export function finalizeCliMcpGrant(
+@@ -29,6 +29,8 @@ export function finalizeCliMcpGrant(
      | "abortSignal"
      | "toolAuthorityFingerprint"
      | "replyOperation"
@@ -1216,7 +1224,7 @@ index 39c936fc..b3b7b3e2 100644
    > = {},
  ) {
    if (!context) {
-@@ -48,6 +50,8 @@ export function finalizeCliMcpGrant(
+@@ -49,6 +51,8 @@ export function finalizeCliMcpGrant(
      ...(cronRequesterGrantIssuer ? { cronRequesterGrantIssuer } : {}),
      ...(cronAuthorityCheck ? { cronAuthorityCheck } : {}),
      admittedRunContext: source.admittedRunContext,
@@ -1225,11 +1233,10 @@ index 39c936fc..b3b7b3e2 100644
      messageActionTurnCapability: source.messageActionTurnCapability,
      abortSignal: source.abortSignal,
      assertCurrent: source.assertCurrent,
-@@ -209,6 +213,11 @@ export function buildCliMcpGrantContext(params: {
+@@ -212,6 +216,10 @@ export function buildCliMcpGrantContext(params: {
          }
        : {}),
      runtimePolicySessionKey,
-+    conversationToolPolicy: params.run.conversationToolPolicy,
 +    conversationRoutePeerId: params.run.conversationRoutePeerId,
 +    memoryFlushWritePath:
 +      params.run.trigger === "memory" ? params.run.memoryFlushWritePath : undefined,
@@ -1238,18 +1245,18 @@ index 39c936fc..b3b7b3e2 100644
      agentId: params.agentId,
      sessionId: normalizeOptionalString(params.run.sessionId),
 diff --git a/src/agents/cli-runner/prepare-mcp.test-support.ts b/src/agents/cli-runner/prepare-mcp.test-support.ts
-index 131ea831..0b47528a 100644
+index 396c91ce..d4b9c535 100644
 --- a/src/agents/cli-runner/prepare-mcp.test-support.ts
 +++ b/src/agents/cli-runner/prepare-mcp.test-support.ts
-@@ -151,6 +151,7 @@ export function registerCliMcpPreparationTests({
-         messageProvider: "telegram",
+@@ -152,6 +152,7 @@ export function registerCliMcpPreparationTests({
+         requester: { channel: "telegram", senderId: "canonical-sender" },
          clientCaps: ["tool-events", "inline-widgets"],
          pinnedWidgetAuthoring: true,
 +        conversationRoutePeerId: undefined,
          conversationToolPolicy: undefined,
          currentChannelId: "telegram:-100123:topic:42",
          currentThreadTs: "42",
-@@ -193,12 +194,16 @@ export function registerCliMcpPreparationTests({
+@@ -194,12 +195,16 @@ export function registerCliMcpPreparationTests({
          groupChannel: "ops",
          groupSpace: "workspace-a",
          gatewayUiCommandTarget: undefined,
@@ -1581,10 +1588,10 @@ index 3d350311..61f0d706 100644
    const reseedMessages = selected.map((message) => {
      const timestamp = timestampMsToIsoString(message.timestamp);
 diff --git a/src/agents/cli-runner/types.ts b/src/agents/cli-runner/types.ts
-index 3e7673ac..2ec10783 100644
+index 6003e885..0354768a 100644
 --- a/src/agents/cli-runner/types.ts
 +++ b/src/agents/cli-runner/types.ts
-@@ -76,6 +76,14 @@ export type RunCliAgentParams = {
+@@ -77,6 +77,14 @@ export type RunCliAgentParams = {
    sessionTarget?: SessionTranscriptRuntimeTarget;
    /** Session identity used only for sandbox and tool-policy resolution. */
    runtimePolicySessionKey?: string;
@@ -2093,7 +2100,7 @@ index a03ad8fa..982bcea2 100644
    it("rejects a replaced writer claim before queued native CLI compaction", async () => {
      const laneEntered = createDeferred();
 diff --git a/src/agents/embedded-agent-runner/compact.ts b/src/agents/embedded-agent-runner/compact.ts
-index 42ea76f3..e3f31198 100644
+index b61a2277..523c9455 100644
 --- a/src/agents/embedded-agent-runner/compact.ts
 +++ b/src/agents/embedded-agent-runner/compact.ts
 @@ -22,6 +22,7 @@ import {
@@ -2104,7 +2111,7 @@ index 42ea76f3..e3f31198 100644
  import { ensureSelectedAgentHarnessPlugin } from "../harness/runtime-plugin.js";
  import { isFallbackSummaryError } from "../model-fallback-attempt.js";
  import { resolveModelCandidateChain } from "../model-fallback-candidates.js";
-@@ -60,7 +61,11 @@ export async function compactNativeCliSession(params: {
+@@ -61,7 +62,11 @@ export async function compactNativeCliSession(params: {
    runControlOperation?: (run: () => Promise<void>) => Promise<void>;
  }): Promise<EmbeddedAgentCompactResult | undefined> {
    const runtime = normalizeOptionalAgentRuntimeId(params.runtime);
@@ -2117,7 +2124,7 @@ index 42ea76f3..e3f31198 100644
      return undefined;
    }
    const backend = resolveCliBackendConfig(runtime, params.compactParams.config, {
-@@ -97,6 +102,48 @@ export async function compactNativeCliSession(params: {
+@@ -98,6 +103,48 @@ export async function compactNativeCliSession(params: {
    );
    try {
      const runControlOperation = async () => {
@@ -2166,7 +2173,7 @@ index 42ea76f3..e3f31198 100644
        await runCliAgent({
          preparedRunAdmission,
          sessionId: params.compactParams.sessionId,
-@@ -112,6 +159,16 @@ export async function compactNativeCliSession(params: {
+@@ -113,6 +160,16 @@ export async function compactNativeCliSession(params: {
          modelProvider: params.compactParams.provider,
          model: params.compactParams.model,
          thinkLevel: params.compactParams.thinkLevel,
@@ -6458,10 +6465,10 @@ index 79f9acfc..0049ebb7 100644
      expect(first?.isCurrent()).toBe(false);
      expect(
 diff --git a/src/gateway/mcp-grant-store.ts b/src/gateway/mcp-grant-store.ts
-index c492f8ff..50e95396 100644
+index 41a820a7..814b6341 100644
 --- a/src/gateway/mcp-grant-store.ts
 +++ b/src/gateway/mcp-grant-store.ts
-@@ -45,6 +45,7 @@ export type McpLoopbackRequestContext = {
+@@ -50,6 +50,7 @@ export type McpLoopbackRequestContext = {
    runtimePolicySessionKey?: string;
    /** Host-minted policy and memory target, never read from MCP request headers. */
    conversationRoutePeerId?: string;
@@ -6469,7 +6476,7 @@ index c492f8ff..50e95396 100644
    initialTurnTainted?: boolean;
    /** Agent whose execution policy applies when it differs from the durable session owner. */
    runtimePolicyAgentId?: string;
-@@ -176,6 +177,8 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
+@@ -181,6 +182,8 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
    /** Original CLI policy, rebound only to this stored row's exact lifetime. */
    bindQuestionAnswerAuthority?: (assertActive: () => void) => PreparedQuestionAnswerAuthority;
    /** Native memory capability retained on the host; never serialized to CLI context. */
@@ -6478,7 +6485,7 @@ index c492f8ff..50e95396 100644
    skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
    /** Configured MCP tools owned by the minting CLI run; disposed with that run. */
    bundledTools?: readonly AnyAgentTool[];
-@@ -315,6 +318,8 @@ export function mintMcpLoopbackClientGrant(
+@@ -320,6 +323,8 @@ export function mintMcpLoopbackClientGrant(
      assertCurrent: params.assertCurrent,
      bindQuestionAnswerAuthority: params.bindQuestionAnswerAuthority,
      skillLibraryAuthoring: params.skillLibraryAuthoring,
@@ -6487,7 +6494,7 @@ index c492f8ff..50e95396 100644
      ...(params.bundledTools?.length ? { bundledTools: params.bundledTools } : {}),
      ...(params.toolAuth ? { toolAuth: structuredClone(params.toolAuth) } : {}),
    };
-@@ -513,6 +518,8 @@ export function resolveMcpLoopbackClientGrant(params: {
+@@ -518,6 +523,8 @@ export function resolveMcpLoopbackClientGrant(params: {
        cronAuthorityCheck?: () => boolean;
        questionAnswerAuthority?: PreparedQuestionAnswerAuthority;
        skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
@@ -6496,7 +6503,7 @@ index c492f8ff..50e95396 100644
        bundledTools?: readonly AnyAgentTool[];
        isCurrent: () => boolean;
        abortSignal?: AbortSignal;
-@@ -569,6 +576,8 @@ export function resolveMcpLoopbackClientGrant(params: {
+@@ -574,6 +581,8 @@ export function resolveMcpLoopbackClientGrant(params: {
      abortSignal: grant.abortSignal,
      codeModeSkills: grant.codeModeSkills,
      skillLibraryAuthoring: grant.skillLibraryAuthoring,
@@ -6806,7 +6813,7 @@ index b685a299..07d1e0da 100644
    scoped.captureFinalCronCreatorTools?.(new Set(toolSchema.map((tool) => tool.name)));
    return {
 diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
-index f82f4d52..476aed3b 100644
+index f4133b25..dd356d32 100644
 --- a/src/gateway/mcp-http.ts
 +++ b/src/gateway/mcp-http.ts
 @@ -304,6 +304,8 @@ async function startMcpLoopbackServer(
@@ -6819,10 +6826,10 @@ index f82f4d52..476aed3b 100644
                    signal: requestAbort.signal,
                    authProfileStore: boundClientGrant?.toolAuth?.store,
 diff --git a/src/gateway/server-startup-observers.ts b/src/gateway/server-startup-observers.ts
-index 437406cd..0373a681 100644
+index abd36916..78319aae 100644
 --- a/src/gateway/server-startup-observers.ts
 +++ b/src/gateway/server-startup-observers.ts
-@@ -150,6 +150,17 @@ export async function runGatewayStartupObservers(params: {
+@@ -167,6 +167,17 @@ export async function runGatewayStartupObservers(params: {
    });
    try {
      await sweepSessionStateWatchNotices();
@@ -6906,7 +6913,7 @@ index 3f800aa2..ef9a8684 100644
  
    it("retains a computer execution across MCP catalog rebuilds and releases it with its run", async () => {
 diff --git a/src/gateway/tool-resolution.ts b/src/gateway/tool-resolution.ts
-index 5225f597..47b85b76 100644
+index e37f3b7b..da0e4138 100644
 --- a/src/gateway/tool-resolution.ts
 +++ b/src/gateway/tool-resolution.ts
 @@ -28,7 +28,7 @@ import { resolveSandboxRuntimeStatusAsync } from "../agents/sandbox/runtime-stat
@@ -6980,7 +6987,7 @@ index 5225f597..47b85b76 100644
    const mediatedCodingTools =
      surface === "loopback" && (includeMediatedBaseCodingTools || includeMediatedShellTools)
        ? await createOpenClawCodingToolsInternalAsync({
-@@ -516,13 +537,17 @@ export async function resolveGatewayScopedTools(
+@@ -518,13 +539,17 @@ export async function resolveGatewayScopedTools(
                  messageProvider: "webchat",
                  workspaceDir,
                  cwd: params.cwd?.trim() || workspaceDir,
@@ -7000,7 +7007,7 @@ index 5225f597..47b85b76 100644
            exec: execDefaults
              ? {
                  host: execDefaults.host,
-@@ -543,7 +568,7 @@ export async function resolveGatewayScopedTools(
+@@ -545,7 +570,7 @@ export async function resolveGatewayScopedTools(
              includeShellTools: includeMediatedShellTools,
              includeChannelTools: false,
              includeOpenClawTools: false,
@@ -7009,7 +7016,7 @@ index 5225f597..47b85b76 100644
            },
          })
        : [];
-@@ -617,7 +642,7 @@ export async function resolveGatewayScopedTools(
+@@ -619,7 +644,7 @@ export async function resolveGatewayScopedTools(
  
    const coreToolNames = new Set(allTools.map((tool) => normalizeToolPolicyName(tool.name)));
    const bundledTools =
