@@ -13,6 +13,7 @@ export function validateCI(config) {
   separate([config.registry, config.runs, controller.root, controller.backup.root, controller.test.runtime, controller.prod.runtime, config.dev.runtime]);
   for (const item of controller.backup.paths) separate([config.registry, config.runs, config.dev.runtime, item.path]);
   for (const key of ['preflight', 'applicationTests', 'merge', 'devCleanup', 'testCleanup']) validateCommand(config[key]);
+  if (config.dev.postInstall !== undefined) validateCommand(config.dev.postInstall);
   if (config.notify) validateCommand(config.notify);
   if (config.reconcile) validateCommand(config.reconcile);
   return config;

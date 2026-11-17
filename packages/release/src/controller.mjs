@@ -16,6 +16,7 @@ export function validateConfiguration(config) {
     canonical(target.runtime);
     for (const key of ['stop', 'start', 'health', 'tests']) validateCommand(target[key]);
     if (target.prepare) validateCommand(target.prepare);
+    if (target.postInstall !== undefined) validateCommand(target.postInstall);
   }
   for (const key of ['quiesce', 'resumeIntake']) validateCommand(config.prod[key]);
   separate([config.root, config.backup.root, config.test.runtime, config.prod.runtime]);
@@ -42,6 +43,10 @@ async function deploy(target, artifact, digest, run, phase) {
   rmSync(target.runtime, { recursive: true, force: true });
   copy(artifact, target.runtime);
   if (treeHash(target.runtime) !== digest) throw new Error('Installed output differs from tested artifact');
+  if (target.postInstall !== undefined) {
+    await run(target.postInstall, phase + '-post-install');
+    if (treeHash(target.runtime) !== digest) throw new Error('Post-install command changed installed artifact');
+  }
   await run(target.start, phase + '-start');
   await run(target.health, phase + '-health');
   await run(target.tests, phase + '-tests');
@@ -57,6 +62,7 @@ export async function deployDev(config, ticket, target, execute = command) {
   for (const entry of config.backup.paths) separate([target.runtime, entry.path]);
   for (const key of ['stop', 'start', 'health', 'tests']) validateCommand(target[key]);
   if (target.prepare) validateCommand(target.prepare);
+  if (target.postInstall !== undefined) validateCommand(target.postInstall);
   const unlock = lock(join(config.root, 'dev.lock'));
   try {
     await deploy(target, ticket.artifact, treeHash(ticket.artifact), (cmd, phase) => execute(cmd, applicationEnvironment(ticket, phase)), 'dev');
