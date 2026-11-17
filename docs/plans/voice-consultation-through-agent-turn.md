@@ -327,8 +327,8 @@ guard correctly refused to migrate data owned by the older registered Gateway.
 CI recovery and cleanup have closed. The repair preserves configuration preparation
 before installation, then runs native Doctor after the installed runtime is verified
 and before Gateway starts. No additional runtime patch or migration-guard bypass is
-needed. Focused control tests pass; the retained reviewer is verifying the native
-service-registration case using synthetic state. The independently approved two-lane
+needed. Focused control tests and the maintained native service-registration regression
+pass locally. The retained reviewer cleared the repair. The independently approved two-lane
 test orchestration is being integrated while preserving upstream's native per-project
 execution. Fresh qualification and production acceptance remain required. Phase 2
 stays paused until Phase 1 acceptance, exact merge and eligible cleanup.

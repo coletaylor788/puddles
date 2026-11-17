@@ -27,7 +27,7 @@ Both lanes settle before qualification returns, including when either fails. Exi
 
 ### Status
 
-**Approval:** Production approved. **Approval reference:** “Approved the parallel two lane. Park the shared fixtures agree it’s not proven. Ship the two lane.” Implementation and focused regressions pass. The upgrade candidate integrates both lanes while preserving the newer upstream native per-project runner. Retained review, exact-candidate qualification and landing remain outstanding.
+**Approval:** Production approved. **Approval reference:** “Approved the parallel two lane. Park the shared fixtures agree it’s not proven. Ship the two lane.” Implementation and focused regressions pass. The upgrade candidate integrates both lanes while preserving the newer upstream native per-project runner. Retained review cleared the resolved integration. Exact-candidate qualification and landing remain outstanding.
 
 ## Agent section
 
@@ -63,13 +63,13 @@ Use the normal reviewed source and CI lifecycle. Preserve active candidates and 
 
 ### Review log
 
-Retained independent adversarial review pending.
+The retained independent reviewer cleared the resolved upgrade integration at `a201c51e`, including native per-project execution, lane failure joins and signal cleanup. Exact-candidate timing remains an execution gate.
 
 ### Checklist
 
 - [x] Design approved.
 - [x] Separate worktrees created.
 - [ ] Focused and cumulative validation passed.
-- [ ] Retained review cleared.
+- [x] Retained review cleared.
 - [ ] Source landed and execution verified.
 - [ ] Eligible task artifacts cleaned.
