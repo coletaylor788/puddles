@@ -180,9 +180,11 @@ and one health-response fixture failed. The failure reproduces with that file
 alone. Its raw server never drains the incoming request, so Node 26.13.1 does not
 observe socket closure within the unchanged one-second assertion. The separately
 approved upgrade corrects that fixture. Do not copy its patch into this older
-source under the browser task's approval. Finish independent harness validation,
-then refresh from the landed upgrade and repeat affected qualification. The full
-mapped set remains the memory-recovery acceptance check.
+source under the browser task's approval. The other four batches and the separate
+e2e checks passed. Across the 278 mapped project/file pairs, only that known fixture
+failed; no bounded process exhausted its heap. Diagnostic scratch and processes
+closed. This is still a failed overall result, not a passing application gate.
+Refresh from the landed upgrade and repeat affected qualification before release.
 
 ### Rollout and rollback
 
