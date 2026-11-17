@@ -41,6 +41,16 @@ test('refuses vault directories reachable through a browser bind', () => {
     assert.throws(() => validateSpec({ ...spec, ...change }));
   }
 });
+test('browser timezone uses the native container environment and rejects invalid zones', () => {
+  const pacific = { ...spec, timezone: 'America/Los_Angeles' };
+  validateSpec(pacific);
+  const args = browserRunArgs(pacific, '/protected/vercel/browser.env');
+  assert.equal(args[args.indexOf('--env') + 1], 'TZ=America/Los_Angeles');
+  assert.ok(!browserRunArgs(spec, '/protected/vercel/browser.env').includes('--env'));
+  for (const timezone of ['Unknown/Place', 'PST8PDT', 'America/Los_Angeles\nX=1', '', 8]) {
+    assert.throws(() => validateSpec({ ...spec, timezone }), /timezone/);
+  }
+});
 test('reuses and stops only the exact owned container', () => {
   const { record, execute } = fixture();
   assert.equal(inspectBrowser(spec, execute).id, id);

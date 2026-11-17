@@ -41,6 +41,20 @@ try {
   const r=await mcp.call(name,args);assert.ok(!r.error&&!r.result?.isError,JSON.stringify(r));assert.ok(!JSON.stringify(r).includes(password));console.log(name,JSON.stringify(r).length,'bytes');if(name==='agent_browser_eval')assert.match(JSON.stringify(r),/Signed in to fixture/);
  }
  assert.ok(submitted);
+ const verifyTimezone = async () => {
+  if (!spec.timezone) return;
+  const expected = new Intl.DateTimeFormat('en-US', {timeZone: spec.timezone}).resolvedOptions().timeZone;
+  const result = await mcp.call('agent_browser_eval', {script:
+   `(() => { const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+     if (zone !== ${JSON.stringify(expected)}) throw new Error('Browser timezone differs: ' + zone);
+     if (zone === 'America/Los_Angeles' &&
+         (new Date('2026-01-15T12:00:00Z').getTimezoneOffset() !== 480 ||
+          new Date('2026-07-15T12:00:00Z').getTimezoneOffset() !== 420)) throw new Error('Pacific daylight saving offsets differ');
+     return 'Browser timezone verified'; })()`});
+  assert.ok(!result.error && !result.result?.isError, 'Browser timezone qualification failed');
+  assert.match(JSON.stringify(result), /Browser timezone verified/);
+ };
+ await verifyTimezone();
  for(const session of ['qualification-one','qualification-two']) {
   const response=await mcp.call('agent_browser_get_title',{session});
   assert.ok(!response.error&&!response.result?.isError,'Named native session failed');
@@ -80,6 +94,7 @@ try {
  const state=await mcp.call('agent_browser_eval',{script:'document.querySelector("#welcome")?.textContent'});
  assert.match(JSON.stringify(state),/Signed in to fixture/);
  console.log('Profile survives container recreation');
+ await verifyTimezone();
  sessionValue='renewed';
  await mcp.call('agent_browser_open',{url:url.replace('/login','/welcome')});
  const expired=await mcp.call('agent_browser_eval',{script:'document.querySelector("#welcome")?.textContent ?? "login_required"'});

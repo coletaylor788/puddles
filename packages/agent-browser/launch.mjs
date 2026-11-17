@@ -13,6 +13,13 @@ export function validateSpec(spec) {
   }
   if (!/^unix:\/\/\/[^\0\r\n]+$/.test(spec.dockerHost ?? '')) throw new Error('Explicit local Docker socket required');
   if (typeof spec.headless !== 'boolean') throw new Error('Explicit browser display mode required');
+  if (spec.timezone !== undefined) {
+    if (typeof spec.timezone !== 'string' || !/^(?:UTC|[A-Za-z_]+\/[A-Za-z_\/-]+)$/.test(spec.timezone)) {
+      throw new Error('Browser timezone must be an IANA timezone');
+    }
+    try { new Intl.DateTimeFormat('en-US', { timeZone: spec.timezone }); }
+    catch { throw new Error('Unknown browser timezone'); }
+  }
   const inside = (parent, child) => { const r = relative(parent, child); return !r || (!r.startsWith('..') && !isAbsolute(r)); };
   if (inside(spec.profile, spec.stateDir) || inside(spec.downloads, spec.stateDir)
     || inside(spec.stateDir, spec.profile) || inside(spec.stateDir, spec.downloads)
@@ -55,6 +62,7 @@ export function browserRunArgs(spec, envFile) {
     ...(spec.headless ? [] : ['--publish', '127.0.0.1::6080']),
     '--mount', 'type=bind,src=' + spec.profile + ',dst=/profile',
     '--mount', 'type=bind,src=' + spec.downloads + ',dst=/downloads',
+    ...(spec.timezone ? ['--env', 'TZ=' + spec.timezone] : []),
     '--env-file', envFile, spec.image];
 }
 function protectedFile(path, contents) {
