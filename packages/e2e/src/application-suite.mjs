@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { runCommand } from './process-runner.mjs';
+import { runCommand, isHandlingSignal } from './process-runner.mjs';
 import { prepareApplicationPython } from './application-python.mjs';
 
 export const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -86,6 +86,23 @@ export async function runMappedTests(source, manifests, run, workers = 4) {
   return { projects: selected.size, tests: [...selected.values()].reduce((count, files) => count + files.size, 0) };
 }
 
+/** Join both lanes, including each command's descendant cleanup, before returning. */
+export async function runApplicationLanes(source, installed) {
+  const started = Date.now();
+  const timings = {};
+  const results = await Promise.allSettled(Object.entries({ source, installed }).map(async ([lane, run]) => {
+    const start = Date.now();
+    let status = 'failed';
+    try { const result = await run(); status = 'passed'; return result; }
+    finally { timings[lane] = { status, durationMs: Date.now() - start }; }
+  }));
+  console.log(JSON.stringify({ check: 'application-lanes', durationMs: Date.now() - started, lanes: timings }));
+  const errors = results.flatMap((result, index) => result.status === 'rejected'
+    ? [new Error(`${index === 0 ? 'source' : 'installed'} lane: ${result.reason?.message ?? result.reason}`, { cause: result.reason })] : []);
+  if (errors.length) throw new AggregateError(errors, errors.map(error => error.message).join('; '));
+  return results[0].value;
+}
+
 export async function applicationSuite({ source, artifact, extensionPath, workers = 4, env = process.env, scratch = env.OPENCLAW_APPLICATION_TEST_SCRATCH }, execute = runCommand, preparePython = prepareApplicationPython) {
   if (!safeNode()) throw new Error('Application checks require SQLite-safe Node 24.16+ or 26.1+');
   if (!isAbsolute(source ?? '') || !existsSync(join(source, 'dist'))) throw new Error('OPENCLAW_SRC must name the prepared, incrementally built feature source');
@@ -94,10 +111,19 @@ export async function applicationSuite({ source, artifact, extensionPath, worker
   // Optional application-owned companion. No release-tool imports or auto-discovery.
   const extension = extensionPath ? (await import(pathToFileURL(realpathSync(extensionPath)).href)).default : {};
   const manifests = [suite, ...(extension.suites ?? [])];
+  const checks = extension.checks ?? [];
+  // Validate the entire declaration before launching either lane. Unclassified
+  // companion checks retain their original ordering after synthetic scenarios.
+  for (const check of checks) {
+    if (!Array.isArray(check.args) || !isAbsolute(check.cwd ?? '')) throw new Error('Application companion checks require explicit commands and working directories');
+    if (!['preflight', 'source', 'installed'].includes(check.lane ?? 'installed')) throw new Error('Unknown application companion lane');
+    if (check.timeoutMs !== undefined && (!Number.isSafeInteger(check.timeoutMs) || check.timeoutMs < 1 || check.timeoutMs > 6 * 60 * 60_000)) throw new Error('Application companion check timeout must be positive and at most six hours');
+  }
   let testEnv = { ...env, OPENCLAW_SRC: source, OPENCLAW_CANDIDATE_DIR: artifact,
     OPENCLAW_COMBINED_CANDIDATE: source, OPENCLAW_CANDIDATE: source, OPENCLAW_VITEST_WORKER_CACHE: '1',
     OPENCLAW_VITEST_MAX_WORKERS: String(workers), OPENCLAW_E2E_USE_PREBUILT_DIST: '1' };
   const run = async (command, args, options = {}) => {
+    if (isHandlingSignal()) throw new Error('Application suite interrupted');
     const start = Date.now();
     try {
       const selectedEnv = options.env ?? testEnv;
@@ -114,34 +140,44 @@ export async function applicationSuite({ source, artifact, extensionPath, worker
     // evict old content. Keep them in the joined operation's disposable tree.
     OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT: join(scratch, 'vitest-cache'),
     OPENCLAW_VITEST_FS_MODULE_CACHE_PATH: join(scratch, 'vitest-direct-cache') };
-  // Build belongs to the feature's incremental loop. This command only tests its output.
-  await run('corepack', ['pnpm', 'lint']);
-  await run('corepack', ['pnpm', 'test']);
-  for (const service of ['gmail-mcp', 'rocket-money-mcp']) {
-    const cwd = join(repository, 'servers', service);
-    const python = pythonSetup.interpreters[service];
-    await run(python, ['-m', 'pytest', 'tests/', '--ignore=tests/integration', '-q'], { cwd, env: pythonSetup.pythonEnv });
-    await run(python, ['-m', 'ruff', 'check', 'src/', 'tests/', ...(service === 'rocket-money-mcp' ? ['../../packages/browser-auth/src'] : [])], { cwd, env: pythonSetup.pythonEnv });
-  }
-  await run('corepack', ['pnpm', 'prompt:snapshots:check'], { cwd: source });
-  for (const project of new Set(manifests.flatMap(manifest => (manifest.patches ?? []).flatMap(patch => patch.typechecks ?? [])))) {
-    relativeFile(project);
-    await run(process.execPath, ['scripts/run-tsgo.mjs', '-p', project, '--incremental'], { cwd: source });
-  }
-  const mapped = await runMappedTests(source, manifests, run, workers);
-  const candidateTests = nativeRegressionTargets(suite).candidateTests;
-  if (candidateTests.length) {
-    for (const file of candidateTests) relativeFile(file);
-    await run('corepack', ['pnpm', 'exec', 'vitest', 'run', '--config', 'vitest.candidate.config.ts', '--maxWorkers', String(workers), ...candidateTests], { cwd: join(repository, 'packages/e2e') });
-  }
-  await run(process.execPath, [join(repository, 'packages/e2e/bin/test-application.mjs')], {
-    env: { ...testEnv, ...(extensionPath ? { E2E_APPLICATION_EXTENSION: extensionPath } : {}) },
+  const companionChecks = async (lane, env = testEnv) => {
+    for (const check of checks.filter(check => (check.lane ?? 'installed') === lane)) {
+      await run(check.command, check.args, { cwd: check.cwd, env: { ...env, ...check.env },
+        ...(check.timeoutMs === undefined ? {} : { timeoutMs: check.timeoutMs }) });
+    }
+  };
+  await companionChecks('preflight');
+  const installedEnv = { ...testEnv,
+    OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT: join(scratch, 'installed-vitest-cache'),
+    OPENCLAW_VITEST_FS_MODULE_CACHE_PATH: join(scratch, 'installed-vitest-direct-cache') };
+  const mapped = await runApplicationLanes(async () => {
+    // Build belongs to the feature's incremental loop. This command only tests its output.
+    await run('corepack', ['pnpm', 'lint']);
+    await run('corepack', ['pnpm', 'test']);
+    for (const service of ['gmail-mcp', 'rocket-money-mcp']) {
+      const cwd = join(repository, 'servers', service);
+      const python = pythonSetup.interpreters[service];
+      await run(python, ['-m', 'pytest', 'tests/', '--ignore=tests/integration', '-q'], { cwd, env: pythonSetup.pythonEnv });
+      await run(python, ['-m', 'ruff', 'check', 'src/', 'tests/', ...(service === 'rocket-money-mcp' ? ['../../packages/browser-auth/src'] : [])], { cwd, env: pythonSetup.pythonEnv });
+    }
+    await run('corepack', ['pnpm', 'prompt:snapshots:check'], { cwd: source });
+    for (const project of new Set(manifests.flatMap(manifest => (manifest.patches ?? []).flatMap(patch => patch.typechecks ?? [])))) {
+      relativeFile(project);
+      await run(process.execPath, ['scripts/run-tsgo.mjs', '-p', project, '--incremental'], { cwd: source });
+    }
+    const mapped = await runMappedTests(source, manifests, run, workers);
+    const candidateTests = nativeRegressionTargets(suite).candidateTests;
+    if (candidateTests.length) {
+      for (const file of candidateTests) relativeFile(file);
+      await run('corepack', ['pnpm', 'exec', 'vitest', 'run', '--config', 'vitest.candidate.config.ts', '--maxWorkers', String(workers), ...candidateTests], { cwd: join(repository, 'packages/e2e') });
+    }
+    await companionChecks('source');
+    return mapped;
+  }, async () => {
+    await run(process.execPath, [join(repository, 'packages/e2e/bin/test-application.mjs')], {
+      env: { ...installedEnv, ...(extensionPath ? { E2E_APPLICATION_EXTENSION: extensionPath } : {}) },
+    });
+    await companionChecks('installed', installedEnv);
   });
-  for (const check of extension.checks ?? []) {
-    if (!Array.isArray(check.args) || !isAbsolute(check.cwd ?? '')) throw new Error('Application companion checks require explicit commands and working directories');
-    if (check.timeoutMs !== undefined && (!Number.isSafeInteger(check.timeoutMs) || check.timeoutMs < 1 || check.timeoutMs > 6 * 60 * 60_000)) throw new Error('Application companion check timeout must be positive and at most six hours');
-    await run(check.command, check.args, { cwd: check.cwd, env: { ...testEnv, ...check.env },
-      ...(check.timeoutMs === undefined ? {} : { timeoutMs: check.timeoutMs }) });
-  }
   return { status: 'passed', ...mapped };
 }

@@ -113,6 +113,23 @@ stricter limits. Set `E2E_TEST_WORKERS` to change that ceiling. Missing tests
 or failed checks fail the suite. It prints durations and does not build, deploy,
 archive reports, or run release-tool implementation tests.
 
+After common Python preparation and companion preflight checks, qualification runs
+exactly two lanes concurrently. The source lane runs lint, package/Python tests,
+prompt snapshots, typechecks, native regressions, candidate checks and companion
+source checks. The installed lane runs synthetic scenarios followed by companion
+installed checks. Existing worker limits and each lane's command ordering remain.
+Both lanes must settle, including command descendant cleanup, before the suite
+returns. Any failure fails qualification; a failed lane cannot release scratch
+while the other is still running. Signals prevent new commands from starting.
+The final `application-lanes` timing line reports each lane and overall elapsed time.
+
+Companion checks may declare `lane: 'preflight'`, `'source'`, or `'installed'`.
+Preflight checks run before both lanes; use them for output verification or other
+shared prerequisites. An omitted lane defaults to installed, after scenarios,
+preserving legacy companion ordering. Source checks must not depend on installed
+checks or mutate the frozen output. Keep writable fixture state and process
+ownership separate. This does not share fixtures or remove restart coverage.
+
 Every changed behavior needs a committed regression. Use package tests for local
 behavior and `openclaw-patch-suite.json` for upstream patches and cross-component
 cases. Update expectations when intended behavior changes. Test functional use,

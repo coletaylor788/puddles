@@ -3,12 +3,17 @@ import { mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error executable module
-import { applicationSuite as rawApplicationSuite, repository, runMappedTests as rawRunMappedTests } from '../src/application-suite.mjs';
+import { applicationSuite as rawApplicationSuite, repository, runMappedTests as rawRunMappedTests, runApplicationLanes } from '../src/application-suite.mjs';
 const roots: string[] = [];
 const scratchRoot = () => { const path = realpathSync(mkdtempSync(join(tmpdir(), 'application-suite-scratch-'))); roots.push(path); return path; };
 const runMappedTests = (...args: unknown[]) => rawRunMappedTests(...args, 4);
 const applicationSuite = (options: object, ...args: unknown[]) => rawApplicationSuite({scratch:scratchRoot(), ...options}, ...args);
 const preparedPython = async ({env}: {env: Record<string,string>}) => ({env, pythonEnv: {...env,XDG_CACHE_HOME:'/owned/python-cache'}, interpreters: {'gmail-mcp':'fixture-gmail-python', 'rocket-money-mcp':'fixture-rocket-python'}});
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(done => { resolve = done; });
+  return { promise, resolve };
+}
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function source(files: string[]) {
   const root = mkdtempSync(join(tmpdir(), 'application-suite-')); roots.push(root);
@@ -104,7 +109,11 @@ it('the full application gate tests prepared output without invoking a build or 
   expect(calls.some(({args}) => args.some(arg => arg.endsWith('/bin/test-application.mjs')))).toBe(true);
   expect(calls.every(({options}) => options.env.OPENCLAW_CANDIDATE_DIR === root)).toBe(true);
   expect(calls.every(({options}) => options.env.OPENCLAW_VITEST_MAX_WORKERS === '4')).toBe(true);
-  expect(calls.filter(({args}) => !args.includes('pytest') && !args.includes('ruff')).every(({options}) => options.env.OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT.endsWith('/vitest-cache'))).toBe(true);
+  const sourceCache = calls.find(({args}) => args.join(' ') === 'pnpm test')!.options.env.OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT;
+  const installedCache = calls.find(({args}) => args.some(arg => arg.endsWith('/bin/test-application.mjs')))!.options.env.OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT;
+  expect(sourceCache.endsWith('/vitest-cache')).toBe(true);
+  expect(installedCache.endsWith('/installed-vitest-cache')).toBe(true);
+  expect(sourceCache).not.toBe(installedCache);
   const native = calls.filter(({args}) => args[0] === 'scripts/run-vitest.mjs');
   expect(native.filter(({args}) => args[1] === 'list').every(({options}) => options.env.OPENCLAW_VITEST_FS_MODULE_CACHE_PATH.endsWith('/vitest-discovery-cache'))).toBe(true);
   expect(native.filter(({args}) => args[1] === 'run').every(({options}) => options.env.OPENCLAW_VITEST_FS_MODULE_CACHE_PATH === '')).toBe(true);
@@ -185,4 +194,64 @@ it('honors bounded companion check deadlines without changing other checks', asy
     }
     expect(calls.filter(call => call.command !== 'synthetic-sequential').every(call => call.timeoutMs === 30 * 60_000)).toBe(true);
   }
+});
+
+it.each(['source', 'installed'])('joins the other lane before reporting a %s failure', async failed => {
+  const started = deferred(), release = deferred(), failedDone = deferred();
+  let joined = false, returned = false;
+  const fail = async () => { await started.promise; failedDone.resolve(); throw new Error('test regression'); };
+  const other = async () => { started.resolve(); await release.promise; joined = true; return { tests: 7 }; };
+  const operation = runApplicationLanes(failed === 'source' ? fail : other, failed === 'installed' ? fail : other)
+    .catch((error: Error) => { returned = true; return error; });
+  await failedDone.promise;
+  await Promise.resolve();
+  expect(returned).toBe(false);
+  release.resolve();
+  const result = await operation;
+  expect(joined).toBe(true);
+  expect(result.message).toContain(`${failed} lane: test regression`);
+});
+
+it('retains both failures after both lanes settle', async () => {
+  await expect(runApplicationLanes(async () => { throw new Error('source regression'); },
+    async () => { throw new Error('installed cleanup failed'); })).rejects.toMatchObject({
+    message: 'source lane: source regression; installed lane: installed cleanup failed',
+    errors: [expect.any(Error), expect.any(Error)],
+  });
+});
+
+it('runs both lanes after common prerequisites and preserves every companion check exactly once', async () => {
+  const manifest = JSON.parse(readFileSync(join(repository, 'packages/e2e/openclaw-patch-suite.json'), 'utf8'));
+  const root = source(['dist/ready', 'openclaw.mjs', ...new Set<string>([...manifest.tests, ...manifest.patches.flatMap((patch: { tests: string[] }) => patch.tests)])]);
+  const extensionPath = join(root, 'lanes.mjs');
+  writeFileSync(extensionPath, `export default ${JSON.stringify({ checks: [
+    { lane: 'preflight', command: 'verify', args: [], cwd: root },
+    { lane: 'source', command: 'source-extra', args: [], cwd: root },
+    { lane: 'installed', command: 'installed-extra', args: [], cwd: root },
+    { command: 'legacy-extra', args: [], cwd: root },
+  ] })}`);
+  const installedStarted = deferred(), sourceStarted = deferred();
+  const calls: string[] = [];
+  const result = await applicationSuite({ source: root, artifact: root, extensionPath }, async (command: string, args: string[]) => {
+    const name = args.some(arg => arg.endsWith('/bin/test-application.mjs')) ? 'scenarios' : command;
+    calls.push(name);
+    if (command === 'corepack' && args[1] === 'lint') { sourceStarted.resolve(); await installedStarted.promise; }
+    if (name === 'scenarios') { installedStarted.resolve(); await sourceStarted.promise; }
+    return args.filter(arg => /\.test\.tsx?$/.test(arg)).join('\n');
+  }, async (options: {env: Record<string, string>}) => { calls.push('python'); return preparedPython(options); });
+  expect(result.status).toBe('passed');
+  expect(calls.slice(0, 2)).toEqual(['python', 'verify']);
+  for (const name of ['verify', 'source-extra', 'scenarios', 'installed-extra', 'legacy-extra']) {
+    expect(calls.filter(call => call === name)).toHaveLength(1);
+  }
+  expect(calls.indexOf('scenarios')).toBeLessThan(calls.indexOf('installed-extra'));
+  expect(calls.indexOf('installed-extra')).toBeLessThan(calls.indexOf('legacy-extra'));
+});
+
+it('rejects invalid companion lanes before executing any preparation or tests', async () => {
+  const root = source(['dist/ready', 'openclaw.mjs']);
+  const extensionPath = join(root, 'invalid-lane.mjs');
+  writeFileSync(extensionPath, `export default ${JSON.stringify({ checks: [{lane: 'typo', command: 'test', args: [], cwd: root}] })}`);
+  const unexpected = async () => { throw new Error('unexpected command'); };
+  await expect(applicationSuite({ source: root, artifact: root, extensionPath }, unexpected, unexpected)).rejects.toThrow('Unknown application companion lane');
 });

@@ -320,32 +320,18 @@ repair was implemented. The requester subsequently approved stock backup
 behavior with accepted degradation. Retire backup-only overlays and parity
 requirements while preserving primary Claude and all shared access controls.
 
-**Progress:** The v2026.11.4 candidate builds. Native core and extension types,
-paired metadata and the focused 582-test native lane pass. The installed Claude
-CLI delegation boundary passes with scripted inference. Isolated composed-candidate
-Copilot scenarios exposed the two failures described above; a clean-stock or
-live-chat failure is not established. The custom repair proposals
-are withdrawn; backup-only overlay retirement and qualification updates are in
-progress under the new stock-backup instruction. Owner-gated MCP qualification
-passes. The native lane completed with four reviewed fixture mismatches; these
-will be retired or corrected according to the final reduced composition.
-The reduced candidate passed installed DEV checks and teardown. Production CI
-then stopped in the full application suite before transfer. One candidate test
-still required the removed backup prompt injection. Its replacement checks native
-session resume, unchanged current requests, replay safety, and preserved shared
-transcript records. It makes no claim that the backup consumes voice history.
-That correction passed fresh DEV. The next production gate stopped before transfer
-on archive fixture creation exceeding its setup timeout. Fixture creation now reads
-the repeated member once instead of reopening it 7,500 times. Real oversized listing,
-extraction, identity checks and all timeout bounds stay required. Production is
-unchanged and the failed submission's queue is closed. The corrected tests go through
-a new build and DEV pass before production. Phase 2 stays paused.
-That candidate passed DEV, then production CI stopped before transfer on a heartbeat
-fixture that still required the removed backup context injection. Keep the full
-native heartbeat notification-and-reply scenario unchanged on the native harness.
-Qualify stock backup delivery, session resume, prior user history and isolation in
-its own scenario. Only the backup expectation for externally generated notification
-text in the next provider request is retired. Runtime code and routing are unchanged.
+**Progress:** The current candidate passes DEV, real primary-provider qualification,
+the full application suite, TEST and backup. Production preparation exposed a CI
+ordering error: new Doctor ran before the new runtime was installed, so its native
+guard correctly refused to migrate data owned by the older registered Gateway.
+CI recovery and cleanup have closed. The repair preserves configuration preparation
+before installation, then runs native Doctor after the installed runtime is verified
+and before Gateway starts. No additional runtime patch or migration-guard bypass is
+needed. Focused control tests pass; the retained reviewer is verifying the native
+service-registration case using synthetic state. The independently approved two-lane
+test orchestration is being integrated while preserving upstream's native per-project
+execution. Fresh qualification and production acceptance remain required. Phase 2
+stays paused until Phase 1 acceptance, exact merge and eligible cleanup.
 
 ## Agent section
 

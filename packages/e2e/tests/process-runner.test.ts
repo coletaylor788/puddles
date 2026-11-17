@@ -26,12 +26,12 @@ describe("managed runner signals", () => {
     }
   });
 
-  it("forwards SIGTERM to the active child before cleanup and exit", async () => {
+  it.each([1, 2])("joins %s active lanes on SIGTERM before cleanup and exit", async lanes => {
     const state = mkdtempSync(join(tmpdir(), "e2e-signal-"));
     const marker = join(state, "cleaned");
     const child = spawn(process.execPath, ["tests/fixtures/signal-runner.mjs"], {
       cwd: join(import.meta.dirname, ".."),
-      env: { ...process.env, E2E_SIGNAL_MARKER: marker },
+      env: { ...process.env, E2E_SIGNAL_MARKER: marker, E2E_SIGNAL_LANES: String(lanes) },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -51,7 +51,7 @@ describe("managed runner signals", () => {
         stdout.setEncoding("utf8");
         stdout.on("data", (chunk) => {
           output += chunk;
-          if (output.split("\n").includes("child-ready")) {
+          if (output.split("\n").filter(line => line === "child-ready").length === lanes) {
             clearTimeout(timeout);
             resolve();
           }
