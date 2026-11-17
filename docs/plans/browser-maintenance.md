@@ -33,10 +33,16 @@ new update-request tool is a separate choice, not part of this repair.
 
 ### Status
 
-The requester asked to update the outdated browser and correct UTC to Pacific
-Time on 2026-11-16. That request authorizes this bounded maintenance of the
-existing design. Focused launcher and migration checks pass. Image preparation is held by the
-development host storage reserve; production has not changed. No recurring automation or new agent update permission is enabled.
+**Approval:** Production approved.
+
+**Approval reference:** The requester asked to update the outdated browser and
+correct UTC to Pacific Time on 2026-11-16. This authorizes bounded maintenance of
+the existing architecture. No recurring automation or new agent update permission
+is included.
+
+The replacement image contains Chromium 156.0.8078.79 and Pacific timezone data.
+All 13 browser and plugin regressions and five migration checks pass. Managed
+DEV and production validation remain pending. Production has not changed.
 
 ## Agent section
 
@@ -83,11 +89,10 @@ and timezone, with explicit predecessor checks for the installed control file.
 Focused launcher tests cover timezone handling and malformed values. Installed
 synthetic qualification checks JavaScript timezone and daylight saving offsets
 before and after recreation, alongside existing login and isolation checks.
-Image payload inspection will verify the actual installed Chromium version.
-The full local browser suite passed 11 checks; two packaging checks could not
-run because dependency links referenced the retired previous workspace. Restore
-the frozen paired install before rerunning those checks. Nine focused launcher
-and migration checks pass, including the production preservation path.
+The replacement image reports Chromium 156.0.8078.79 and PST with offset -0800.
+Its browser entrypoint is unchanged. The frozen paired dependency install is
+restored. All 13 browser and plugin checks pass with the supported Node toolchain,
+as do five migration checks including the production preservation path.
 Retained review, DEV, the full application suite and TEST/PROD remain required.
 
 ### Rollout and rollback
@@ -108,7 +113,7 @@ profile root itself is represented by explicit child entries.
 
 - [x] Diagnose the running browser and timezone.
 - [x] Check later stable OpenClaw and supported image maintenance.
-- [ ] Prepare and verify the replacement image.
+- [x] Prepare and verify the replacement image.
 - [ ] Review and test the configuration change.
 - [ ] Pass DEV and production lifecycle.
 - [ ] Verify exact merges, terminal receipts and eligible cleanup.
