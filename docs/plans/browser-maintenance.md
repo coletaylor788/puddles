@@ -26,6 +26,12 @@ specification. Stop the old browser before applying new settings. Preserve the
 previous image and configuration through the normal backup and rollback path.
 No OpenClaw patch or upgrade is required.
 
+Docker Desktop can briefly report a newly recreated profile directory as missing
+even when it exists on the host. Retry that specific native launch failure up to
+five times, 250 milliseconds apart, only while both mount sources are canonical
+host directories. Keep strict bind mounts and existing container ownership checks.
+Other errors still fail immediately; no Docker restart or broader mount is needed.
+
 For ongoing updates, use trusted maintenance to rebuild, validate and deploy a
 new image digest through the same release path. Do not grant the browsing agent
 Docker access or make the live container self-modifying. A recurring schedule or
@@ -44,8 +50,12 @@ The replacement image contains Chromium 156.0.8078.79 and Pacific timezone data.
 All 13 browser and plugin regressions and six migration checks pass. Managed
 DEV validation and cleanup passed with the current CI toolchain. Production
 qualification then stopped on slow archive fixture creation before transfer.
-The reviewed fixture repair and all 312 package tests pass locally. Repeat DEV
-and production qualification with the repaired candidate. Production has not changed.
+The reviewed fixture repair and all 312 package tests pass locally. The next DEV
+run exposed an intermittent Docker directory-visibility failure before Chromium
+started. Disposable mount probes reproduced it and recovered with a bounded retry.
+The narrow launcher repair passed all 17 browser and plugin checks and retained
+independent review. Fresh DEV and production validation remain. Production has
+not changed.
 
 ## Agent section
 
@@ -87,6 +97,12 @@ specification. Use `--env TZ=...` and include it in existing container ownership
 checks. Keep omitted timezone behavior unchanged. Update the private image pin
 and timezone, with explicit predecessor checks for the installed control file.
 
+Retry `docker run` only for exit 125 with the exact missing-bind-source diagnostic
+for the configured profile or downloads path (including Desktop's `/host_mnt`
+prefix). Recheck both canonical host directories and existing container ownership
+before retrying. Stop after five attempts. Keep `--mount`, the same image and
+arguments, and the original native error on failure.
+
 ### Validation
 
 Focused launcher tests cover timezone handling and malformed values. Installed
@@ -105,6 +121,18 @@ checks, while reading its two input files once. Timeouts are unchanged. The
 focused regression passed in 5.7 seconds and all 312 package tests passed with
 the complete host PATH and required process inspection access. The repaired
 candidate still requires DEV and the full production lifecycle.
+
+The next DEV receipt failed in installed browser qualification and completed
+teardown. Host metadata showed the canonical profile directory present while
+Docker rejected its translated bind source. On Docker Desktop 4.70.0 with Engine
+29.4.0, isolated read-only synthetic mounts reproduced the failure. In 20 directory
+recreation cycles, six first attempts failed; all succeeded on the second attempt
+after 250 milliseconds without changing the directory. These probes mounted no
+real profile or credentials and required no Docker restart. Regressions cover
+recovery for both mounts, bounded persistent failure, unrelated errors, genuinely
+missing directories, symlink replacement and exact container ownership.
+All 17 browser and plugin regressions passed, and the retained reviewer
+independently passed the eight launcher tests with no actionable findings.
 
 ### Rollout and rollback
 

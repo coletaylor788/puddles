@@ -2,7 +2,7 @@
 // Host launch wiring only. Vercel owns MCP, tools, credentials and browser actions.
 import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -77,6 +77,14 @@ function port(record, internal) {
     || !/^\d+$/.test(bindings[0].HostPort)) throw new Error('Browser port must bind only to loopback');
   return Number(bindings[0].HostPort);
 }
+function transientBindFailure(spec, error) {
+  if (error.status !== 125 || typeof error.stderr !== 'string') return false;
+  const missing = /invalid mount config for type "bind": bind source path does not exist: ([^\r\n]+)/.exec(error.stderr)?.[1];
+  if (![spec.profile, spec.downloads].some(path => missing === path || missing === '/host_mnt' + path)) return false;
+  try {
+    return [spec.profile, spec.downloads].every(path => realpathSync(path) === path && statSync(path).isDirectory());
+  } catch { return false; }
+}
 export async function ensureBrowser(spec, execute = dockerCommand) {
   validateSpec(spec);
   for (const path of [spec.stateDir, spec.profile, spec.downloads]) {
@@ -95,12 +103,18 @@ export async function ensureBrowser(spec, execute = dockerCommand) {
   if (!token) throw new Error('Missing protected browser relay credential');
   let record = inspectBrowser(spec, execute);
   if (!record) {
-    try { execute(spec, browserRunArgs(spec, envFile)); }
-    catch (error) {
-      // Docker's unique container name serializes concurrent MCP startups.
-      // Reuse only the exact expected container, never adopt an unrelated one.
-      record = inspectBrowser(spec, execute);
-      if (!record?.running) throw error;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try { execute(spec, browserRunArgs(spec, envFile)); break; }
+      catch (error) {
+        // Docker's unique container name serializes concurrent MCP startups.
+        // Reuse only the exact expected container, never adopt an unrelated one.
+        record = inspectBrowser(spec, execute);
+        if (record?.running) break;
+        // Desktop can briefly miss a recreated host directory. Keep --mount's
+        // strict existence check and retry only while both host binds exist.
+        if (record || attempt === 4 || !transientBindFailure(spec, error)) throw error;
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
     }
   }
   const deadline = Date.now() + 20_000;
