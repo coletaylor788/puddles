@@ -129,12 +129,26 @@ try {
 
 it("runs real heartbeat intake, guarded actions, native handoff, and restart recovery", async () => {
   const root = join(realpathSync(tmpdir()), `communication-gateway-${randomUUID()}`);
+  mkdirSync(root, { recursive: true });
+  // The owned command joins the fixture and its Gateway before afterEach removes
+  // state. Vitest's own timeout does not cancel an in-process async fixture.
+  const { runCommand } = await import("../src/process-runner.mjs");
+  const logPath = join(root, "fixture.log");
+  let output;
+  try {
+    output = await runCommand(process.execPath, [join(repo, "packages/e2e/fixtures/communication.mjs"), candidate!, plugin, root], {
+      capture: true, logPath, timeoutMs: 180_000,
+    });
+  } catch (error) {
+    throw new Error(`${error instanceof Error ? error.message : error}\nRetained fixture: ${root}\n${readFileSync(logPath, "utf8").slice(-8000)}`, { cause: error });
+  }
+  // A failed descendant join retains its ownership scope. Preserve the matching
+  // state and diagnostics too; only a successfully joined command is disposable.
   roots.push(root);
-  // @ts-expect-error Executable native gateway fixture.
-  const { communicationFixture } = await import("../fixtures/communication.mjs");
-  const result = await communicationFixture(candidate!, plugin, root);
+  if (typeof output !== "string") throw new Error("Missing communication fixture output");
+  const result = JSON.parse(output.trim().split("\n").at(-1)!);
   expect(result).toMatchObject({ passed: true, heartbeatCycles: 5, nativeProvenance: true, recoveryWithoutDuplicate: true, pendingReportRecovery: true, oneReportPerHeartbeat: true });
-}, 180_000);
+}, 210_000); // Same 180s execution limit, plus owned-process teardown.
 
 it("cleans its detached gateway when interrupted during a pending main reply", () => {
   const root = join(realpathSync(tmpdir()), `communication-interrupt-${randomUUID()}`); roots.push(root);

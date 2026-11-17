@@ -320,22 +320,36 @@ repair was implemented. The requester subsequently approved stock backup
 behavior with accepted degradation. Retire backup-only overlays and parity
 requirements while preserving primary Claude and all shared access controls.
 
-**Progress:** The current candidate passes DEV, real primary-provider qualification,
-the full application suite, TEST and backup. Production preparation exposed a CI
-ordering error: new Doctor ran before the new runtime was installed, so its native
-guard correctly refused to migrate data owned by the older registered Gateway.
-CI recovery and cleanup have closed. The repair preserves configuration preparation
-before installation, then runs native Doctor after the installed runtime is verified
-and before Gateway starts. No additional runtime patch or migration-guard bypass is
-needed. Focused control tests and the maintained native service-registration regression
-pass locally. The retained reviewer cleared the repair. The independently approved two-lane
-test orchestration is being integrated while preserving upstream's native per-project
-execution. Fresh qualification and production acceptance remain required. Phase 2
-stays paused until Phase 1 acceptance, exact merge and eligible cleanup.
+**Progress:** The post-install migration repair passed DEV with teardown and source
+cleanup closed. Production CI then stopped in the source test lane before target
+deployment. All installed checks passed, including native migration. One
+communication fixture exceeded its 180-second execution limit. The unchanged
+fixture passes locally; workload contention is not yet established as the cause.
+The test repair bounds HTTP requests, reports elapsed stages and joins its owned
+Gateway before deleting fixture state. The execution limit and behavior assertions
+stay intact. Fresh qualification and production acceptance remain required.
+Phase 2 stays paused until Phase 1 acceptance, exact merge and eligible cleanup.
 
 ## Agent section
 
 ### Sources and findings
+
+#### Current qualification repair
+
+DEV completed with exact terminal and cleanup evidence. The following production
+source suite stopped before deployment: installed checks passed in 2,699,233 ms,
+source checks failed in 1,867,048 ms, and both lanes joined in 2,699,272 ms.
+The only reported failing test was the communication heartbeat and restart fixture.
+Its unchanged standalone execution passed in 52 seconds and its Vitest test passed
+in 44 seconds. These results do not prove the cause of the loaded-run timeout.
+
+The fixture's HTTP waits were unbounded, and Vitest timeout could delete its root
+before its asynchronous Gateway stopped. Bound startup by elapsed wall time and
+bound tool response bodies. Run the fixture through the existing owned-process
+runner with the same 180-second execution limit and 30 seconds for teardown.
+Keep stage diagnostics and all heartbeat, handoff, restart and access assertions.
+A local HTTP server regression verifies a stalled response body is cancelled.
+No product runtime or upstream patch changes.
 
 #### Stock backup qualification follow-up
 

@@ -24,10 +24,23 @@ export function assertCommunicationGatewayRunning(child, stage) {
   }
 }
 
+// Keep the response body inside the deadline too. A server can send headers
+// successfully and then stall while the caller waits for its JSON body.
+export async function communicationJsonRequest(url, init, timeoutMs = 60_000) {
+  const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+  return { httpStatus: response.status, body: await response.json() };
+}
+
 /** Real gateway and tool execution, with scripted models and recording-only account adapters. */
 export async function communicationFixture(installedDir, pluginDir, root, options = {}) {
   mkdirSync(root, { recursive: true, mode: 0o700 }); root = realpathSync(root);
   installedDir = realpathSync(installedDir);
+  const started = Date.now();
+  let stage = 'setup';
+  const progress = value => {
+    stage = value;
+    console.log(JSON.stringify({ fixture: 'communication', stage, elapsedMs: Date.now() - started }));
+  };
   const { configure, SYSTEM_FILES } = await import(pathToFileURL(join(realpathSync(pluginDir), "scripts/configure.mjs")).href);
   const context = isolatedContext(root);
   const containerPrefix = `communication-fixture-${createHash("sha256").update(root).digest("hex").slice(0, 10)}-`;
@@ -210,26 +223,35 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     writeFileSync(context.configPath, JSON.stringify(cfg));
     log = openSync(join(root, 'gateway.log'), 'a', 0o600);
     const start = async () => {
+      progress(cycle === 0 ? 'gateway-start' : 'gateway-restart');
       child = spawnFixtureProcess(process.execPath, [join(installedDir, 'openclaw.mjs'), 'gateway', 'run', '--port', String(port), '--bind', 'loopback'], { cwd: workspace, env: fixtureEnv(context), detached: true, stdio: ['ignore', log, log] });
       writeFileSync(join(root, 'gateway-pid.json'), JSON.stringify({ pid: child.pid, port }));
-      for (let i = 0; i < 600; i++) {
+      const deadline = Date.now() + 60_000;
+      while (Date.now() < deadline) {
         assertCommunicationGatewayRunning(child, 'startup');
         // HTTP liveness precedes native sidecar and agent-database admission.
         // Wait for traffic readiness before invoking tools, including after restart.
-        try { if ((await fetch(`http://127.0.0.1:${port}/readyz`)).ok) return; } catch {}
+        try {
+          const response = await fetch(`http://127.0.0.1:${port}/readyz`, {
+            signal: AbortSignal.timeout(Math.max(1, Math.min(1000, deadline - Date.now()))),
+          });
+          await response.body?.cancel();
+          if (response.ok) { progress('gateway-ready'); return; }
+        } catch {}
         await delay(100);
       }
       throw new Error('Gateway startup timed out');
     };
     const invoke = async (tool, args, sessionKey = 'agent:communication-watcher:fixture') => {
-      const response = await fetch(`http://127.0.0.1:${port}/tools/invoke`, { method: 'POST', headers: { authorization: 'Bearer synthetic-communication-token', 'Content-Type': 'application/json' }, body: JSON.stringify({ tool, args, sessionKey }) });
-      return { httpStatus: response.status, body: await response.json() };
+      progress(`heartbeat-${cycle}:${tool}`);
+      return communicationJsonRequest(`http://127.0.0.1:${port}/tools/invoke`, { method: 'POST', headers: { authorization: 'Bearer synthetic-communication-token', 'Content-Type': 'application/json' }, body: JSON.stringify({ tool, args, sessionKey }) });
     };
     const heartbeat = async () => {
       cycle++; step = 0; checkedPending = false;
       const value = await invoke('fixture_heartbeat', {}, 'agent:main:fixture-driver');
       if (modelError) throw modelError;
       assert.equal(value.body.result?.details?.status, 'ran', JSON.stringify(value));
+      progress(`heartbeat-${cycle}:complete`);
       await delay(500);
     };
     await start(); await delay(1000); assert.equal(requests.length, 0, 'source arrival must not wake an agent');
@@ -237,6 +259,7 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     // Detached sends give each native reply up to 30 seconds. Observe completion
     // within that budget; the interruption proof instead stops an active reply.
     const waitForReply = async (ready, stage) => {
+      progress(stage);
       const deadline = Date.now() + 30_000;
       while (!ready() && Date.now() < deadline && !modelError) {
         assertCommunicationGatewayRunning(child, stage);
@@ -303,6 +326,8 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     assert.ok(!visible.includes('SYNTHETIC_PRIVATE_VALUE') && !visible.includes('INJECT_FIXTURE'), 'raw source text must not reach any agent');
     const result = { passed: true, heartbeatCycles: cycle, mainCalls, readerCalls, followups, nativeProvenance: true, recoveryWithoutDuplicate: true, rawToolsDenied: true, ruleRefresh: true, pendingReportRecovery: true, oneReportPerHeartbeat: true, readOnlyMounts: options.docker === true, detachedRepliesValidated: supportsDetachedReplies };
     writeFileSync(join(root, 'result.json'), JSON.stringify(result)); return result;
+  } catch (error) {
+    throw new Error(`Communication fixture failed during ${stage} after ${Date.now() - started}ms: ${error.message}`, { cause: error });
   } finally {
     try { await cleanup(); } finally { unregister(); }
   }

@@ -1,8 +1,27 @@
 import { expect, it } from "vitest";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { createServer } from "node:http";
 // @ts-expect-error Executable gateway fixture helper.
-import { assertCommunicationGatewayRunning, ownedCommunicationContainers } from "../fixtures/communication.mjs";
+import { assertCommunicationGatewayRunning, communicationJsonRequest, ownedCommunicationContainers } from "../fixtures/communication.mjs";
+
+it("bounds a tool response that stalls after sending JSON headers", async () => {
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.flushHeaders();
+    response.write('{"pending":');
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Missing fixture port");
+  try {
+    await expect(communicationJsonRequest(`http://127.0.0.1:${address.port}`, {}, 100)).rejects.toThrow();
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
 
 it("reports a gateway signal exit instead of a missing native reply", async () => {
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
