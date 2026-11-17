@@ -42,9 +42,10 @@ is included.
 
 The replacement image contains Chromium 156.0.8078.79 and Pacific timezone data.
 All 13 browser and plugin regressions and six migration checks pass. Managed
-DEV validation and cleanup passed. The first production submission stopped
-before tests or transfer because CI adopted a newer Node toolchain. Refresh the
-candidate with that configured toolchain and repeat DEV. Production has not changed.
+DEV validation and cleanup passed with the current CI toolchain. Production
+qualification then stopped on slow archive fixture creation before transfer.
+The reviewed fixture repair and all 312 package tests pass locally. Repeat DEV
+and production qualification with the repaired candidate. Production has not changed.
 
 ## Agent section
 
@@ -97,8 +98,13 @@ restored. All 13 browser and plugin checks pass with the supported Node toolchai
 as do six migration checks including production preservation and whole-profile rollback.
 Retained review and installed DEV passed, including timezone, synthetic login and
 profile recreation. All 19 focused checks also pass on the current CI Node
-toolchain. The refreshed candidate still requires DEV and the full production
-lifecycle.
+toolchain. The refreshed candidate passed DEV and cleanup. Production qualification
+stopped before transfer on archive fixture creation. The repaired fixture keeps
+7,500 real archive members, the oversized listing, real extraction and content
+checks, while reading its two input files once. Timeouts are unchanged. The
+focused regression passed in 5.7 seconds and all 312 package tests passed with
+the complete host PATH and required process inspection access. The repaired
+candidate still requires DEV and the full production lifecycle.
 
 ### Rollout and rollback
 
