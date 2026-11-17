@@ -334,8 +334,12 @@ then stopped in the full application suite before transfer. One candidate test
 still required the removed backup prompt injection. Its replacement checks native
 session resume, unchanged current requests, replay safety, and preserved shared
 transcript records. It makes no claim that the backup consumes voice history.
-Production is unchanged and the failed submission's queue is closed. The corrected
-test goes through a new build and DEV pass before production. Phase 2 stays paused.
+That correction passed fresh DEV. The next production gate stopped before transfer
+on archive fixture creation exceeding its setup timeout. Fixture creation now reads
+the repeated member once instead of reopening it 7,500 times. Real oversized listing,
+extraction, identity checks and all timeout bounds stay required. Production is
+unchanged and the failed submission's queue is closed. The corrected tests go through
+a new build and DEV pass before production. Phase 2 stays paused.
 
 ## Agent section
 
@@ -358,6 +362,18 @@ requests without replay, native journal validation, and ordered shared transcrip
 records with voice provenance and no duplicates. The separate installed routing
 and shared history test stays required. Neither test establishes Claude realtime
 steering or proactive completion. No runtime patch changes for this correction.
+
+Candidate `16e49be9e152f1d0b7c7dd565c01844ec8cf644c33ee4e9dce5741c20fdb265d`
+then passed DEV `gh-44011943789-1` with closed teardown and source cleanup.
+Production run `gh-44014628278-1` failed before transfer in the existing
+`runtime-archive-listing.test.ts` setup: creating 7,500 repeated deep-path tar
+members exceeded its 15-second bound. The focused baseline passed in 17.73 seconds
+overall, exposing a costly setup rather than an archive acceptance failure.
+The fixture now uses Python's existing standard library to read member metadata
+and content once and generate the same number of real archive entries. The
+default 4 MiB capture rejection, production `installRuntime` listing and extraction,
+exact runtime digest, 15-second setup and 30-second command bounds remain.
+The corrected focused test passed in 4.48 seconds. No runtime implementation changed.
 
 Stable target: `d843d6af39a42cd3c30084edbeabeece732fd93a` (v2026.11.4).
 Previous qualification used `847611dcaa3bf0e2783335f961dd1fd0580e4d9f` (v2026.11.3).
