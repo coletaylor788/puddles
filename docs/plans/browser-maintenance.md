@@ -42,7 +42,9 @@ is included.
 
 The replacement image contains Chromium 156.0.8078.79 and Pacific timezone data.
 All 13 browser and plugin regressions and six migration checks pass. Managed
-DEV and production validation remain pending. Production has not changed.
+DEV validation and cleanup passed. The first production submission stopped
+before tests or transfer because CI adopted a newer Node toolchain. Refresh the
+candidate with that configured toolchain and repeat DEV. Production has not changed.
 
 ## Agent section
 
@@ -93,7 +95,10 @@ The replacement image reports Chromium 156.0.8078.79 and PST with offset -0800.
 Its browser entrypoint is unchanged. The frozen paired dependency install is
 restored. All 13 browser and plugin checks pass with the supported Node toolchain,
 as do six migration checks including production preservation and whole-profile rollback.
-Retained review, DEV, the full application suite and TEST/PROD remain required.
+Retained review and installed DEV passed, including timezone, synthetic login and
+profile recreation. All 19 focused checks also pass on the current CI Node
+toolchain. The refreshed candidate still requires DEV and the full production
+lifecycle.
 
 ### Rollout and rollback
 
@@ -114,15 +119,21 @@ the maintenance control. The cutover must exclude concurrent CI admission, retai
 the old configuration and restore services on failure. Installed proof remains
 required.
 
-The application output built in 234 seconds. Registration stopped at the host
-storage reserve. Preserve the warm output and reclaim only eligible owned data
-before retrying; no deployment submission exists yet.
+Eligible cleanup restored the host reserve. The warm candidate registered and
+passed DEV with complete cleanup. The locked backup configuration cutover now
+covers the whole profile and preserves the existing backup until normal CI
+replacement. Both controller services restarted successfully.
+
+The first production submission stopped before the full suite or transfer because
+its registered Node version differed from the current CI toolchain. No target
+transaction or production deployment occurred, and source cleanup closed. Rebuild
+with the configured toolchain and repeat affected DEV validation.
 
 ### Checklist
 
 - [x] Diagnose the running browser and timezone.
 - [x] Check later stable OpenClaw and supported image maintenance.
 - [x] Prepare and verify the replacement image.
-- [ ] Review and test the configuration change.
+- [x] Review and test the configuration change.
 - [ ] Pass DEV and production lifecycle.
 - [ ] Verify exact merges, terminal receipts and eligible cleanup.
