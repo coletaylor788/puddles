@@ -2,7 +2,7 @@
 
 Status: Production approved for browser refresh and Pacific timezone correction
 Issue: https://github.com/coletaylor788/puddles/issues/364
-Last updated: 2026-11-16
+Last updated: 2026-11-17
 
 ## Human section
 
@@ -56,6 +56,14 @@ started. Disposable mount probes reproduced it and recovered with a bounded retr
 The narrow launcher repair passed all 17 browser and plugin checks and retained
 independent review. Fresh DEV and production validation remain. Production has
 not changed.
+
+The latest DEV run passed browser navigation, eval and Bash isolation. It stopped
+because the model safely refused a protected Read before invoking a tool. The
+test now distinguishes that refusal from enforcement. Separate scripted model
+responses drive the real native CLI through an allowed workspace Read and a
+denied protected Read. Agent permissions and instructions stay unchanged.
+The retained reviewer cleared the repair. All 50 focused checks pass. The new
+scripted native scenario still requires installed DEV validation.
 
 ## Agent section
 
@@ -133,6 +141,15 @@ recovery for both mounts, bounded persistent failure, unrelated errors, genuinel
 missing directories, symlink replacement and exact container ownership.
 All 17 browser and plugin regressions passed, and the retained reviewer
 independently passed the eight launcher tests with no actionable findings.
+
+Qualification accepts an explicit model refusal as behavioral adherence only.
+It also requires deterministic native Read enforcement using the maintained
+scripted inference fixture, the pinned CLI and the installed browser profile.
+The positive control must return a synthetic workspace marker. The protected
+Read must return a correlated permission error and disclose no canary in model
+requests or either transcript. Generic errors and missing files cannot pass.
+The real subscription navigation, eval, Bash and authentication-refusal checks
+remain required. Both fixture processes share the existing verified cleanup path.
 
 ### Rollout and rollback
 
