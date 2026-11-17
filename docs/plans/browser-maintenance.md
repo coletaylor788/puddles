@@ -26,11 +26,12 @@ specification. Stop the old browser before applying new settings. Preserve the
 previous image and configuration through the normal backup and rollback path.
 No OpenClaw patch or upgrade is required.
 
-Docker Desktop can briefly report a newly recreated profile directory as missing
-even when it exists on the host. Retry that specific native launch failure up to
-five times, 250 milliseconds apart, only while both mount sources are canonical
-host directories. Keep strict bind mounts and existing container ownership checks.
-Other errors still fail immediately; no Docker restart or broader mount is needed.
+Docker Desktop can retain stale paths when CI recreates a populated browser
+state tree. Use its native `--volume` syntax for the same two absolute bind mounts.
+Prepare and verify canonical host directories first, then verify the exact bind
+sources and destinations before exposing CDP. Reject colons in bind paths because
+they delimit volume arguments. Keep fail-fast errors and container ownership
+checks. No Docker restart, broader mount or custom retry is needed.
 
 For ongoing updates, use trusted maintenance to rebuild, validate and deploy a
 new image digest through the same release path. Do not grant the browsing agent
@@ -47,23 +48,15 @@ the existing architecture. No recurring automation or new agent update permissio
 is included.
 
 The replacement image contains Chromium 156.0.8078.79 and Pacific timezone data.
-All 13 browser and plugin regressions and six migration checks pass. Managed
-DEV validation and cleanup passed with the current CI toolchain. Production
-qualification then stopped on slow archive fixture creation before transfer.
-The reviewed fixture repair and all 312 package tests pass locally. The next DEV
-run exposed an intermittent Docker directory-visibility failure before Chromium
-started. Disposable mount probes reproduced it and recovered with a bounded retry.
-The narrow launcher repair passed all 17 browser and plugin checks and retained
-independent review. Fresh DEV and production validation remain. Production has
-not changed.
+The archive fixture repair, provider qualification repair and earlier browser
+checks passed focused validation and retained review. Production has not changed.
 
-The latest DEV run passed browser navigation, eval and Bash isolation. It stopped
-because the model safely refused a protected Read before invoking a tool. The
-test now distinguishes that refusal from enforcement. Separate scripted model
-responses drive the real native CLI through an allowed workspace Read and a
-denied protected Read. Agent permissions and instructions stay unchanged.
-The retained reviewer cleared the repair. All 50 focused checks pass. The new
-scripted native scenario still requires installed DEV validation.
+The latest DEV run stopped before provider checks because Docker could not mount
+recreated CI state. Disposable probes reproduced the stale path with the original
+bind syntax. Native volume syntax read the correct host data and passed six
+populated browser recreation cycles on the first attempt. The correction retains
+the existing two-bind boundary and adds an installed host-marker regression.
+Fresh DEV and production validation remain required.
 
 ## Agent section
 
@@ -105,11 +98,13 @@ specification. Use `--env TZ=...` and include it in existing container ownership
 checks. Keep omitted timezone behavior unchanged. Update the private image pin
 and timezone, with explicit predecessor checks for the installed control file.
 
-Retry `docker run` only for exit 125 with the exact missing-bind-source diagnostic
-for the configured profile or downloads path (including Desktop's `/host_mnt`
-prefix). Recheck both canonical host directories and existing container ownership
-before retrying. Stop after five attempts. Keep `--mount`, the same image and
-arguments, and the original native error on failure.
+Use `--volume ABSOLUTE_SOURCE:/profile:rw` and the corresponding downloads bind.
+The launcher creates canonical host directories before invoking Docker and checks
+that inspection reports exactly those two bind mounts. Docker's
+[volume syntax](https://docs.docker.com/engine/storage/bind-mounts/) can create
+missing sources, so host preparation remains mandatory. Reject colon-delimited
+source ambiguity. Remove the unsuccessful transient retry and preserve the
+original concurrent-start and ownership behavior.
 
 ### Validation
 
@@ -130,17 +125,27 @@ focused regression passed in 5.7 seconds and all 312 package tests passed with
 the complete host PATH and required process inspection access. The repaired
 candidate still requires DEV and the full production lifecycle.
 
-The next DEV receipt failed in installed browser qualification and completed
-teardown. Host metadata showed the canonical profile directory present while
-Docker rejected its translated bind source. On Docker Desktop 4.70.0 with Engine
-29.4.0, isolated read-only synthetic mounts reproduced the failure. In 20 directory
-recreation cycles, six first attempts failed; all succeeded on the second attempt
-after 250 milliseconds without changing the directory. These probes mounted no
-real profile or credentials and required no Docker restart. Regressions cover
-recovery for both mounts, bounded persistent failure, unrelated errors, genuinely
-missing directories, symlink replacement and exact container ownership.
-All 17 browser and plugin regressions passed, and the retained reviewer
-independently passed the eight launcher tests with no actionable findings.
+Docker Desktop 4.70.0 with Engine 29.4.0 reproduced the missing-bind error after
+removing and recreating an ancestor of a populated browser profile. Five native
+attempts ran in the failed DEV check; a disposable reproduction still failed
+80 times over 38.1 seconds with both host directories present and no container
+residue. Increasing retry duration would not address the demonstrated failure.
+
+A comparison passed normal restart, profile-only replacement and clearing profile
+contents. Replacing the whole state tree failed, including fresh leaf names under
+the replaced ancestor. A fresh state path passed. On the exact stale path, native
+`--volume` immediately read the current host marker; the original `--mount` then
+worked too. Six populated browser recreation cycles with volume syntax passed
+on their first attempts. All probes used disposable directories and containers,
+never real profiles or credentials, and completed cleanup.
+
+The installed regression recreates the whole synthetic state tree and checks new
+host markers through both mounts on each generation. Existing login, timezone,
+profile persistence, vault isolation and unauthenticated-CDP checks remain.
+The regression failed with the original launcher and passed with native volume
+syntax, including current host markers and cleanup. All 18 browser and plugin
+checks passed in 2.6 seconds. The retained reviewer cleared the final diff and
+independently passed all nine launcher tests.
 
 Qualification accepts an explicit model refusal as behavioral adherence only.
 It also requires deterministic native Read enforcement using the maintained

@@ -5,6 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { join, relative, isAbsolute } from 'node:path';
 import { ensureBrowser, stopBrowser, containerName } from './launch.mjs';
 import { connect } from './test/mcp-client.mjs';
+import { qualifyRecreatedState } from './test/recreated-state.mjs';
 // Required installed acceptance. Never points at a real profile or saved login.
 const [runtime, specPathInput, scratch, disposableRoot] = process.argv.slice(2);
 assert.ok(runtime && specPathInput && scratch && disposableRoot, 'Usage: qualify-installed.mjs PACKAGED_BROWSER TRUSTED_SPEC SCRATCH DISPOSABLE_ROOT');
@@ -17,6 +18,7 @@ for(const path of [spec.stateDir,spec.profile,spec.downloads]) {
 let mcp,server,cli,env,submitted=false,challenge=false,sessionValue='initial',loginCount=0;
 const password='synthetic-browser-only';
 try {
+ await qualifyRecreatedState(spec,root);console.log('Recreated browser state binds current host files');
  server=createServer((req,res)=>{
   res.setHeader('content-type','text/html');
   if(req.method==='POST'&&req.url==='/login') {let body='';req.on('data',c=>body+=c);req.on('end',()=>{

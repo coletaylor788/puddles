@@ -32,12 +32,18 @@ test('container launch keeps host secrets out of mounts and command arguments', 
   assert.equal(args[args.indexOf('--cap-drop') + 1], 'ALL');
   assert.equal(args[args.indexOf('--security-opt') + 1], 'no-new-privileges');
   assert.ok(!args.includes('--privileged') && !args.includes('--network=host'));
-  const mounts = args.flatMap((arg, i) => arg === '--mount' ? [args[i + 1]] : []);
-  assert.equal(mounts.length, 2);
+  const mounts = args.flatMap((arg, i) => arg === '--volume' ? [args[i + 1]] : []);
+  assert.deepEqual(mounts, [spec.profile + ':/profile:rw', spec.downloads + ':/downloads:rw']);
+  assert.ok(!args.includes('--mount'));
   assert.ok(mounts.every(mount => !mount.includes(spec.stateDir) && !mount.includes('docker.sock')));
   for (const [i, arg] of args.entries()) if (arg === '--publish') assert.match(args[i + 1], /^127\.0\.0\.1::/);
   assert.equal(args.at(-1), spec.image);
   assert.match(containerName(spec), /^puddles-browser-[a-f0-9]{20}$/);
+});
+test('rejects ambiguous colon-delimited bind sources', () => {
+  for (const key of ['profile', 'downloads']) {
+    assert.throws(() => validateSpec({ ...spec, [key]: '/host/path:other' }), /colon/);
+  }
 });
 test('refuses vault directories reachable through a browser bind', () => {
   for (const change of [{ stateDir: '/browser/profile/vault' }, { profile: '/protected' },
@@ -97,18 +103,23 @@ function missingBind(path) {
   return Object.assign(new Error('Docker bind mount failed'), { status: 125,
     stderr: `docker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: /host_mnt${path}\n` });
 }
-test('recovers transient Docker visibility of an existing profile or downloads directory', async t => {
-  for (const field of ['profile', 'downloads']) {
-    const f = await startupFixture(t, (attempt, local) => { if (attempt === 1) throw missingBind(local[field]); });
-    assert.ok((await ensureBrowser(f.local, f.execute)).cdpPort);
-    assert.equal(f.attempts(), 2);
+test('rejects symlink bind sources before invoking Docker', async t => {
+  for (const key of ['profile', 'downloads']) {
+    const f = await startupFixture(t, () => assert.fail('must not launch'));
+    const target = f.local[key] + '-target';
+    mkdirSync(target); symlinkSync(target, f.local[key]);
+    await assert.rejects(ensureBrowser(f.local, f.execute), /canonical/);
+    assert.equal(f.attempts(), 0);
   }
 });
-test('bounds repeated Docker bind failures and preserves the native error', async t => {
+test('prepares canonical host directories and preserves native startup failures', async t => {
   let failure;
-  const f = await startupFixture(t, (_, local) => { failure = missingBind(local.profile); throw failure; });
+  const f = await startupFixture(t, (_, local) => {
+    for (const path of [local.stateDir, local.profile, local.downloads]) assert.equal(realpathSync(path), path);
+    failure = missingBind(local.profile); throw failure;
+  });
   await assert.rejects(ensureBrowser(f.local, f.execute), error => error === failure);
-  assert.equal(f.attempts(), 5);
+  assert.equal(f.attempts(), 1);
 });
 test('does not retry unrelated errors, missing host directories or replaced symlinks', async t => {
   for (const kind of ['unrelated', 'other-bind', 'missing', 'symlink']) {
