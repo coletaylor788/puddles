@@ -11,8 +11,18 @@ export function validateSpec(spec) {
   for (const key of ['docker', 'stateDir', 'profile', 'downloads']) {
     if (typeof spec[key] !== 'string' || !isAbsolute(spec[key]) || /[\0\r\n,]/.test(spec[key])) throw new Error('Absolute browser binding required: ' + key);
   }
+  for (const key of ['profile', 'downloads']) {
+    if (spec[key].includes(':')) throw new Error('Browser bind path cannot contain a colon: ' + key);
+  }
   if (!/^unix:\/\/\/[^\0\r\n]+$/.test(spec.dockerHost ?? '')) throw new Error('Explicit local Docker socket required');
   if (typeof spec.headless !== 'boolean') throw new Error('Explicit browser display mode required');
+  if (spec.timezone !== undefined) {
+    if (typeof spec.timezone !== 'string' || !/^(?:UTC|[A-Za-z_]+\/[A-Za-z_\/-]+)$/.test(spec.timezone)) {
+      throw new Error('Browser timezone must be an IANA timezone');
+    }
+    try { new Intl.DateTimeFormat('en-US', { timeZone: spec.timezone }); }
+    catch { throw new Error('Unknown browser timezone'); }
+  }
   const inside = (parent, child) => { const r = relative(parent, child); return !r || (!r.startsWith('..') && !isAbsolute(r)); };
   if (inside(spec.profile, spec.stateDir) || inside(spec.downloads, spec.stateDir)
     || inside(spec.stateDir, spec.profile) || inside(spec.stateDir, spec.downloads)
@@ -53,8 +63,9 @@ export function browserRunArgs(spec, envFile) {
     '--tmpfs', '/tmp:rw,nosuid,size=1g', '--tmpfs', '/run:rw,nosuid,size=16m',
     '--shm-size', '256m', '--publish', '127.0.0.1::9222',
     ...(spec.headless ? [] : ['--publish', '127.0.0.1::6080']),
-    '--mount', 'type=bind,src=' + spec.profile + ',dst=/profile',
-    '--mount', 'type=bind,src=' + spec.downloads + ',dst=/downloads',
+    '--volume', spec.profile + ':/profile:rw',
+    '--volume', spec.downloads + ':/downloads:rw',
+    ...(spec.timezone ? ['--env', 'TZ=' + spec.timezone] : []),
     '--env-file', envFile, spec.image];
 }
 function protectedFile(path, contents) {
@@ -87,6 +98,9 @@ export async function ensureBrowser(spec, execute = dockerCommand) {
   if (!token) throw new Error('Missing protected browser relay credential');
   let record = inspectBrowser(spec, execute);
   if (!record) {
+    // Docker Desktop's native volume path resolves recreated host directories
+    // that --mount can retain as missing. Both sources are prepared above and
+    // the exact two bind identities are verified before exposing CDP below.
     try { execute(spec, browserRunArgs(spec, envFile)); }
     catch (error) {
       // Docker's unique container name serializes concurrent MCP startups.

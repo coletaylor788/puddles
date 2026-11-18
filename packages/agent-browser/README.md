@@ -13,6 +13,17 @@ and downloads. Only profile and downloads are mounted into Chromium. Use the
 existing OpenClaw browser image, which supplies the CDP relay and owner viewer.
 Do not enable the old browser controller for the same profile at the same time.
 
+An optional IANA `timezone` in the trusted launch specification sets the native
+container `TZ`, for example `America/Los_Angeles`. This follows daylight saving
+time and survives container recreation. An omitted timezone retains the image's
+default. The image must contain the selected zone's timezone data.
+
+Chromium belongs to the pinned browser image. Update it by building a replacement
+image, validating it, and deploying its new digest through the normal release
+path. Updating the host's Chrome or the Vercel CLI does not update that image.
+Keep the profile outside the image so replacing the container preserves logins.
+The browser agent does not need Docker or package-manager access to use it.
+
 ## Credentials and owner access
 
 The owner saves entries with the packaged upstream `auth save` command. Use the
@@ -34,8 +45,10 @@ created session can lose recent state before it reaches disk.
 
 ## Boundaries
 
-Claude's workspace profile protects the vault, key, browser profile, controller
-state, and Docker socket from native Bash and file tools. Chromium cannot read
+The agent's sandbox and tool policy protect the vault, key, browser profile,
+controller state, and Docker socket from file and execution tools. The current
+Claude integration uses OpenClaw's sandboxed MCP tools and disables equivalent
+native CLI tools. Chromium cannot read
 the host vault because it is not mounted. These controls do not make the trusted
 Vercel process itself filesystem-confined: native screenshots accept an output
 path and can overwrite an existing writable host file with image bytes. This

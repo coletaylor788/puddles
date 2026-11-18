@@ -217,9 +217,10 @@ it("admits a worker born between capture and SIGTERM and still joins its detache
   const detached = { ...leader, pid: leader.pid + 2, start: "new detached worker", parentPid: worker.pid, group: leader.pid + 2 };
   let reads = 0, stopped = false, waited = false;
   const options = {
-    readGroup: () => stopped ? [] : ++reads === 1 ? [leader] : [leader, worker],
+    readGroup: () => stopped ? [] : [leader],
     readProcesses: () => {
       if (stopped) { if (!waited) { waited = true; return [{ ...detached, parentPid: 1 }]; } return []; }
+      reads++;
       return [{ ...leader, parentPid: 1, group: leader.pid },
         ...(reads > 1 ? [{ ...worker, parentPid: leader.pid, group: leader.pid }, detached] : [])];
     },
@@ -230,6 +231,18 @@ it("admits a worker born between capture and SIGTERM and still joins its detache
   expect(waited).toBe(true);
 });
 
+it("stops the owned leader when a short-lived worker exits between process snapshots", async () => {
+  const f = fixture(), worker = { ...leader, pid: leader.pid + 1, start: "short-lived worker" };
+  let groupReads = 0, stopped = false;
+  await stopFixtureProcess(f.handle, {
+    readGroup: () => stopped ? [] : ++groupReads === 1 ? [leader] : [leader, worker],
+    // The worker is already gone in the next process-table snapshot.
+    readProcesses: () => stopped ? [] : [{ ...leader, parentPid: 1, group: leader.pid }],
+    signal: (_pid: number, kind: string) => { f.signals.push(kind); stopped = true; f.close(); },
+  });
+  expect(f.signals).toEqual(["SIGTERM"]);
+});
+
 it.each(["foreign-parent", "foreign-owner", "reused-leader", "leader-gone", "reused-descendant"])(
   "refuses a new group member with %s without signaling", async mode => {
     const f = fixture();
@@ -237,14 +250,12 @@ it.each(["foreign-parent", "foreign-owner", "reused-leader", "leader-gone", "reu
     let reads = 0;
     const currentLeader = mode === "reused-leader" ? { ...leader, start: "reused" } : leader;
     const options = {
-      readGroup: () => ++reads === 1 ? [leader] : [
-        ...(mode === "leader-gone" ? [] : [currentLeader]),
-        { ...worker, ...(mode === "foreign-owner" ? { uid: leader.uid + 1 } : {}) },
-      ],
-      readProcesses: () => [{ ...currentLeader, parentPid: 1, group: leader.pid },
+      readGroup: () => [leader],
+      readProcesses: () => { reads++; return [
+        ...(reads > 1 && mode === "leader-gone" ? [] : [{ ...(reads > 1 ? currentLeader : leader), parentPid: 1, group: leader.pid }]),
         ...(reads > 1 ? [{ ...worker, parentPid: mode === "foreign-parent" ? 1 : leader.pid, group: leader.pid,
           ...(mode === "foreign-owner" ? { uid: leader.uid + 1 } : {}) }] :
-          mode === "reused-descendant" ? [{ ...worker, start: "previous worker", parentPid: leader.pid, group: worker.pid }] : [])],
+          mode === "reused-descendant" ? [{ ...worker, start: "previous worker", parentPid: leader.pid, group: worker.pid }] : [])]; },
       signal: () => f.signals.push("bad"),
     };
     await expect(stopFixtureProcess(f.handle, options)).rejects.toThrow();

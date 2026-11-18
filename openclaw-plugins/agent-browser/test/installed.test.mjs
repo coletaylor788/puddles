@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
@@ -10,8 +10,18 @@ import { browserTools } from '../../../packages/agent-browser/configuration.mjs'
 
 test('relocated plugin preserves the pinned live MCP catalog and executes through its host client', async t => {
   const scratch = mkdtempSync('/private/tmp/browser-plugin-');
-  let service, native;
-  t.after(async () => { await service?.stop(); await native?.close(); rmSync(scratch, { recursive: true, force: true }); });
+  let service, native, config;
+  t.after(async () => {
+    await service?.stop(); await native?.close();
+    if (config) {
+      execFileSync(config.command, [config.args[0], '--config', join(scratch, 'empty.json'), 'close', '--all'],
+        { env: config.env, timeout: 15_000, stdio: 'pipe' });
+      const sockets = config.env.AGENT_BROWSER_SOCKET_DIR;
+      assert.deepEqual(existsSync(sockets) ? readdirSync(sockets).filter(name => /\.(sock|pid)$/.test(name)) : [], [],
+        'Synthetic native daemon survived cleanup');
+    }
+    rmSync(scratch, { recursive: true, force: true });
+  });
   const root = new URL('../', import.meta.url);
   execFileSync(process.execPath, [new URL('build.mjs', root).pathname], { timeout: 60_000, stdio: 'pipe' });
   const installed = join(scratch, 'plugin'); cpSync(new URL('dist', root), installed, { recursive: true });
@@ -20,7 +30,7 @@ test('relocated plugin preserves the pinned live MCP catalog and executes throug
   const upstream = dirname(requireBrowser.resolve('agent-browser/package.json'));
   const home = join(scratch, 'home'); mkdirSync(home);
   const empty = join(scratch, 'empty.json'); writeFileSync(empty, '{}');
-  const config = { command: process.execPath,
+  config = { command: process.execPath,
     args: [join(upstream, 'bin/agent-browser.js'), 'mcp', '--tools', 'core,state,tabs,mobile', '--config', empty],
     env: { HOME: home, PATH: process.env.PATH ?? '', AGENT_BROWSER_SOCKET_DIR: join(scratch, 'sockets') }, agentId: 'browser-agent' };
   native = await connectBrowser(config);
