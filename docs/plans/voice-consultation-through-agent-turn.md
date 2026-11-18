@@ -320,22 +320,33 @@ repair was implemented. The requester subsequently approved stock backup
 behavior with accepted degradation. Retire backup-only overlays and parity
 requirements while preserving primary Claude and all shared access controls.
 
-**Progress:** The latest candidate passed DEV, the full application suite and TEST.
-Production installation then failed when native Doctor loaded FaceTime's raw
-TypeScript from the npm installation directory. Node refuses that file format
-under `node_modules`. CI recovered the previous runtime and closed the transaction.
-The repair uses upstream's package compiler and native explicit plugin selection
-so both the entrypoint and Doctor contract resolve to compiled JavaScript. No
-OpenClaw loader patch or FaceTime behavior change is added. The offline installed
-regression now uses an npm directory, enables synthetic FaceTime configuration,
-and verifies the exact selected entry and contract. Fresh build and CI remain
-required. Phase 2 stays paused until Phase 1 acceptance, exact merge and cleanup.
+**Progress:** DEV, the full application suite, TEST and native Doctor now pass.
+Production validation rejected native informational notices that explicitly
+configured plugin packages take precedence over retained older installations.
+CI recovered the previous runtime and closed the transaction. The CI repair
+accepts only that notice when the expected plugin has one selected package inside
+its frozen configured path. Warnings, errors, unexpected packages and dependency
+failures still fail. The installed regression reproduces the retained duplicate,
+reopens the native registry, and proves metadata reads neither import plugin code
+nor change application data. Fresh review, build and CI remain required. Phase 2
+stays paused until Phase 1 acceptance, exact merge and cleanup.
 
 ## Agent section
 
 ### Sources and findings
 
-#### Current FaceTime packaging repair
+#### Current plugin inventory qualification
+
+Native plugin discovery can report an informational notice when an explicitly
+configured package wins over a retained older installation. CI must verify that
+unique winner against the frozen configured path, rather than reject the notice.
+Warnings, errors, unknown codes, dependency failures and unexpected winners still
+fail. A synthetic installed fixture covers both fresh discovery and a reopened
+native registry, with no plugin imports or application-data changes. This changes
+qualification only. Native plugin selection and production configuration remain
+unchanged.
+
+#### FaceTime packaging repair
 
 The prior candidate passed the complete source and installed suites and TEST,
 then failed native Doctor after the production copy. Source-only FaceTime files
