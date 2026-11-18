@@ -1,0 +1,2307 @@
+diff --git a/extensions/mxc/src/fs-bridge.ts b/extensions/mxc/src/fs-bridge.ts
+index 739eeeab..d07cf892 100644
+--- a/extensions/mxc/src/fs-bridge.ts
++++ b/extensions/mxc/src/fs-bridge.ts
+@@ -57,6 +57,8 @@ class MxcFsBridge implements SandboxFsBridge {
+     this.workspaceMounts = resolveWorkspaceMounts(sandbox);
+   }
+ 
++  readonly enforcesMutationFence = true as const;
++
+   resolvePath(params: { filePath: string; cwd?: string }): SandboxResolvedPath {
+     const target = this.resolveTarget(params);
+     return {
+@@ -99,6 +101,7 @@ class MxcFsBridge implements SandboxFsBridge {
+       await fsRoot(target.mount.hostRoot)
+     ).write(target.relativePath, buffer, {
+       mkdir: params.mkdir !== false,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+   }
+ 
+@@ -115,6 +118,7 @@ class MxcFsBridge implements SandboxFsBridge {
+         await fsRoot(target.mount.hostRoot)
+       ).create(target.relativePath, buffer, {
+         mkdir: params.mkdir !== false,
++        assertBeforeMutation: params.assertBeforeMutation,
+       });
+       return "created";
+     } catch (error) {
+@@ -125,13 +129,15 @@ class MxcFsBridge implements SandboxFsBridge {
+     }
+   }
+ 
+-  async mkdirp(params: { filePath: string; cwd?: string }): Promise<void> {
++  async mkdirp(params: Parameters<SandboxFsBridge["mkdirp"]>[0]): Promise<void> {
+     const target = this.resolveTarget(params);
+     this.ensureWritable(target, "create directories");
+     if (target.relativePath.length === 0) {
+       return;
+     }
+-    await (await fsRoot(target.mount.hostRoot)).mkdir(target.relativePath);
++    await (
++      await fsRoot(target.mount.hostRoot)
++    ).mkdir(target.relativePath, { assertBeforeMutation: params.assertBeforeMutation });
+   }
+ 
+   async remove(params: Parameters<SandboxFsBridge["remove"]>[0]): Promise<void> {
+@@ -142,10 +148,11 @@ class MxcFsBridge implements SandboxFsBridge {
+       relativePath: target.relativePath,
+       recursive: params.recursive,
+       force: params.force ?? false,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+   }
+ 
+-  async rename(params: { from: string; to: string; cwd?: string }): Promise<void> {
++  async rename(params: Parameters<SandboxFsBridge["rename"]>[0]): Promise<void> {
+     const { from: source, to: target } = this.resolveRenameTargets(params);
+     if (
+       normalizeMxcPathForComparison(source.mount.hostRoot) !==
+@@ -159,9 +166,12 @@ class MxcFsBridge implements SandboxFsBridge {
+     const root = await fsRoot(source.mount.hostRoot);
+     const targetParent = path.dirname(target.relativePath);
+     if (targetParent !== "." && targetParent !== "") {
+-      await root.mkdir(targetParent);
++      await root.mkdir(targetParent, { assertBeforeMutation: params.assertBeforeMutation });
+     }
+-    await root.move(source.relativePath, target.relativePath, { overwrite: true });
++    await root.move(source.relativePath, target.relativePath, {
++      overwrite: true,
++      assertBeforeMutation: params.assertBeforeMutation,
++    });
+   }
+ 
+   async stat(params: { filePath: string; cwd?: string }): Promise<SandboxFsStat | null> {
+diff --git a/extensions/mxc/src/mxc-backend.ts b/extensions/mxc/src/mxc-backend.ts
+index b2f2fb97..bc433c3b 100644
+--- a/extensions/mxc/src/mxc-backend.ts
++++ b/extensions/mxc/src/mxc-backend.ts
+@@ -4,7 +4,7 @@ import path from "node:path";
+ import type { ContainerConfig } from "@microsoft/mxc-sdk";
+ import { extractErrorCode } from "openclaw/plugin-sdk/error-runtime";
+ import { isPathInside, resolvePathPrefixSync } from "openclaw/plugin-sdk/file-access-runtime";
+-import { runCommandBuffered } from "openclaw/plugin-sdk/process-runtime";
++import { runCommandBuffered, runWithSpawnBroker } from "openclaw/plugin-sdk/process-runtime";
+ import { resolvePreferredOpenClawTmpDir } from "openclaw/plugin-sdk/sandbox";
+ import type {
+   SandboxBackendHandle,
+@@ -160,6 +160,7 @@ export function createMxcSandboxBackendHandle(params: {
+       }
+     },
+     capabilities: {},
++    enforcesMutationFence: true,
+ 
+     async buildExecSpec({ command, workdir, env, usePty }): Promise<SandboxBackendExecSpec> {
+       const effectiveWorkdir = resolveWorkdirInsideWorkspace(
+@@ -272,12 +273,15 @@ export function createMxcSandboxBackendHandle(params: {
+           payloadFile.payloadFile,
+         ];
+         try {
+-          const result = await runCommandBuffered(argv, {
+-            baseEnv: buildLauncherEnv(),
+-            input: execInput,
+-            maxOutputBytes: { stdout: 10 * 1024 * 1024, stderr: 10 * 1024 * 1024 },
+-            signal: cmdParams.signal,
+-            timeoutMs: 30_000,
++          const result = await runWithSpawnBroker(undefined, async () => {
++            cmdParams.assertBeforeMutation?.();
++            return await runCommandBuffered(argv, {
++              baseEnv: buildLauncherEnv(),
++              input: execInput,
++              maxOutputBytes: { stdout: 10 * 1024 * 1024, stderr: 10 * 1024 * 1024 },
++              signal: cmdParams.signal,
++              timeoutMs: 30_000,
++            });
+           });
+           if (cmdParams.signal?.aborted) {
+             throw cmdParams.signal.reason instanceof Error
+diff --git a/extensions/mxc/test/fs-bridge.test.ts b/extensions/mxc/test/fs-bridge.test.ts
+index f43785a7..c8724afd 100644
+--- a/extensions/mxc/test/fs-bridge.test.ts
++++ b/extensions/mxc/test/fs-bridge.test.ts
+@@ -316,3 +316,78 @@ describe("MXC public coding-tool composition", () => {
+     },
+   );
+ });
++
++describe("MXC filesystem mutation fence", () => {
++  async function createBridge() {
++    const workspace = await tempWorkspace({
++      rootDir: resolvePreferredOpenClawTmpDir(),
++      prefix: "openclaw-mxc-fence-",
++    });
++    const workspaceDir = await fs.realpath(workspace.dir);
++    await fs.writeFile(path.join(workspaceDir, "victim.txt"), "original");
++    const bridge = createMxcFsBridge({
++      sandbox: {
++        workspaceDir,
++        agentWorkspaceDir: workspaceDir,
++        workspaceAccess: "rw",
++        containerName: "mxc-fence-test",
++        containerWorkdir: workspaceDir,
++        docker: {},
++      },
++    });
++    return { workspace, workspaceDir, bridge };
++  }
++  const revoked = () => {
++    throw new Error("tool invocation authority is no longer active");
++  };
++
++  test("declares the fence and runs it before a live write", async () => {
++    const { workspace, workspaceDir, bridge } = await createBridge();
++    await using cleanup = workspace;
++    expect(cleanup).toBe(workspace);
++    expect(bridge.enforcesMutationFence).toBe(true);
++    let calls = 0;
++    await bridge.writeFile({
++      filePath: "victim.txt",
++      data: "updated",
++      assertBeforeMutation: () => {
++        calls += 1;
++      },
++    });
++    expect(calls).toBeGreaterThan(0);
++    await expect(fs.readFile(path.join(workspaceDir, "victim.txt"), "utf8")).resolves.toBe(
++      "updated",
++    );
++  });
++
++  test.each(["writeFile", "mkdirp", "remove", "rename"] as const)(
++    "does not touch the workspace when the fence throws for %s",
++    async (method) => {
++      const { workspace, workspaceDir, bridge } = await createBridge();
++      await using cleanup = workspace;
++      expect(cleanup).toBe(workspace);
++      const call =
++        method === "writeFile"
++          ? bridge.writeFile({
++              filePath: "victim.txt",
++              data: "late",
++              assertBeforeMutation: revoked,
++            })
++          : method === "mkdirp"
++            ? bridge.mkdirp({ filePath: "newdir", assertBeforeMutation: revoked })
++            : method === "remove"
++              ? bridge.remove({ filePath: "victim.txt", assertBeforeMutation: revoked })
++              : bridge.rename({
++                  from: "victim.txt",
++                  to: "moved.txt",
++                  assertBeforeMutation: revoked,
++                });
++      await expect(call).rejects.toThrow("no longer active");
++      await expect(fs.readFile(path.join(workspaceDir, "victim.txt"), "utf8")).resolves.toBe(
++        "original",
++      );
++      await expect(fs.stat(path.join(workspaceDir, "newdir"))).rejects.toThrow();
++      await expect(fs.stat(path.join(workspaceDir, "moved.txt"))).rejects.toThrow();
++    },
++  );
++});
+diff --git a/extensions/openshell/src/backend.exec-workdir.test.ts b/extensions/openshell/src/backend.exec-workdir.test.ts
+index 71bf275a..7f9b451d 100644
+--- a/extensions/openshell/src/backend.exec-workdir.test.ts
++++ b/extensions/openshell/src/backend.exec-workdir.test.ts
+@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
+ import path from "node:path";
+ import { expectDefined } from "@openclaw/normalization-core";
+ import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
++import { runWithSpawnBroker } from "openclaw/plugin-sdk/process-runtime";
+ import type { SandboxBackendHandle } from "openclaw/plugin-sdk/sandbox";
+ import {
+   resolvePreferredOpenClawTmpDir,
+@@ -11,6 +12,7 @@ import {
+ } from "openclaw/plugin-sdk/temp-path";
+ import { createSandboxTestContext } from "openclaw/plugin-sdk/test-fixtures";
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { getSpawnBroker } from "../../../src/process/spawn-broker/context.js";
+ import { createOpenShellSandboxBackendFactory } from "./backend.js";
+ import { resolveOpenShellPluginConfig } from "./config.js";
+ import { createOpenShellBackendSandboxConfig } from "./openshell.test-support.js";
+@@ -723,6 +725,28 @@ describe("openshell backend exec workdir validation", () => {
+   });
+ 
+   describe("remote-mode seed across gateway restart", () => {
++    it("dispatches fenced remote mutations outside an inherited spawn broker", async () => {
++      const backend = await createAdoptedRemoteBackend({ probeStdout: "1\n" });
++      const marker = "echo mutation-fence-marker";
++      sdkMocks.runSshSandboxCommand.mockImplementation(async ({ remoteCommand }) => {
++        if (String(remoteCommand).includes(marker)) {
++          expect(getSpawnBroker()).toBeUndefined();
++        }
++        return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), code: 0 };
++      });
++      await runWithSpawnBroker({} as never, () =>
++        backend.runShellCommand!({
++          script: marker,
++          assertBeforeMutation: () => {},
++        }),
++      );
++      expect(
++        sdkMocks.runSshSandboxCommand.mock.calls.some(([params]) =>
++          String(params.remoteCommand).includes(marker),
++        ),
++      ).toBe(true);
++    });
++
+     it.each(["same handle", "another handle"])(
+       "starts remote operations on %s while an earlier command is still running",
+       async (handleKind) => {
+diff --git a/extensions/openshell/src/backend.ts b/extensions/openshell/src/backend.ts
+index 2427ddf0..8adb7d0a 100644
+--- a/extensions/openshell/src/backend.ts
++++ b/extensions/openshell/src/backend.ts
+@@ -9,6 +9,7 @@ import {
+ import { GUEST_FILESYSTEM_PYTHON } from "@openclaw/fs-safe/guest";
+ import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
+ import { KeyedAsyncQueue } from "openclaw/plugin-sdk/keyed-async-queue";
++import { runWithSpawnBroker } from "openclaw/plugin-sdk/process-runtime";
+ import type {
+   CreateSandboxBackendParams,
+   OpenClawConfig,
+@@ -255,6 +256,7 @@ class OpenShellSandboxBackendImpl {
+       finalizeExec: async ({ token }) => {
+         await this.finalizeExec(token as PendingExec | undefined);
+       },
++      enforcesMutationFence: true,
+       runShellCommand: runRemoteShellScript,
+       createFsBridge: ({ sandbox }) =>
+         this.params.execContext.config.mode === "remote"
+@@ -274,16 +276,19 @@ class OpenShellSandboxBackendImpl {
+       sandbox,
+       backend: {
+         remoteAgentWorkspaceDir: this.params.remoteAgentWorkspaceDir,
+-        mkdirpRemotePath: (remotePath, signal) => this.mkdirpRemotePath(remotePath, signal),
++        mkdirpRemotePath: (remotePath, signal, assertBeforeMutation) =>
++          this.mkdirpRemotePath(remotePath, signal, assertBeforeMutation),
+         removeRemotePath: (remotePath, params) => this.removeRemotePath(remotePath, params),
+-        renameRemotePath: (from, to, signal) => this.renameRemotePath(from, to, signal),
+-        syncLocalPathToRemote: (localPath, remotePath) =>
+-          this.syncLocalPathToRemote(localPath, remotePath),
++        renameRemotePath: (from, to, signal, assertBeforeMutation) =>
++          this.renameRemotePath(from, to, signal, assertBeforeMutation),
++        syncLocalPathToRemote: (localPath, remotePath, assertBeforeMutation) =>
++          this.syncLocalPathToRemote(localPath, remotePath, assertBeforeMutation),
+       },
+     });
+     // Hold one lease across validation and both commits, not just the remote step.
+     // Otherwise exec publication can erase a successful file-tool write or expose partial reads.
+     return {
++      enforcesMutationFence: bridge.enforcesMutationFence,
+       get pathMappings() {
+         return bridge.pathMappings;
+       },
+@@ -509,11 +514,16 @@ class OpenShellSandboxBackendImpl {
+     return await this.runRemoteShellScriptInternal(params);
+   }
+ 
+-  async mkdirpRemotePath(remotePath: string, signal?: AbortSignal): Promise<void> {
++  async mkdirpRemotePath(
++    remotePath: string,
++    signal?: AbortSignal,
++    assertBeforeMutation?: () => void,
++  ): Promise<void> {
+     const target = this.resolveRemoteTarget(remotePath);
+     await this.runPinnedRemotePathMutation({
+       args: ["mkdirp", target.root, target.relativePath],
+       signal,
++      assertBeforeMutation,
+     });
+   }
+ 
+@@ -523,6 +533,7 @@ class OpenShellSandboxBackendImpl {
+       recursive?: boolean;
+       signal?: AbortSignal;
+       ignoreMissing?: boolean;
++      assertBeforeMutation?: () => void;
+     },
+   ): Promise<void> {
+     const target = this.resolveRemoteTarget(remotePath);
+@@ -539,6 +550,7 @@ class OpenShellSandboxBackendImpl {
+       ],
+       ignoreMissingParent: params?.ignoreMissing,
+       signal: params?.signal,
++      assertBeforeMutation: params?.assertBeforeMutation,
+     });
+   }
+ 
+@@ -546,6 +558,7 @@ class OpenShellSandboxBackendImpl {
+     fromRemotePath: string,
+     toRemotePath: string,
+     signal?: AbortSignal,
++    assertBeforeMutation?: () => void,
+   ): Promise<void> {
+     const from = this.resolveRemoteTarget(fromRemotePath);
+     const to = this.resolveRemoteTarget(toRemotePath);
+@@ -561,6 +574,7 @@ class OpenShellSandboxBackendImpl {
+         "1",
+       ],
+       signal,
++      assertBeforeMutation,
+     });
+   }
+ 
+@@ -571,35 +585,46 @@ class OpenShellSandboxBackendImpl {
+       context: this.params.execContext,
+     });
+     try {
+-      return await runSshSandboxCommand({
+-        session,
+-        remoteCommand: buildRemoteCommand([
+-          "/bin/sh",
+-          "-c",
+-          params.script,
+-          "openclaw-openshell-fs",
+-          ...(params.args ?? []),
+-        ]),
+-        stdin: params.stdin,
+-        allowFailure: params.allowFailure,
+-        signal: params.signal,
++      return await runWithSpawnBroker(undefined, () => {
++        params.assertBeforeMutation?.();
++        return runSshSandboxCommand({
++          session,
++          remoteCommand: buildRemoteCommand([
++            "/bin/sh",
++            "-c",
++            params.script,
++            "openclaw-openshell-fs",
++            ...(params.args ?? []),
++          ]),
++          stdin: params.stdin,
++          allowFailure: params.allowFailure,
++          signal: params.signal,
++        });
+       });
+     } finally {
+       await disposeSshSandboxSession(session);
+     }
+   }
+ 
+-  async syncLocalPathToRemote(localPath: string, remotePath: string): Promise<void> {
++  async syncLocalPathToRemote(
++    localPath: string,
++    remotePath: string,
++    assertBeforeMutation?: () => void,
++  ): Promise<void> {
+     await this.ensureSandboxExists();
+     await this.maybeSeedRemoteWorkspace();
+     const target = this.resolveRemoteTarget(remotePath);
+     const stats = await lstatIfExists(localPath);
+     if (!stats || stats.isSymbolicLink()) {
+-      await this.removeRemotePath(remotePath, { recursive: true, ignoreMissing: true });
++      await this.removeRemotePath(remotePath, {
++        recursive: true,
++        ignoreMissing: true,
++        assertBeforeMutation,
++      });
+       return;
+     }
+     if (stats.isDirectory()) {
+-      await this.mkdirpRemotePath(remotePath);
++      await this.mkdirpRemotePath(remotePath, undefined, assertBeforeMutation);
+       return;
+     }
+     await this.runPinnedRemotePathMutation({
+@@ -610,8 +635,12 @@ class OpenShellSandboxBackendImpl {
+           ? ""
+           : path.posix.dirname(target.relativePath),
+       ],
++      assertBeforeMutation,
++    });
++    await runWithSpawnBroker(undefined, async () => {
++      assertBeforeMutation?.();
++      await this.uploadFileToRemote(localPath, remotePath);
+     });
+-    await this.uploadFileToRemote(localPath, remotePath);
+   }
+ 
+   private async uploadFileToRemote(localPath: string, remotePath: string): Promise<void> {
+@@ -645,6 +674,7 @@ class OpenShellSandboxBackendImpl {
+     args: string[];
+     ignoreMissingParent?: boolean;
+     signal?: AbortSignal;
++    assertBeforeMutation?: () => void;
+   }): Promise<SandboxBackendCommandResult> {
+     return await this.runRemoteShellScript({
+       script: 'python_script="$1"; shift; python3 -c "$python_script" "$@"',
+@@ -655,6 +685,7 @@ class OpenShellSandboxBackendImpl {
+         ...params.args,
+       ],
+       signal: params.signal,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+   }
+ 
+diff --git a/extensions/openshell/src/backend.types.ts b/extensions/openshell/src/backend.types.ts
+index 82df60db..697bbb56 100644
+--- a/extensions/openshell/src/backend.types.ts
++++ b/extensions/openshell/src/backend.types.ts
+@@ -11,19 +11,29 @@ export type OpenShellSandboxBackend = SandboxBackendHandle &
+ 
+ export type OpenShellMirrorBackend = {
+   remoteAgentWorkspaceDir: string;
+-  mkdirpRemotePath(remotePath: string, signal?: AbortSignal): Promise<void>;
++  mkdirpRemotePath(
++    remotePath: string,
++    signal?: AbortSignal,
++    assertBeforeMutation?: () => void,
++  ): Promise<void>;
+   removeRemotePath(
+     remotePath: string,
+     params?: {
+       recursive?: boolean;
+       signal?: AbortSignal;
+       ignoreMissing?: boolean;
++      assertBeforeMutation?: () => void;
+     },
+   ): Promise<void>;
+   renameRemotePath(
+     fromRemotePath: string,
+     toRemotePath: string,
+     signal?: AbortSignal,
++    assertBeforeMutation?: () => void,
++  ): Promise<void>;
++  syncLocalPathToRemote(
++    localPath: string,
++    remotePath: string,
++    assertBeforeMutation?: () => void,
+   ): Promise<void>;
+-  syncLocalPathToRemote(localPath: string, remotePath: string): Promise<void>;
+ };
+diff --git a/extensions/openshell/src/fs-bridge.ts b/extensions/openshell/src/fs-bridge.ts
+index 4dcde15c..77a21889 100644
+--- a/extensions/openshell/src/fs-bridge.ts
++++ b/extensions/openshell/src/fs-bridge.ts
+@@ -48,6 +48,8 @@ class OpenShellFsBridge implements SandboxFsBridge {
+     private readonly backend: OpenShellMirrorBackend,
+   ) {}
+ 
++  readonly enforcesMutationFence = true as const;
++
+   resolvePath(params: { filePath: string; cwd?: string }): SandboxResolvedPath {
+     const target = this.resolveTarget(params);
+     return {
+@@ -116,6 +118,7 @@ class OpenShellFsBridge implements SandboxFsBridge {
+       await root[method](relativeToRoot(target, hostPath), buffer, {
+         mkdir: method === "create" ? params.mkdir !== false : params.mkdir,
+         mutationSymlinks: "reject",
++        assertBeforeMutation: params.assertBeforeMutation,
+       });
+     } catch (error) {
+       if (method === "create" && error instanceof FsSafeError && error.code === "already-exists") {
+@@ -125,21 +128,33 @@ class OpenShellFsBridge implements SandboxFsBridge {
+     }
+     // Mirror mode treats local state as canonical. Syncing may fail, but must
+     // never downgrade the exclusive local create to an overwriting write.
+-    await this.backend.syncLocalPathToRemote(hostPath, target.containerPath);
++    params.assertBeforeMutation?.();
++    await this.backend.syncLocalPathToRemote(
++      hostPath,
++      target.containerPath,
++      params.assertBeforeMutation,
++    );
+     return "created";
+   }
+ 
+-  async mkdirp(params: { filePath: string; cwd?: string; signal?: AbortSignal }): Promise<void> {
++  async mkdirp(params: Parameters<SandboxFsBridge["mkdirp"]>[0]): Promise<void> {
+     const target = this.resolveTarget(params);
+     this.ensureWritable(target, "create directories");
+     await assertLocalPathSafety({
+       target,
+       allowFinalSymlinkForUnlink: false,
+     });
+-    await this.backend.mkdirpRemotePath(target.containerPath, params.signal);
++    params.assertBeforeMutation?.();
++    await this.backend.mkdirpRemotePath(
++      target.containerPath,
++      params.signal,
++      params.assertBeforeMutation,
++    );
+     const relativePath = relativeToRoot(target, target.hostPath);
+     if (relativePath) {
+-      await (await fsRoot(target.mountHostRoot)).mkdir(relativePath);
++      await (
++        await fsRoot(target.mountHostRoot)
++      ).mkdir(relativePath, { assertBeforeMutation: params.assertBeforeMutation });
+     }
+   }
+ 
+@@ -150,15 +165,18 @@ class OpenShellFsBridge implements SandboxFsBridge {
+       target,
+       allowFinalSymlinkForUnlink: true,
+     });
++    params.assertBeforeMutation?.();
+     await this.backend.removeRemotePath(target.containerPath, {
+       recursive: params.recursive ?? false,
+       signal: params.signal,
+       ignoreMissing: params.force !== false,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+     await removeLocalRootPath({
+       force: params.force,
+       recursive: params.recursive,
+       target,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+   }
+ 
+@@ -181,15 +199,24 @@ class OpenShellFsBridge implements SandboxFsBridge {
+       root: from.mountHostRoot,
+       toHostPath: to.hostPath,
+     });
+-    await this.backend.renameRemotePath(from.containerPath, to.containerPath, params.signal);
++    params.assertBeforeMutation?.();
++    await this.backend.renameRemotePath(
++      from.containerPath,
++      to.containerPath,
++      params.signal,
++      params.assertBeforeMutation,
++    );
+     const root = await fsRoot(from.mountHostRoot);
+     const fromRelativePath = relativeToRoot(from, from.hostPath);
+     const toRelativePath = relativeToRoot(to, to.hostPath);
+     const parentPath = path.dirname(toRelativePath);
+     if (parentPath !== "." && parentPath !== "") {
+-      await root.mkdir(parentPath);
++      await root.mkdir(parentPath, { assertBeforeMutation: params.assertBeforeMutation });
+     }
+-    await root.move(fromRelativePath, toRelativePath, { overwrite: true });
++    await root.move(fromRelativePath, toRelativePath, {
++      overwrite: true,
++      assertBeforeMutation: params.assertBeforeMutation,
++    });
+   }
+ 
+   async stat(params: Parameters<SandboxFsBridge["stat"]>[0]): Promise<SandboxFsStat | null> {
+@@ -385,6 +412,7 @@ async function removeLocalRootPath(params: {
+   target: ResolvedMountPath;
+   recursive?: boolean;
+   force?: boolean;
++  assertBeforeMutation?: () => void;
+ }): Promise<void> {
+   const root = await fsRoot(params.target.mountHostRoot);
+   const relativePath = relativeToRoot(params.target, params.target.hostPath);
+@@ -402,6 +430,7 @@ async function removeLocalRootPath(params: {
+     for (const target of targets) {
+       await root.remove(target, {
+         force: params.force !== false,
++        assertBeforeMutation: params.assertBeforeMutation,
+         ...(params.recursive
+           ? { recursive: true, order: "sorted" as const, maxEntries: Infinity, maxDepth: Infinity }
+           : {}),
+diff --git a/extensions/openshell/src/openshell-mirror-fs-bridge.test.ts b/extensions/openshell/src/openshell-mirror-fs-bridge.test.ts
+index 4a3e15a4..06d0199b 100644
+--- a/extensions/openshell/src/openshell-mirror-fs-bridge.test.ts
++++ b/extensions/openshell/src/openshell-mirror-fs-bridge.test.ts
+@@ -54,6 +54,62 @@ describe("openshell mirror fs bridges", () => {
+     return () => workspace[Symbol.asyncDispose]();
+   });
+ 
++  it("declares the mutation fence and runs it before the local write and the remote sync", async () => {
++    expect(bridge.enforcesMutationFence).toBe(true);
++    const fence = vi.fn();
++    await bridge.writeFile({ filePath: "fenced.txt", data: "ok", assertBeforeMutation: fence });
++    expect(fence).toHaveBeenCalled();
++    expect(backend.syncLocalPathToRemote).toHaveBeenCalledTimes(1);
++    await expect(readLocal("fenced.txt")).resolves.toBe("ok");
++  });
++
++  it("hands the fence to every mirror backend operation so it can re-check after its own awaits", async () => {
++    await seedLocal("a.txt", "a");
++    const fence = vi.fn();
++    await bridge.writeFile({ filePath: "w.txt", data: "w", assertBeforeMutation: fence });
++    await bridge.mkdirp({ filePath: "dir", assertBeforeMutation: fence });
++    await bridge.rename({ from: "a.txt", to: "b.txt", assertBeforeMutation: fence });
++    await bridge.remove({ filePath: "b.txt", assertBeforeMutation: fence });
++    expect(backend.syncLocalPathToRemote).toHaveBeenCalledWith(
++      expect.any(String),
++      expect.any(String),
++      fence,
++    );
++    expect(backend.mkdirpRemotePath).toHaveBeenCalledWith(expect.any(String), undefined, fence);
++    expect(backend.renameRemotePath).toHaveBeenCalledWith(
++      expect.any(String),
++      expect.any(String),
++      undefined,
++      fence,
++    );
++    expect(backend.removeRemotePath).toHaveBeenCalledWith(
++      expect.any(String),
++      expect.objectContaining({ assertBeforeMutation: fence }),
++    );
++  });
++
++  it.each(["writeFile", "mkdirp", "remove"] as const)(
++    "does not mutate locally or remotely when the fence throws for %s",
++    async (method) => {
++      await seedLocal("victim.txt", "original");
++      const fence = () => {
++        throw new Error("tool invocation authority is no longer active");
++      };
++      const call =
++        method === "writeFile"
++          ? bridge.writeFile({ filePath: "victim.txt", data: "late", assertBeforeMutation: fence })
++          : method === "mkdirp"
++            ? bridge.mkdirp({ filePath: "newdir", assertBeforeMutation: fence })
++            : bridge.remove({ filePath: "victim.txt", assertBeforeMutation: fence });
++      await expect(call).rejects.toThrow("no longer active");
++      await expect(readLocal("victim.txt")).resolves.toBe("original");
++      await expectPathMissing(local("newdir"));
++      expect(backend.syncLocalPathToRemote).not.toHaveBeenCalled();
++      expect(backend.mkdirpRemotePath).not.toHaveBeenCalled();
++      expect(backend.removeRemotePath).not.toHaveBeenCalled();
++    },
++  );
++
+   it.each([
+     { workspaceAccess: "none", mutation: "write" },
+     { workspaceAccess: "ro", mutation: "write" },
+@@ -75,6 +131,7 @@ describe("openshell mirror fs bridges", () => {
+       expect(backend.syncLocalPathToRemote).toHaveBeenCalledWith(
+         local("nested/file.txt"),
+         "/sandbox/nested/file.txt",
++        undefined,
+       );
+       const skill = mutation === "write" ? "skills/demo/SKILL.md" : ".agents/skills/demo/SKILL.md";
+       await seedLocal(skill, "managed instructions");
+@@ -169,6 +226,7 @@ describe("openshell mirror fs bridges", () => {
+         recursive: false,
+         signal: undefined,
+         ignoreMissing: false,
++        assertBeforeMutation: undefined,
+       });
+     },
+   );
+@@ -322,12 +380,17 @@ describe("openshell mirror fs bridges", () => {
+     ).resolves.toBe("created");
+     await bridge.mkdirp({ filePath: "./~/nested" });
+     expect((await fs.stat(local("~/nested"))).isDirectory()).toBe(true);
+-    expect(backend.mkdirpRemotePath).toHaveBeenCalledWith("/sandbox/~/nested", undefined);
++    expect(backend.mkdirpRemotePath).toHaveBeenCalledWith(
++      "/sandbox/~/nested",
++      undefined,
++      undefined,
++    );
+     await bridge.rename({ from: "./~/created.txt", to: "./~/nested/target/moved.txt" });
+     expect(backend.renameRemotePath).toHaveBeenCalledWith(
+       "/sandbox/~/created.txt",
+       "/sandbox/~/nested/target/moved.txt",
+       undefined,
++      undefined,
+     );
+     await expect(readLocal("~/nested/target/moved.txt")).resolves.toBe("created");
+     await bridge.remove({ filePath: "./~/file.txt", force: false });
+@@ -335,6 +398,7 @@ describe("openshell mirror fs bridges", () => {
+       recursive: false,
+       signal: undefined,
+       ignoreMissing: false,
++      assertBeforeMutation: undefined,
+     });
+     await expectPathMissing(local("~/file.txt"));
+     await bridge.remove({ filePath: ".", recursive: true });
+diff --git a/src/agents/agent-tools.read.ts b/src/agents/agent-tools.read.ts
+index 5b8fb20c..bf47689c 100644
+--- a/src/agents/agent-tools.read.ts
++++ b/src/agents/agent-tools.read.ts
+@@ -1254,14 +1254,22 @@ function createSandboxMutationOperations(params: SandboxToolParams) {
+       resolveQueueKey: (absolutePath: string, signal?: AbortSignal) =>
+         resolveSandboxFileQueueKey(params, absolutePath, signal),
+       mkdir: async (dir: string) => {
+-        await params.bridge.mkdirp({ filePath: dir, cwd: params.root, signal: params.abortSignal });
++        const assertBeforeMutation = captureAgentToolSourceExecutionGuard(params.abortSignal);
++        await params.bridge.mkdirp({
++          filePath: dir,
++          cwd: params.root,
++          signal: params.abortSignal,
++          assertBeforeMutation,
++        });
+       },
+       writeFile: async (absolutePath: string, content: string) => {
++        const assertBeforeMutation = captureAgentToolSourceExecutionGuard(params.abortSignal);
+         await params.bridge.writeFile({
+           filePath: absolutePath,
+           cwd: params.root,
+           data: content,
+           signal: params.abortSignal,
++          assertBeforeMutation,
+         });
+       },
+       readFile: (absolutePath: string) =>
+diff --git a/src/agents/apply-patch-file-ops.ts b/src/agents/apply-patch-file-ops.ts
+index eb7b3beb..bf583e55 100644
+--- a/src/agents/apply-patch-file-ops.ts
++++ b/src/agents/apply-patch-file-ops.ts
+@@ -74,7 +74,13 @@ export async function resolvePatchFileOps(options: ApplyPatchFileOptions): Promi
+       writeFile: (filePath, content) =>
+         runWithAgentToolSourceExecutionScope(assertCurrent, async () => {
+           assertCurrent();
+-          await bridge.writeFile({ filePath, cwd: root, data: content, signal: options.signal });
++          await bridge.writeFile({
++            filePath,
++            cwd: root,
++            data: content,
++            signal: options.signal,
++            assertBeforeMutation: assertCurrent,
++          });
+         }),
+       createFileExclusive: (filePath, content) =>
+         runWithAgentToolSourceExecutionScope(assertCurrent, async () => {
+@@ -89,17 +95,29 @@ export async function resolvePatchFileOps(options: ApplyPatchFileOptions): Promi
+             cwd: root,
+             data: content,
+             signal: options.signal,
++            assertBeforeMutation: assertCurrent,
+           });
+         }),
+       remove: (filePath) =>
+         runWithAgentToolSourceExecutionScope(assertCurrent, async () => {
+           assertCurrent();
+-          await bridge.remove({ filePath, cwd: root, force: false, signal: options.signal });
++          await bridge.remove({
++            filePath,
++            cwd: root,
++            force: false,
++            signal: options.signal,
++            assertBeforeMutation: assertCurrent,
++          });
+         }),
+       mkdirp: (dir) =>
+         runWithAgentToolSourceExecutionScope(assertCurrent, async () => {
+           assertCurrent();
+-          await bridge.mkdirp({ filePath: dir, cwd: root, signal: options.signal });
++          await bridge.mkdirp({
++            filePath: dir,
++            cwd: root,
++            signal: options.signal,
++            assertBeforeMutation: assertCurrent,
++          });
+         }),
+     });
+   }
+diff --git a/src/agents/apply-patch.test.ts b/src/agents/apply-patch.test.ts
+index 080788c2..d8f0f4f5 100644
+--- a/src/agents/apply-patch.test.ts
++++ b/src/agents/apply-patch.test.ts
+@@ -946,4 +946,72 @@ describe("apply_patch mutation authority", () => {
+       await expect(fs.readdir(root)).resolves.toEqual(["existing.txt"]);
+     },
+   );
++
++  it("passes the captured authority fence to every sandbox bridge mutation", async () => {
++    const memory = createMemoryPatchSandbox({ "old.txt": "old\n", "edit.txt": "before\n" });
++    const tool = createApplyPatchTool({
++      cwd: "/local/workspace",
++      sandbox: { root: "/sandbox", bridge: memory.bridge },
++    });
++    await withGatewayToolCallerIdentity(
++      { agentId: "main", sessionKey: "agent:main:patch-fence", receiptAuthority: () => true },
++      () =>
++        tool.execute("sandbox-fence", {
++          input: [
++            "*** Begin Patch",
++            "*** Add File: nested/new.txt",
++            "+new",
++            "*** Delete File: old.txt",
++            "*** Update File: edit.txt",
++            "@@",
++            "-before",
++            "+after",
++            "*** End Patch",
++          ].join("\n"),
++        }),
++    );
++    const allFenced = (calls: unknown[][]) =>
++      calls.every(
++        ([params]) =>
++          typeof (params as { assertBeforeMutation?: unknown }).assertBeforeMutation === "function",
++      );
++    for (const mock of [
++      memory.createFileExclusive,
++      memory.remove,
++      memory.writeFile,
++      memory.mkdirp,
++    ]) {
++      expect(mock).toHaveBeenCalled();
++      expect(allFenced(mock.mock.calls)).toBe(true);
++    }
++  });
++
++  it("stops a sandbox patch write when the bridge revokes during preparation", async () => {
++    const memory = createMemoryPatchSandbox({ "edit.txt": "before\n" });
++    let current = true;
++    memory.writeFile.mockImplementation(async (params: { assertBeforeMutation?: () => void }) => {
++      await Promise.resolve();
++      current = false;
++      params.assertBeforeMutation?.();
++      throw new Error("write reached the final effect");
++    });
++    const tool = createApplyPatchTool({
++      cwd: "/local/workspace",
++      sandbox: { root: "/sandbox", bridge: memory.bridge },
++    });
++    await expect(
++      withGatewayToolCallerIdentity(
++        {
++          agentId: "main",
++          sessionKey: "agent:main:patch-revoked",
++          receiptAuthority: () => current,
++        },
++        () =>
++          tool.execute("sandbox-revoked", {
++            input: "*** Begin Patch\n*** Update File: edit.txt\n@@\n-before\n+after\n*** End Patch",
++          }),
++      ),
++    ).rejects.toThrow("authority is no longer active");
++    expect(memory.files.get("/sandbox/edit.txt")).toBe("before\n");
++  });
+ });
+diff --git a/src/agents/cli-runner/prepare-mcp.ts b/src/agents/cli-runner/prepare-mcp.ts
+index 94928bbd..7292d92b 100644
+--- a/src/agents/cli-runner/prepare-mcp.ts
++++ b/src/agents/cli-runner/prepare-mcp.ts
+@@ -68,6 +68,7 @@ export async function prepareCliMcpToolProjection(
+     scope: Pick<
+       McpScope,
+       | "cfg"
++      | "sandboxExecution"
+       | "skillLibraryAuthoring"
+       | "bundledTools"
+       | "authProfileStore"
+diff --git a/src/agents/cli-runner/prepare-sandbox.test.ts b/src/agents/cli-runner/prepare-sandbox.test.ts
+new file mode 100644
+index 00000000..90f83737
+--- /dev/null
++++ b/src/agents/cli-runner/prepare-sandbox.test.ts
+@@ -0,0 +1,106 @@
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import { createSandboxTestContext } from "../sandbox/test-fixtures.js";
++import { prepareCliSandboxExecution } from "./prepare-sandbox.js";
++import type { RunCliAgentParams } from "./types.js";
++
++const mocks = vi.hoisted(() => ({ prepare: vi.fn(), status: vi.fn() }));
++vi.mock("../workspace-sandbox.js", () => ({ resolveAttemptWorkspaceSandbox: mocks.prepare }));
++vi.mock("../sandbox/runtime-status.js", () => ({ resolveSandboxRuntimeStatusAsync: mocks.status }));
++
++const run: RunCliAgentParams = {
++  sessionId: "sandbox-cli",
++  sessionKey: "agent:main:dashboard:sandbox-cli",
++  sessionFile: "fixture.jsonl",
++  workspaceDir: "/workspace",
++  prompt: "work",
++  provider: "claude-cli",
++  model: "fixture",
++  runId: "sandbox-cli",
++  timeoutMs: 1000,
++};
++const options = {
++  run,
++  config: {},
++  agentId: "main",
++  policyAgentId: "main",
++  policySessionKey: run.sessionKey,
++  modelProvider: "fixture",
++  modelId: "fixture",
++  workspaceDir: "/workspace",
++  cwd: "/workspace",
++  hostOwnedTools: ["exec", "process"],
++};
++
++beforeEach(() => {
++  vi.clearAllMocks();
++  mocks.status.mockResolvedValue({ sandboxed: true, mode: "all", toolPolicy: {} });
++  mocks.prepare.mockImplementation(async () => ({
++    sandbox: createSandboxTestContext(),
++    effectiveWorkspace: "/projected",
++    effectiveCwd: "/projected",
++    effectiveFsWorkspaceOnly: true,
++    sessionPermissionRoot: "/projected",
++    [Symbol.dispose]: vi.fn(),
++  }));
++});
++
++describe("managed CLI sandbox preparation", () => {
++  it.each([
++    { runtimeToolsAllowPolicy: [] },
++    { runtimeToolsAllowPolicy: ["message"] },
++    { run: { ...run, cliToolAvailability: { native: [], openClaw: [] } } },
++    { run: { ...run, disableTools: true } },
++    { runtimeToolsAllowPolicy: ["write"], promptBuildToolsAllow: ["message"] },
++    { config: { tools: { deny: ["exec", "process"] } } },
++  ])("does not provision unavailable Docker for non-coding authority: %j", async (overrides) => {
++    mocks.prepare.mockRejectedValue(new Error("Docker unavailable"));
++    expect(await prepareCliSandboxExecution({ ...options, ...overrides })).toBeUndefined();
++    expect(mocks.prepare).not.toHaveBeenCalled();
++  });
++
++  it.each([
++    {},
++    { runtimeToolsAllowPolicy: ["write"] },
++    { runtimeToolsAllowPolicy: ["group:fs"] },
++    { runtimeToolsAllowPolicy: ["*"] },
++    { run: { ...run, cliToolAvailability: { native: [], openClaw: ["read"] } } },
++  ])("prepares coding selections and retains the complete native owner: %j", async (overrides) => {
++    const prepared = await prepareCliSandboxExecution({ ...options, ...overrides });
++    expect(prepared?.effectiveCwd).toBe("/projected");
++    expect(prepared?.sessionPermissionRoot).toBe("/projected");
++    expect(prepared?.[Symbol.dispose]).not.toHaveBeenCalled();
++    using owner = prepared;
++    expect(mocks.prepare).toHaveBeenCalledTimes(1);
++  });
++
++  it("fails before tools launch when provisioning fails", async () => {
++    mocks.prepare.mockRejectedValue(new Error("Sandbox image not found"));
++    await expect(prepareCliSandboxExecution(options)).rejects.toThrow("Sandbox image not found");
++  });
++
++  it("releases the native lease if authority expires during preparation", async () => {
++    const abort = new AbortController();
++    const dispose = vi.fn();
++    mocks.prepare.mockImplementation(async () => {
++      abort.abort(new Error("run replaced"));
++      return { sandbox: createSandboxTestContext(), [Symbol.dispose]: dispose };
++    });
++    await expect(
++      prepareCliSandboxExecution({ ...options, run: { ...run, abortSignal: abort.signal } }),
++    ).rejects.toThrow("run replaced");
++    expect(dispose).toHaveBeenCalledTimes(1);
++  });
++
++  it("does not turn a changed sandbox classification into host fallback", async () => {
++    const dispose = vi.fn();
++    mocks.prepare.mockResolvedValue({ sandbox: null, [Symbol.dispose]: dispose });
++    await expect(prepareCliSandboxExecution(options)).rejects.toThrow("require a prepared sandbox");
++    expect(dispose).toHaveBeenCalledTimes(1);
++  });
++
++  it("leaves deliberately unsandboxed runs with their existing owner", async () => {
++    mocks.status.mockResolvedValue({ sandboxed: false });
++    expect(await prepareCliSandboxExecution(options)).toBeUndefined();
++    expect(mocks.prepare).not.toHaveBeenCalled();
++  });
++});
+diff --git a/src/agents/cli-runner/prepare-sandbox.ts b/src/agents/cli-runner/prepare-sandbox.ts
+new file mode 100644
+index 00000000..0add308c
+--- /dev/null
++++ b/src/agents/cli-runner/prepare-sandbox.ts
+@@ -0,0 +1,95 @@
++import type { McpLoopbackRequestContext } from "../../gateway/mcp-grant-store.js";
++import { selectMediatedCodingTools } from "../../gateway/mcp-http.runtime.js";
++import { projectConversationToolNames } from "../conversation-tool-policy-pipeline.js";
++import { applyEmbeddedAttemptToolsAllow } from "../embedded-agent-runner/run/attempt-tool-construction-plan.js";
++import { resolveSandboxRuntimeStatusAsync } from "../sandbox/runtime-status.js";
++import { resolveAttemptWorkspaceSandbox } from "../workspace-sandbox.js";
++import { resolveCliNativeMcpPolicy } from "./prepare-mcp.js";
++import type { RunCliAgentParams } from "./types.js";
++
++/** Host-owned native workspace lease. Never serialize this onto a CLI request. */
++export type PreparedCliSandboxExecution = Awaited<
++  ReturnType<typeof resolveAttemptWorkspaceSandbox>
++>;
++
++/** Prepare the ordinary session sandbox only for admitted mediated coding tools. */
++export async function prepareCliSandboxExecution(options: {
++  run: RunCliAgentParams;
++  config: NonNullable<RunCliAgentParams["config"]>;
++  agentId: string;
++  policyAgentId: string;
++  policySessionKey: string | undefined;
++  modelProvider: string;
++  modelId: string;
++  workspaceDir: string;
++  cwd: string;
++  runtimeToolsAllowPolicy?: string[];
++  hostOwnedTools?: readonly string[];
++  promptBuildToolsAllow?: string[];
++  sessionPermissionPolicy?: McpLoopbackRequestContext["sessionPermissionPolicy"];
++}): Promise<PreparedCliSandboxExecution | undefined> {
++  const { run } = options;
++  if (run.disableTools === true) {
++    return undefined;
++  }
++  // An explicit empty/non-coding cap must not provision a sandbox merely because
++  // the backend normally owns exec/process. Match the projection's precedence.
++  const selected = selectMediatedCodingTools(
++    options.runtimeToolsAllowPolicy ??
++      run.cliToolAvailability?.openClaw ??
++      (options.hostOwnedTools ? [...options.hostOwnedTools] : undefined),
++  );
++  const candidates = applyEmbeddedAttemptToolsAllow(
++    selected.map((name) => ({ name })),
++    options.promptBuildToolsAllow,
++  ).map((tool) => tool.name);
++  if (candidates.length === 0) {
++    return undefined;
++  }
++  const sandboxStatus = await resolveSandboxRuntimeStatusAsync({
++    cfg: options.config,
++    sessionKey: options.policySessionKey,
++    agentId: options.policyAgentId,
++  });
++  if (!sandboxStatus.sandboxed) {
++    return undefined;
++  }
++  const capabilityProfile = await resolveCliNativeMcpPolicy(run, options);
++  if (
++    projectConversationToolNames({
++      capabilityProfile,
++      toolNames: candidates,
++      warn: () => undefined,
++    }).length === 0
++  ) {
++    return undefined;
++  }
++  run.assertCurrent?.();
++  const prepared = await resolveAttemptWorkspaceSandbox({
++    config: options.config,
++    agentId: options.agentId,
++    workspaceDir: options.workspaceDir,
++    cwd: options.cwd,
++    sessionId: run.sessionId,
++    sessionKey: run.sessionKey,
++    sandboxSessionKey: options.policySessionKey,
++    sandboxAgentId: options.policyAgentId,
++    sessionRoot: options.sessionPermissionPolicy?.root,
++    permissionMode: options.sessionPermissionPolicy?.mode,
++    execOverrides: run.execOverrides,
++    skillsSnapshot: run.skillsSnapshot,
++    abortSignal: run.abortSignal,
++    admittedRunContext: run.admittedRunContext,
++  });
++  try {
++    run.assertCurrent?.();
++    run.abortSignal?.throwIfAborted();
++    if (!prepared.sandbox?.enabled) {
++      throw new Error("Mediated CLI coding tools require a prepared sandbox for this session");
++    }
++    return prepared;
++  } catch (error) {
++    prepared[Symbol.dispose]();
++    throw error;
++  }
++}
+diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
+index 11d99f38..7284efcb 100644
+--- a/src/agents/cli-runner/prepare.test.ts
++++ b/src/agents/cli-runner/prepare.test.ts
+@@ -43,8 +43,8 @@ import {
+   registerContextEngineInRegistry,
+ } from "../../context-engine/registry.js";
+ import type { ContextEngine } from "../../context-engine/types.js";
+-import type { resolveMcpLoopbackScopedTools as resolveLoopbackTools } from "../../gateway/mcp-http.runtime.js";
+ import type { mintMcpLoopbackClientGrant as mintClientGrant } from "../../gateway/mcp-grant-store.js";
++import type { resolveMcpLoopbackScopedTools as resolveLoopbackTools } from "../../gateway/mcp-http.runtime.js";
+ import { setActiveNodeContexts } from "../../infra/active-node-context.js";
+ import {
+   claimHeartbeatOutcomeForRun,
+@@ -131,6 +131,7 @@ import { claimPendingAgentQuestionAnswerFromCaller } from "../harness/gateway-qu
+ import { withQuestionGateway } from "../harness/gateway-question.test-support.js";
+ import { buildMediaTaskRuntimeContext } from "../media-generation-task-status.js";
+ import { createAgentCleanupScope } from "../run-cleanup-timeout.js";
++import { createSandboxTestContext } from "../sandbox/test-fixtures.js";
+ import type { SandboxWorkspaceInfo } from "../sandbox/types.js";
+ import { beginForegroundSessionMaintenance } from "../session-maintenance/coordinator.js";
+ import { SessionManager } from "../sessions/session-manager.js";
+@@ -140,6 +141,7 @@ import {
+ } from "../test-helpers/model-routing-decision-e2e-fixtures.js";
+ import { attachToolAllowlistIntersection } from "../tool-policy.js";
+ import type { SystemAgentToolOptions } from "../tools/system-agent-tool.js";
++import * as workspaceSandbox from "../workspace-sandbox.js";
+ import { prepareCliBundleMcpCaptureAttempt, prepareCliBundleMcpConfig } from "./bundle-mcp.js";
+ import { prepareClaudeCliSkillsPlugin } from "./claude-skills-plugin.js";
+ import { finalizeCliContextEngineTurn } from "./cli-run-transcript.js";
+@@ -474,6 +476,99 @@ describe("prepareCliRunContext", () => {
+     });
+   });
+ 
++  it.each([false, true])(
++    "retains sandbox custody through CLI preparation and releases on failure=%s",
++    async (failProjection) => {
++      const { dir } = fixture.session;
++      const dispose = vi.fn();
++      const owner = {
++        sandbox: createSandboxTestContext({
++          overrides: { workspaceDir: dir, workspaceAccess: "rw" },
++        }),
++        effectiveCwd: dir,
++        effectiveWorkspace: dir,
++        resolvedWorkspace: dir,
++        effectiveFsWorkspaceOnly: true,
++        sessionPermissionRoot: dir,
++        sessionPermissionPolicy: undefined,
++        sandboxSessionKey: "agent:worker:job",
++        sessionAgentId: "main",
++        sandboxReport: { mode: "all" as const, sandboxed: true },
++        [Symbol.dispose]: dispose,
++      };
++      const prepareOwner = vi
++        .spyOn(workspaceSandbox, "resolveAttemptWorkspaceSandbox")
++        .mockResolvedValue(owner);
++      const project = vi.fn(async () => {
++        if (failProjection) throw new Error("projection failed after sandbox preparation");
++        return {
++          agentId: "main",
++          tools: [
++            {
++              name: "read",
++              label: "Read",
++              description: "Read",
++              parameters: { type: "object", properties: {} },
++              execute: vi.fn(),
++            },
++          ],
++        };
++      });
++      const mint = vi.fn(createTestMcpLoopbackClientGrant);
++      setCliRunnerPrepareTestDeps({
++        getActiveMcpLoopbackRuntime: vi.fn(createLoopbackRuntime),
++        resolveMcpLoopbackPolicyTools: project,
++        resolveMcpLoopbackScopedTools: project,
++        mintMcpLoopbackClientGrant: mint,
++      });
++      setRawCliBackendForPrepareTest({
++        id: "native-cli",
++        pluginId: "native-plugin",
++        bundleMcp: true,
++        bundleMcpMode: "claude-config-file",
++        nativeToolMode: "selectable",
++        toolAvailabilityEnforcement: "execution-args",
++        resolveExecutionArgs: ({ baseArgs }) => baseArgs,
++        config: createJsonlStdinBackendConfig("native-cli"),
++      });
++      try {
++        const pending = fixture.prepare({
++          provider: "native-cli",
++          toolsAllow: ["read"],
++          sessionKey: "agent:main:main",
++          runtimePolicySessionKey: "agent:worker:job",
++          config: {
++            agents: {
++              entries: {
++                main: { workspace: dir, sandbox: { mode: "off" } },
++                worker: { sandbox: { mode: "all" } },
++              },
++            },
++          },
++        });
++        if (failProjection) {
++          await expect(pending).rejects.toThrow("projection failed after sandbox preparation");
++        } else {
++          const context = await pending;
++          expect(dispose).not.toHaveBeenCalled();
++          expect(mint.mock.calls[0]?.[0]).toMatchObject({ sandboxExecution: owner });
++          expect(mint.mock.calls[0]?.[0].context).not.toHaveProperty("sandboxExecution");
++          await context.preparedBackend.cleanup?.();
++        }
++        expect(prepareOwner).toHaveBeenCalledWith(
++          expect.objectContaining({
++            agentId: "main",
++            sandboxSessionKey: "agent:worker:job",
++            sandboxAgentId: "worker",
++          }),
++        );
++        expect(dispose).toHaveBeenCalledTimes(1);
++      } finally {
++        prepareOwner.mockRestore();
++      }
++    },
++  );
++
+   registerCliThinkingPreparationTests({
+     getFixture: () => fixture,
+     setBackend: setCliBackendForPrepareTest,
+diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
+index 3a03dafa..7bc747e3 100644
+--- a/src/agents/cli-runner/prepare.ts
++++ b/src/agents/cli-runner/prepare.ts
+@@ -1,11 +1,11 @@
+ import { ensureSystemPromptCacheBoundary } from "@openclaw/ai/internal/shared";
+ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+ import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
++import { intersectSessionEventToolsAllow } from "../../auto-reply/reply/session-event-target.js";
+ import {
+   buildHarnessVisibleReplyGuidance,
+   messageToolOwnsVisibleReply,
+ } from "../../auto-reply/source-reply-delivery-mode.js";
+-import { intersectSessionEventToolsAllow } from "../../auto-reply/reply/session-event-target.js";
+ import { getRuntimeConfig } from "../../config/config.js";
+ import { canonicalizeMainSessionAlias } from "../../config/sessions/main-session.js";
+ import type { OpenClawConfig } from "../../config/types.openclaw.js";
+@@ -143,6 +143,7 @@ import { buildCliMcpGrantContext } from "./mcp-grant-context.js";
+ import { detectNodeClaudePlacement } from "./prepare-claude.js";
+ import * as mcp from "./prepare-mcp.js";
+ import { prepareCliModelContext } from "./prepare-model-context.js";
++import { prepareCliSandboxExecution } from "./prepare-sandbox.js";
+ import { runWithCliPreparationSource } from "./prepare-source.js";
+ import {
+   capCliToolAvailability,
+@@ -747,6 +748,26 @@ async function prepareCliRunContextWithinReadFence(
+       }
+     : undefined;
+   params = await admitCliRunParams(params, workspaceResolution.agentId);
++  const sandboxExecution = bundleMcpEnabled
++    ? callerToolAuthorityResources.use(
++        await prepareCliSandboxExecution({
++          run: params,
++          config: runConfig,
++          agentId: workspaceResolution.agentId,
++          policyAgentId,
++          policySessionKey,
++          modelProvider,
++          modelId,
++          workspaceDir,
++          cwd,
++          runtimeToolsAllowPolicy,
++          hostOwnedTools,
++          promptBuildToolsAllow,
++          sessionPermissionPolicy: mcpContextBase?.sessionPermissionPolicy,
++        }),
++      )
++    : undefined;
++  params.assertCurrent?.();
+   const skillPreparationParams = params;
+   const assertSkillsCurrent = skillPreparationParams.admittedRunContext
+     ? createCliRunCurrentAssertion({
+@@ -820,6 +841,7 @@ async function prepareCliRunContextWithinReadFence(
+         defaultMediatedToolNames: hostOwnedTools,
+         scope: {
+           cfg: runConfig,
++          ...(sandboxExecution ? { sandboxExecution } : {}),
+           ...(skillLibraryAuthoring ? { skillLibraryAuthoring } : {}),
+           ...(bundledMcpTools.length > 0 ? { bundledTools: bundledMcpTools } : {}),
+           ...(mcpToolAuth ? { authProfileStore: mcpToolAuth.store } : {}),
+@@ -1040,6 +1062,7 @@ async function prepareCliRunContextWithinReadFence(
+         ? mintMcpLoopbackClientGrant({
+             ...mcpGrant,
+             codeModeSkills,
++            ...(sandboxExecution ? { sandboxExecution } : {}),
+             sessionEventSourcePolicy,
+             runtimeOwnerToken: mcpLoopbackRuntime.ownerToken,
+             bindQuestionAnswerAuthority: (assertActive) =>
+@@ -1701,7 +1724,7 @@ async function prepareCliRunContextWithinReadFence(
+         warningMode: bootstrapPromptWarningMode,
+         warning: bootstrapPromptWarning,
+       }),
+-      sandbox: { mode: "off", sandboxed: false },
++      sandbox: sandboxExecution?.sandboxReport ?? { mode: "off", sandboxed: false },
+       systemPrompt,
+       injectedWorkspaceFiles: bootstrapInjectionStats,
+       skillsPrompt: preparedSkills.prompt,
+diff --git a/src/agents/sandbox/backend-handle.types.ts b/src/agents/sandbox/backend-handle.types.ts
+index 2fff5c62..1c1612ba 100644
+--- a/src/agents/sandbox/backend-handle.types.ts
++++ b/src/agents/sandbox/backend-handle.types.ts
+@@ -24,6 +24,8 @@ export type SandboxBackendCommandParams = {
+   stdin?: Buffer | string;
+   allowFailure?: boolean;
+   signal?: AbortSignal;
++  /** Revalidate caller authority after awaited setup and immediately before launch. */
++  assertBeforeMutation?: () => void;
+ };
+ 
+ export type SandboxBackendCommandResult = {
+@@ -46,6 +48,7 @@ export type SandboxFsBridgeContext = {
+   };
+   backend?: {
+     runShellCommand(params: SandboxBackendCommandParams): Promise<SandboxBackendCommandResult>;
++    readonly enforcesMutationFence?: true;
+   };
+ };
+ 
+@@ -73,6 +76,8 @@ export type SandboxBackendHandle = {
+     browser?: boolean;
+     readOnlyResourceMounts?: boolean;
+   };
++  /** The command runner honors SandboxBackendCommandParams.assertBeforeMutation at launch. */
++  readonly enforcesMutationFence?: true;
+   buildExecSpec(params: {
+     command: string;
+     workdir?: string;
+diff --git a/src/agents/sandbox/docker-backend.test.ts b/src/agents/sandbox/docker-backend.test.ts
+index 19af6cba..5694c050 100644
+--- a/src/agents/sandbox/docker-backend.test.ts
++++ b/src/agents/sandbox/docker-backend.test.ts
+@@ -202,6 +202,21 @@ describe("docker sandbox backend manager", () => {
+     },
+   );
+ 
++  it("rechecks caller authority after engine validation and before container execution", async () => {
++    const backend = await createDockerExecBackend();
++    expect(backend.enforcesMutationFence).toBe(true);
++    await expect(
++      backend.runShellCommand({
++        script: "write should not run",
++        assertBeforeMutation: () => {
++          expect(dockerMocks.validateSandboxContainerEngineTarget).toHaveBeenCalled();
++          throw new Error("tool invocation authority is no longer active");
++        },
++      }),
++    ).rejects.toThrow("authority is no longer active");
++    expect(dockerMocks.execContainerRaw).not.toHaveBeenCalled();
++  });
++
+   it.each(["removed", "stopped", "paused", "unreachable", "still present"] as const)(
+     "settles retained cleanup only for confirmed generation termination: %s",
+     async (state) => {
+diff --git a/src/agents/sandbox/docker-backend.ts b/src/agents/sandbox/docker-backend.ts
+index 40993d13..863cd606 100644
+--- a/src/agents/sandbox/docker-backend.ts
++++ b/src/agents/sandbox/docker-backend.ts
+@@ -1,4 +1,5 @@
+ import { createContainerEnvFile } from "../../infra/container-env-file.js";
++import { runWithSpawnBroker } from "../../process/spawn-broker/context.js";
+ import type { AdmittedRunOperatorAuthority } from "../admitted-run-context.js";
+ import { buildGitHubExecLaunchArgv } from "../github-exec-launch.js";
+ import type { PreparedGitHubToolEnvironment } from "../github-tool-identity.types.js";
+@@ -194,6 +195,7 @@ function createContainerSandboxBackendHandle(params: {
+     env: params.env,
+     configLabel: params.image,
+     configLabelKind: "Image",
++    enforcesMutationFence: true,
+     capabilities: {
+       browser: params.engine.id === "docker",
+       readOnlyResourceMounts: true,
+@@ -329,10 +331,13 @@ async function runContainerSandboxShellCommand(
+   }
+   // The engine-target probe above can outlive the admitted workspace owner.
+   params.assertCurrent?.();
+-  return execContainerRaw(params.engine, dockerArgs, {
+-    input: params.stdin,
+-    allowFailure: params.allowFailure,
+-    signal: params.signal,
++  return await runWithSpawnBroker(undefined, () => {
++    params.assertBeforeMutation?.();
++    return execContainerRaw(params.engine, dockerArgs, {
++      input: params.stdin,
++      allowFailure: params.allowFailure,
++      signal: params.signal,
++    });
+   });
+ }
+ 
+diff --git a/src/agents/sandbox/fs-bridge.mutation-fence.test.ts b/src/agents/sandbox/fs-bridge.mutation-fence.test.ts
+new file mode 100644
+index 00000000..bf08dfeb
+--- /dev/null
++++ b/src/agents/sandbox/fs-bridge.mutation-fence.test.ts
+@@ -0,0 +1,118 @@
++import fs from "node:fs/promises";
++import path from "node:path";
++import { describe, expect, it } from "vitest";
++import {
++  createSandbox,
++  createSandboxFsBridge,
++  getScriptsFromCalls,
++  installFsBridgeTestHarness,
++  mockedExecDockerRaw,
++  withTempDir,
++} from "./fs-bridge.test-helpers.js";
++
++describe("sandbox fs bridge mutation fence", () => {
++  installFsBridgeTestHarness();
++
++  it.each(["copyFile", "writeFile", "createFileExclusive", "mkdirp", "remove", "rename"] as const)(
++    "rechecks authority at backend launch before %s takes effect",
++    async (method) => {
++      await withTempDir("openclaw-fs-bridge-fence-", async (stateDir) => {
++        const workspaceDir = path.join(stateDir, "workspace");
++        await fs.mkdir(workspaceDir, { recursive: true });
++        const sandbox = createSandbox({ workspaceDir, agentWorkspaceDir: workspaceDir });
++        const bridge = createSandboxFsBridge({
++          sandbox: {
++            ...sandbox,
++            backend: {
++              enforcesMutationFence: true,
++              runShellCommand: async (params) => {
++                params.assertBeforeMutation?.();
++                return await mockedExecDockerRaw(
++                  [
++                    "exec",
++                    "-i",
++                    sandbox.containerName,
++                    "sh",
++                    "-c",
++                    params.script,
++                    "openclaw-sandbox-fs",
++                    ...(params.args ?? []),
++                  ],
++                  {
++                    input: params.stdin,
++                    allowFailure: params.allowFailure,
++                    signal: params.signal,
++                  },
++                );
++              },
++            },
++          },
++        });
++        expect(bridge.enforcesMutationFence).toBe(true);
++        let checks = 0;
++        const assertBeforeMutation = () => {
++          checks += 1;
++          if (checks === 2) {
++            throw new Error("tool invocation authority is no longer active");
++          }
++        };
++        const mutation = (() => {
++          switch (method) {
++            case "copyFile":
++              return bridge.copyFile!({
++                sourcePath: "source.txt",
++                destinationPath: "copied.txt",
++                assertBeforeMutation,
++              });
++            case "writeFile":
++              return bridge.writeFile({
++                filePath: "victim.txt",
++                data: "changed",
++                assertBeforeMutation,
++              });
++            case "createFileExclusive":
++              return bridge.createFileExclusive!({
++                filePath: "created.txt",
++                data: "created",
++                assertBeforeMutation,
++              });
++            case "mkdirp":
++              return bridge.mkdirp({ filePath: "created-dir", assertBeforeMutation });
++            case "remove":
++              return bridge.remove({ filePath: "victim.txt", assertBeforeMutation });
++            case "rename":
++              return bridge.rename({
++                from: "victim.txt",
++                to: "renamed.txt",
++                assertBeforeMutation,
++              });
++          }
++        })();
++        await expect(mutation).rejects.toThrow("authority is no longer active");
++        expect(checks).toBe(2);
++        expect(getScriptsFromCalls().some((script) => script.includes("python3"))).toBe(false);
++      });
++    },
++  );
++
++  it("advertises the fence only for a backend that declares it", () => {
++    const sandbox = createSandbox();
++    expect(createSandboxFsBridge({ sandbox }).enforcesMutationFence).toBeUndefined();
++    expect(
++      createSandboxFsBridge({
++        sandbox: {
++          ...sandbox,
++          backend: {
++            enforcesMutationFence: true,
++            runShellCommand: async () => ({
++              stdout: Buffer.alloc(0),
++              stderr: Buffer.alloc(0),
++              code: 0,
++            }),
++          },
++        },
++      }).enforcesMutationFence,
++    ).toBe(true);
++    expect(mockedExecDockerRaw).not.toHaveBeenCalled();
++  });
++});
+diff --git a/src/agents/sandbox/fs-bridge.ts b/src/agents/sandbox/fs-bridge.ts
+index 2881a02f..c6719535 100644
+--- a/src/agents/sandbox/fs-bridge.ts
++++ b/src/agents/sandbox/fs-bridge.ts
+@@ -76,6 +76,10 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
+     };
+   }
+ 
++  get enforcesMutationFence(): true | undefined {
++    return this.sandbox.backend.enforcesMutationFence === true ? true : undefined;
++  }
++
+   get pathMappings(): NonNullable<SandboxFsBridge["pathMappings"]> {
+     return this.mounts;
+   }
+@@ -157,6 +161,7 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
+         mkdir: params.mkdir !== false,
+       }),
+       signal: params.signal,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+   }
+ 
+@@ -201,6 +206,7 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
+       allowFailure: kind === "create" ? true : undefined,
+       stdin: buffer,
+       signal: params.signal,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+     return { result, containerPath: target.containerPath };
+   }
+@@ -222,6 +228,7 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
+         ),
+       }),
+       signal: params.signal,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+   }
+ 
+@@ -242,6 +249,7 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
+         force: params.force,
+       }),
+       signal: params.signal,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+   }
+ 
+@@ -259,6 +267,7 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
+         destination: this.pathGuard.resolvePinnedEntry(to, "rename files"),
+       }),
+       signal: params.signal,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+   }
+ 
+@@ -374,7 +383,10 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
+   }
+ 
+   private async runCheckedCommand(
+-    plan: SandboxFsCommandPlan & { signal?: AbortSignal },
++    plan: SandboxFsCommandPlan & {
++      signal?: AbortSignal;
++      assertBeforeMutation?: () => void;
++    },
+   ): Promise<SandboxBackendCommandResult> {
+     await this.pathGuard.assertPathChecks(plan.checks);
+     if (plan.recheckBeforeCommand) {
+@@ -382,12 +394,14 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
+       // checks immediately before command execution to close TOCTOU gaps.
+       await this.pathGuard.assertPathChecks(plan.checks);
+     }
++    plan.assertBeforeMutation?.();
+     return await this.sandbox.backend.runShellCommand({
+       script: plan.script,
+       args: plan.args,
+       stdin: plan.stdin,
+       allowFailure: plan.allowFailure,
+       signal: plan.signal,
++      assertBeforeMutation: plan.assertBeforeMutation,
+     });
+   }
+ 
+diff --git a/src/agents/sandbox/fs-bridge.types.ts b/src/agents/sandbox/fs-bridge.types.ts
+index ab671f16..eade7d1b 100644
+--- a/src/agents/sandbox/fs-bridge.types.ts
++++ b/src/agents/sandbox/fs-bridge.types.ts
+@@ -13,6 +13,8 @@ export type SandboxFsStat = {
+ };
+ 
+ export type SandboxFsBridge = {
++  /** Every mutating method revalidates authority immediately before its final effect. */
++  readonly enforcesMutationFence?: true;
+   /**
+    * Backend-owned runtime roots and their local policy projections, in mount
+    * precedence order for equal roots. These do not grant access: bridge methods
+@@ -94,6 +96,7 @@ export type SandboxFsBridge = {
+     /** Pre-authorized canonical destination from resolvePinnedMutationTarget. */
+     pinnedPath?: string;
+     signal?: AbortSignal;
++    assertBeforeMutation?: () => void;
+   }): Promise<void>;
+   writeFile(params: {
+     filePath: string;
+@@ -104,6 +107,7 @@ export type SandboxFsBridge = {
+     /** Pre-authorized canonical mutation target from resolvePinnedMutationTarget. */
+     pinnedPath?: string;
+     signal?: AbortSignal;
++    assertBeforeMutation?: () => void;
+   }): Promise<void>;
+   /**
+    * Atomically creates a file only when no entry already exists at the path.
+@@ -119,6 +123,7 @@ export type SandboxFsBridge = {
+     /** Pre-authorized canonical destination from resolvePinnedMutationTarget. */
+     pinnedPath?: string;
+     signal?: AbortSignal;
++    assertBeforeMutation?: () => void;
+   }): Promise<void>;
+   remove(params: {
+     filePath: string;
+@@ -128,8 +133,15 @@ export type SandboxFsBridge = {
+     /** Pre-authorized canonical destination from resolvePinnedMutationTarget. */
+     pinnedPath?: string;
+     signal?: AbortSignal;
++    assertBeforeMutation?: () => void;
++  }): Promise<void>;
++  rename(params: {
++    from: string;
++    to: string;
++    cwd?: string;
++    signal?: AbortSignal;
++    assertBeforeMutation?: () => void;
+   }): Promise<void>;
+-  rename(params: { from: string; to: string; cwd?: string; signal?: AbortSignal }): Promise<void>;
+   stat(params: {
+     filePath: string;
+     cwd?: string;
+diff --git a/src/agents/sandbox/mcp-grant-mutation-fence.test.ts b/src/agents/sandbox/mcp-grant-mutation-fence.test.ts
+new file mode 100644
+index 00000000..3303038c
+--- /dev/null
++++ b/src/agents/sandbox/mcp-grant-mutation-fence.test.ts
+@@ -0,0 +1,116 @@
++import path from "node:path";
++import { expect, it } from "vitest";
++import { createDeferred } from "../../../test/helpers/promise.js";
++import {
++  activateMcpLoopbackClientGrantCapture,
++  mintMcpLoopbackClientGrant,
++  resolveMcpLoopbackClientGrant,
++  revokeMcpLoopbackClientGrant,
++} from "../../gateway/mcp-grant-store.js";
++import {
++  createOperationalRunInstanceRef,
++  prepareAgentRunAdmission,
++} from "../admitted-run-context.js";
++import { createSandboxedWriteTool } from "../agent-tools.read.js";
++import { withGatewayToolCallerIdentity } from "../tools/gateway-caller-context.js";
++import {
++  createSandbox,
++  createSandboxFsBridge,
++  getScriptsFromCalls,
++  installFsBridgeTestHarness,
++  mockedExecDockerRaw,
++  withTempDir,
++} from "./fs-bridge.test-helpers.js";
++
++installFsBridgeTestHarness();
++
++it("fences a delayed sandbox write when its MCP grant is revoked", async () => {
++  await withTempDir("openclaw-mcp-sandbox-fence-", async (stateDir) => {
++    const workspaceDir = path.join(stateDir, "workspace");
++    const admission = prepareAgentRunAdmission({
++      cfg: {},
++      facts: {
++        runId: "sandbox-mutation-fence",
++        agentId: "main",
++        ingress: { kind: "system", boundary: "sandbox-mutation-fence", state: "present" },
++      },
++      operationalRunInstance: createOperationalRunInstanceRef("sandbox-mutation-fence"),
++    });
++    const admittedRunContext = await admission.admit("gateway", "gateway-sandbox-fence");
++    const grant = mintMcpLoopbackClientGrant({
++      context: {
++        sessionKey: "agent:main:sandbox-mutation-fence",
++        senderIsOwner: true,
++      },
++      runtimeOwnerToken: "sandbox-mutation-owner",
++      admittedRunContext,
++    });
++    const capture = {
++      token: grant.token,
++      runtimeOwnerToken: "sandbox-mutation-owner",
++      captureKey: "sandbox-mutation-capture",
++    };
++    expect(activateMcpLoopbackClientGrantCapture(capture)).toBeTruthy();
++    const resolvedGrant = resolveMcpLoopbackClientGrant(capture);
++    if (!resolvedGrant) {
++      throw new Error("expected a live MCP grant");
++    }
++    const mutationEntered = createDeferred<void>();
++    const releaseMutation = createDeferred<void>();
++    const sandbox = createSandbox({ workspaceDir, agentWorkspaceDir: workspaceDir });
++    const bridge = createSandboxFsBridge({
++      sandbox: {
++        ...sandbox,
++        backend: {
++          enforcesMutationFence: true,
++          runShellCommand: async (params) => {
++            if (params.script.includes("python_script=")) {
++              mutationEntered.resolve();
++              await releaseMutation.promise;
++              params.assertBeforeMutation?.();
++            }
++            return await mockedExecDockerRaw(
++              [
++                "exec",
++                "-i",
++                sandbox.containerName,
++                "sh",
++                "-c",
++                params.script,
++                "openclaw-sandbox-fs",
++                ...(params.args ?? []),
++              ],
++              {
++                input: params.stdin,
++                allowFailure: params.allowFailure,
++                signal: params.signal,
++              },
++            );
++          },
++        },
++      },
++    });
++    const tool = createSandboxedWriteTool({ root: workspaceDir, bridge });
++    try {
++      const pending = withGatewayToolCallerIdentity(
++        {
++          agentId: "main",
++          sessionKey: "agent:main:sandbox-mutation-fence",
++          receiptAuthority: resolvedGrant.isCurrent,
++        },
++        () => tool.execute("sandbox-write", { path: "note.txt", content: "blocked" }),
++      );
++      await mutationEntered.promise;
++      expect(revokeMcpLoopbackClientGrant(grant.token)).toBe(true);
++      releaseMutation.resolve();
++      await expect(pending).rejects.toThrow("authority is no longer active");
++      expect(
++        getScriptsFromCalls().filter((script) => script.includes("python_script=")),
++      ).toHaveLength(0);
++    } finally {
++      releaseMutation.resolve();
++      revokeMcpLoopbackClientGrant(grant.token);
++      admission.close();
++    }
++  });
++});
+diff --git a/src/agents/sandbox/remote-fs-bridge.test.ts b/src/agents/sandbox/remote-fs-bridge.test.ts
+index 7de28c01..cdd70276 100644
+--- a/src/agents/sandbox/remote-fs-bridge.test.ts
++++ b/src/agents/sandbox/remote-fs-bridge.test.ts
+@@ -77,6 +77,26 @@ function createWorkspaceBridge(workspaceDir: string) {
+   });
+ }
+ 
++describe("remote bridge mutation fence capability", () => {
++  it("advertises the fence only when the runtime declares launch-time enforcement", () => {
++    const sandbox = createSandbox();
++    const runtime: RemoteShellSandboxHandle = {
++      remoteWorkspaceDir: "/workspace",
++      remoteAgentWorkspaceDir: "/workspace",
++      runRemoteShellScript: async () => shellResult(""),
++    };
++    expect(
++      createRemoteShellSandboxFsBridge({ sandbox, runtime }).enforcesMutationFence,
++    ).toBeUndefined();
++    expect(
++      createRemoteShellSandboxFsBridge({
++        sandbox,
++        runtime: { ...runtime, enforcesMutationFence: true },
++      }).enforcesMutationFence,
++    ).toBe(true);
++  });
++});
++
+ describe("remote pinned read sources", () => {
+   it.runIf(process.platform !== "win32")(
+     "does not classify a parent alias into a protected mount as workspace memory",
+diff --git a/src/agents/sandbox/remote-fs-bridge.ts b/src/agents/sandbox/remote-fs-bridge.ts
+index c5c6d518..1437e63d 100644
+--- a/src/agents/sandbox/remote-fs-bridge.ts
++++ b/src/agents/sandbox/remote-fs-bridge.ts
+@@ -63,6 +63,10 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
+     private readonly runtime: RemoteShellSandboxHandle,
+   ) {}
+ 
++  get enforcesMutationFence(): true | undefined {
++    return this.runtime.enforcesMutationFence === true ? true : undefined;
++  }
++
+   resolvePath(params: { filePath: string; cwd?: string }): SandboxResolvedPath {
+     const target = this.resolveTarget(params);
+     return {
+@@ -203,6 +207,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
+         mkdir: params.mkdir !== false,
+       }),
+       signal: params.signal,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+   }
+ 
+@@ -254,6 +259,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
+       stdin: buffer,
+       allowFailure: kind === "create" ? true : undefined,
+       signal: params.signal,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+     return { result, containerPath: target.containerPath };
+   }
+@@ -281,6 +287,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
+         pinned: { mountRootPath: pinned.mountRootPath, relativePath: pinned.relativeParentPath },
+       }),
+       signal: params.signal,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+   }
+ 
+@@ -308,6 +315,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
+       }),
+       signal: params.signal,
+       allowFailure: params.force !== false,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+   }
+ 
+@@ -330,6 +338,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
+         destination: toPinned,
+       }),
+       signal: params.signal,
++      assertBeforeMutation: params.assertBeforeMutation,
+     });
+   }
+ 
+@@ -663,7 +672,9 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
+     stdin?: Buffer | string;
+     signal?: AbortSignal;
+     allowFailure?: boolean;
++    assertBeforeMutation?: () => void;
+   }): Promise<SandboxBackendCommandResult> {
++    params.assertBeforeMutation?.();
+     return await this.runtime.runRemoteShellScript({
+       script: [
+         "set -eu",
+diff --git a/src/agents/sandbox/remote-fs-bridge.types.ts b/src/agents/sandbox/remote-fs-bridge.types.ts
+index 372bf97e..93cf6b80 100644
+--- a/src/agents/sandbox/remote-fs-bridge.types.ts
++++ b/src/agents/sandbox/remote-fs-bridge.types.ts
+@@ -13,5 +13,7 @@ export type ResolvedRemotePath = SandboxResolvedPath & {
+ export type RemoteShellSandboxHandle = {
+   remoteWorkspaceDir: string;
+   remoteAgentWorkspaceDir: string;
++  /** The command runner honors assertBeforeMutation immediately before launch. */
++  readonly enforcesMutationFence?: true;
+   runRemoteShellScript(params: SandboxBackendCommandParams): Promise<SandboxBackendCommandResult>;
+ };
+diff --git a/src/agents/sandbox/remote-shell-backend.test.ts b/src/agents/sandbox/remote-shell-backend.test.ts
+index bcb40d94..7e0bead8 100644
+--- a/src/agents/sandbox/remote-shell-backend.test.ts
++++ b/src/agents/sandbox/remote-shell-backend.test.ts
+@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
+ import { createDeferred } from "../../../test/helpers/promise.js";
+ import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+ import { hasErrnoCode } from "../../infra/errno.js";
++import { getSpawnBroker, runWithSpawnBroker } from "../../process/spawn-broker/context.js";
+ import { resolveSandboxConfigForAgent } from "./config.js";
+ import { createRemoteShellSandboxBackend } from "./remote-shell-backend.js";
+ import {
+@@ -60,6 +61,46 @@ async function createCommandCancellationFixture() {
+   return { backend, session, createSession };
+ }
+ 
++describe("remote shell mutation fence", () => {
++  it("rechecks after session setup and before sending the caller command", async () => {
++    const { backend, session, createSession } = await createCommandCancellationFixture();
++    const marker = "echo sandbox-mutation-marker";
++    session.runCommand.mockImplementation(async ({ remoteCommand }) => {
++      if (remoteCommand.includes(marker)) {
++        expect(getSpawnBroker()).toBeUndefined();
++      }
++      return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), code: 0 };
++    });
++    await runWithSpawnBroker({} as never, () =>
++      backend.runShellCommand({
++        script: marker,
++        assertBeforeMutation: () => expect(createSession).toHaveBeenCalled(),
++      }),
++    );
++    expect(
++      session.runCommand.mock.calls.some(([params]) => params.remoteCommand.includes(marker)),
++    ).toBe(true);
++    session.runCommand.mockClear();
++    session.dispose.mockClear();
++    createSession.mockClear();
++    await expect(
++      runWithSpawnBroker({} as never, () =>
++        backend.runShellCommand({
++          script: marker,
++          assertBeforeMutation: () => {
++            expect(createSession).toHaveBeenCalled();
++            throw new Error("tool invocation authority is no longer active");
++          },
++        }),
++      ),
++    ).rejects.toThrow("authority is no longer active");
++    expect(
++      session.runCommand.mock.calls.some(([params]) => params.remoteCommand.includes(marker)),
++    ).toBe(false);
++    expect(session.dispose).toHaveBeenCalled();
++  });
++});
++
+ describe("remote shell command cancellation", () => {
+   it.each(["clear", "upload"] as const)(
+     "cancels the skills %s and joins it and session disposal before rejecting",
+diff --git a/src/agents/sandbox/remote-shell-backend.ts b/src/agents/sandbox/remote-shell-backend.ts
+index 8e3596ef..3f6cef00 100644
+--- a/src/agents/sandbox/remote-shell-backend.ts
++++ b/src/agents/sandbox/remote-shell-backend.ts
+@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
+ import fs from "node:fs/promises";
+ import path from "node:path";
+ import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
++import { runWithSpawnBroker } from "../../process/spawn-broker/context.js";
+ import type {
+   SandboxBackendCommandParams,
+   SandboxBackendCommandResult,
+@@ -149,6 +150,7 @@ class RemoteShellSandboxBackendImpl {
+           await pending.session.dispose();
+         }
+       },
++      enforcesMutationFence: true,
+       runShellCommand: (command) => this.runRemoteShellScript(command),
+       createFsBridge: ({ sandbox }) =>
+         createRemoteShellSandboxFsBridge({
+@@ -391,17 +393,20 @@ class RemoteShellSandboxBackendImpl {
+       await this.refreshRemoteSkillsWorkspace(session, params.signal);
+       params.signal?.throwIfAborted();
+       this.params.createParams.assertRuntimeCurrent?.();
+-      return await session.runCommand({
+-        remoteCommand: buildRemoteCommand([
+-          "/bin/sh",
+-          "-c",
+-          params.script,
+-          "openclaw-sandbox-fs",
+-          ...(params.args ?? []),
+-        ]),
+-        stdin: params.stdin,
+-        allowFailure: params.allowFailure,
+-        signal: params.signal,
++      return await runWithSpawnBroker(undefined, () => {
++        params.assertBeforeMutation?.();
++        return session.runCommand({
++          remoteCommand: buildRemoteCommand([
++            "/bin/sh",
++            "-c",
++            params.script,
++            "openclaw-sandbox-fs",
++            ...(params.args ?? []),
++          ]),
++          stdin: params.stdin,
++          allowFailure: params.allowFailure,
++          signal: params.signal,
++        });
+       });
+     } finally {
+       await session.dispose();
+diff --git a/src/gateway/mcp-grant-store.test.ts b/src/gateway/mcp-grant-store.test.ts
+index 0049ebb7..bf358ca2 100644
+--- a/src/gateway/mcp-grant-store.test.ts
++++ b/src/gateway/mcp-grant-store.test.ts
+@@ -5,6 +5,8 @@ import {
+   type AdmittedRunContext,
+   type PreparedAgentRunAdmission,
+ } from "../agents/admitted-run-context.js";
++import type { PreparedCliSandboxExecution } from "../agents/cli-runner/prepare-sandbox.js";
++import { createSandboxTestContext } from "../agents/sandbox/test-fixtures.js";
+ import type { SkillLibraryAuthoringCapability } from "../skills/library/authoring.js";
+ import {
+   activateMcpLoopbackClientGrantCapture,
+@@ -98,6 +100,37 @@ describe("mcp-grant-store", () => {
+     expect(resolveMcpLoopbackClientGrant(params)).toBeUndefined();
+   });
+ 
++  it("keeps sandbox custody host-only and tied to the exact live capture", async () => {
++    const sandboxExecution: PreparedCliSandboxExecution = {
++      sandbox: createSandboxTestContext(),
++      effectiveCwd: "/projected",
++      effectiveWorkspace: "/projected",
++      resolvedWorkspace: "/workspace",
++      sessionPermissionRoot: "/projected",
++      sessionPermissionPolicy: undefined,
++      effectiveFsWorkspaceOnly: true,
++      sandboxReport: { mode: "all", sandboxed: true },
++      sandboxSessionKey: "agent:main:first",
++      sessionAgentId: "main",
++      [Symbol.dispose]: () => {},
++    };
++    const grant = mintClient({
++      sandboxExecution,
++      admittedRunContext: await admitted("sandbox-run"),
++    });
++    expect(grant).not.toHaveProperty("sandboxExecution");
++    expect(grant.context).not.toHaveProperty("sandboxExecution");
++    expect(() => structuredClone(grant)).not.toThrow();
++    const capture = grantParams(grant.token, "sandbox-capture");
++    expect(activateMcpLoopbackClientGrantCapture(capture)).toBeTruthy();
++    const resolved = resolveMcpLoopbackClientGrant(capture);
++    expect(resolved?.sandboxExecution).toBe(sandboxExecution);
++    expect(resolveMcpLoopbackClientGrant({ ...capture, captureKey: "other-run" })).toBeUndefined();
++    revokeMcpLoopbackClientGrant(grant.token);
++    expect(resolved?.isCurrent()).toBe(false);
++    expect(resolveMcpLoopbackClientGrant(capture)).toBeUndefined();
++  });
++
+   it("requires a non-empty sessionKey", () => {
+     expect(() => mintAttachGrant({ sessionKey: "  ", nowMs: T0 })).toThrow();
+   });
+diff --git a/src/gateway/mcp-grant-store.ts b/src/gateway/mcp-grant-store.ts
+index 814b6341..5b65d76a 100644
+--- a/src/gateway/mcp-grant-store.ts
++++ b/src/gateway/mcp-grant-store.ts
+@@ -6,6 +6,7 @@ import {
+ } from "../agents/admitted-run-context.js";
+ import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
+ import type { ExecElevatedDefaults } from "../agents/bash-tools.exec-types.js";
++import type { PreparedCliSandboxExecution } from "../agents/cli-runner/prepare-sandbox.js";
+ import type { CodeModeSkill } from "../agents/code-mode-skills.js";
+ import type { DelegationCapability } from "../agents/delegation-capability.js";
+ import type { ExecPolicyOverrides, ExecSessionDefaults } from "../agents/exec-defaults.js";
+@@ -184,6 +185,7 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
+   /** Native memory capability retained on the host; never serialized to CLI context. */
+   memoryAudience?: import("../plugins/memory-provider-types.js").MemoryAudience;
+   memoryFlushTools?: import("../agents/agent-tools.memory-flush.types.js").MemoryFlushToolRunContext;
++  sandboxExecution?: PreparedCliSandboxExecution;
+   skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
+   /** Configured MCP tools owned by the minting CLI run; disposed with that run. */
+   bundledTools?: readonly AnyAgentTool[];
+@@ -322,6 +324,7 @@ export function mintMcpLoopbackClientGrant(
+     codeModeSkills: params.codeModeSkills,
+     assertCurrent: params.assertCurrent,
+     bindQuestionAnswerAuthority: params.bindQuestionAnswerAuthority,
++    ...(params.sandboxExecution ? { sandboxExecution: params.sandboxExecution } : {}),
+     skillLibraryAuthoring: params.skillLibraryAuthoring,
+     memoryAudience: params.memoryAudience,
+     memoryFlushTools: params.memoryFlushTools,
+@@ -522,6 +525,7 @@ export function resolveMcpLoopbackClientGrant(params: {
+       mintCronRequesterGrant?: (signal?: AbortSignal) => CronCreatorAuthorityGrant;
+       cronAuthorityCheck?: () => boolean;
+       questionAnswerAuthority?: PreparedQuestionAnswerAuthority;
++      sandboxExecution?: PreparedCliSandboxExecution;
+       skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
+       memoryAudience?: import("../plugins/memory-provider-types.js").MemoryAudience;
+       memoryFlushTools?: import("../agents/agent-tools.memory-flush.types.js").MemoryFlushToolRunContext;
+@@ -580,6 +584,7 @@ export function resolveMcpLoopbackClientGrant(params: {
+     questionAnswerAuthority,
+     abortSignal: grant.abortSignal,
+     codeModeSkills: grant.codeModeSkills,
++    ...(grant.sandboxExecution ? { sandboxExecution: grant.sandboxExecution } : {}),
+     skillLibraryAuthoring: grant.skillLibraryAuthoring,
+     memoryAudience: grant.memoryAudience,
+     memoryFlushTools: grant.memoryFlushTools,
+diff --git a/src/gateway/mcp-http.runtime.ts b/src/gateway/mcp-http.runtime.ts
+index 07d1e0da..24b7d8c1 100644
+--- a/src/gateway/mcp-http.runtime.ts
++++ b/src/gateway/mcp-http.runtime.ts
+@@ -8,6 +8,7 @@ import {
+ import { resolveSessionAgentIds } from "../agents/agent-scope.js";
+ import { assertMemoryFlushPersistenceToolAvailable } from "../agents/agent-tools.memory-flush.js";
+ import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
++import type { PreparedCliSandboxExecution } from "../agents/cli-runner/prepare-sandbox.js";
+ import type { CodeModeSkill } from "../agents/code-mode-skills.js";
+ import {
+   loadPairedComputerUseAvailabilityForSurface,
+@@ -75,6 +76,7 @@ type McpLoopbackScopeParams = {
+   cfg: OpenClawConfig;
+   authProfileStore?: AuthProfileStore;
+   authProfileStoreAgentDir?: string;
++  sandboxExecution?: PreparedCliSandboxExecution;
+   skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
+   /** Native memory capability retained on the host; never serialized to CLI context. */
+   memoryAudience?: import("../plugins/memory-provider-types.js").MemoryAudience;
+@@ -184,6 +186,11 @@ function resolveMediatedNativeTools(
+   );
+ }
+ 
++/** Coding names selected by the same policy expansion used by the MCP catalog. */
++export function selectMediatedCodingTools(toolsAllow: string[] | undefined): string[] {
++  return [...resolveMediatedNativeTools(toolsAllow, "policy")];
++}
++
+ function resolveScopedMediatedNativeTools(
+   params: McpLoopbackScopeParams,
+   mode: LoopbackToolsAllowMode,
+@@ -368,6 +375,7 @@ async function constructMcpLoopbackTools(
+     memoryAudience: params.memoryAudience,
+     memoryFlushTools: params.memoryFlushTools,
+     bundledTools: params.bundledTools,
++    sandboxExecution: params.sandboxExecution,
+     nativeCronCreatorToolAllowlist: context.nativeCronCreatorToolAllowlist ?? undefined,
+     agentDir: params.authProfileStoreAgentDir,
+     conversationReadOrigin: "delegated",
+diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
+index dd356d32..31e19f8e 100644
+--- a/src/gateway/mcp-http.ts
++++ b/src/gateway/mcp-http.ts
+@@ -306,6 +306,7 @@ async function startMcpLoopbackServer(
+                   messageActionTurnCapability: boundClientGrant?.messageActionTurnCapability,
+                   memoryAudience: boundClientGrant?.memoryAudience,
+                   memoryFlushTools: boundClientGrant?.memoryFlushTools,
++                  sandboxExecution: boundClientGrant?.sandboxExecution,
+                   cfg,
+                   signal: requestAbort.signal,
+                   authProfileStore: boundClientGrant?.toolAuth?.store,
+diff --git a/src/gateway/tool-resolution.test.ts b/src/gateway/tool-resolution.test.ts
+index ef9a8684..9328541d 100644
+--- a/src/gateway/tool-resolution.test.ts
++++ b/src/gateway/tool-resolution.test.ts
+@@ -8,6 +8,8 @@ import {
+   prepareSystemAgentRunAdmission,
+ } from "../agents/admitted-run-context.js";
+ import type { AnyAgentTool } from "../agents/agent-tools.types.js";
++import { createSandboxTestContext } from "../agents/sandbox/test-fixtures.js";
++import { createSandboxFsBridgeFromResolver } from "../agents/test-helpers/host-sandbox-fs-bridge.js";
+ import {
+   getGatewayToolCallerIdentity,
+   wrapToolWithGatewayCallerIdentity,
+@@ -409,6 +411,64 @@ describe("resolveGatewayScopedTools", () => {
+     }
+   });
+ 
++  it.each(["missing", "unmarked", "marked"] as const)(
++    "binds mediated coding tools to a %s sandbox bridge",
++    async (mode) => {
++      const root = await fs.mkdtemp(path.join(os.tmpdir(), "sandbox-catalog-"));
++      try {
++        const bridge = {
++          ...createSandboxFsBridgeFromResolver((filePath) => ({
++            hostPath: path.resolve(root, filePath),
++            containerPath: `/workspace/${filePath}`,
++            relativePath: filePath,
++          })),
++          // Catalog-only declaration. This fixture does not execute mutations.
++          ...(mode === "marked" ? { enforcesMutationFence: true as const } : {}),
++        };
++        const sandbox = createSandboxTestContext({
++          overrides: {
++            workspaceDir: root,
++            agentWorkspaceDir: root,
++            fsBridge: bridge,
++          },
++        });
++        const owner = {
++          sandbox,
++          effectiveCwd: root,
++          effectiveWorkspace: root,
++          resolvedWorkspace: root,
++          effectiveFsWorkspaceOnly: true,
++          sessionPermissionRoot: root,
++          sessionPermissionPolicy: undefined,
++          sandboxSessionKey: "agent:main:main",
++          sessionAgentId: "main",
++          sandboxReport: { mode: "all" as const, sandboxed: true },
++          [Symbol.dispose]: () => undefined,
++        };
++        const result = await resolveTools({
++          cfg: {
++            agents: { defaults: { sandbox: { mode: "all" } } },
++            plugins: { enabled: false },
++            tools: { fs: { workspaceOnly: true } },
++          },
++          workspaceDir: root,
++          mediatedToolNames: ["read", "write", "edit", "exec", "process"],
++          ...(mode === "missing" ? {} : { sandboxExecution: owner }),
++        });
++        const names = result.tools.map((tool) => tool.name);
++        for (const name of ["read", "exec", "process"]) {
++          expect(names.includes(name)).toBe(mode !== "missing");
++        }
++        for (const name of ["write", "edit"]) {
++          expect(names.includes(name)).toBe(mode === "marked");
++        }
++        expect(names).toContain("sessions_history");
++      } finally {
++        await fs.rm(root, { recursive: true, force: true });
++      }
++    },
++  );
++
+   it("applies sandbox tool denies to sandboxed loopback turns", async () => {
+     const result = await resolveTools({
+       cfg: {
+diff --git a/src/gateway/tool-resolution.ts b/src/gateway/tool-resolution.ts
+index da0e4138..f72828f5 100644
+--- a/src/gateway/tool-resolution.ts
++++ b/src/gateway/tool-resolution.ts
+@@ -12,6 +12,7 @@ import { resolveEffectiveToolPolicy } from "../agents/agent-tools.policy.js";
+ import { resolveTurnToolSurface } from "../agents/agent-tools.turn-authority.js";
+ import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
+ import { nodeExecSchema } from "../agents/bash-tools.schemas.js";
++import type { PreparedCliSandboxExecution } from "../agents/cli-runner/prepare-sandbox.js";
+ import { prepareConversationCapabilityProfile } from "../agents/conversation-capability-profile.js";
+ import { resolveCoreToolFactoryFamily } from "../agents/core-tool-factory-descriptors.js";
+ import { applyDelegationCapability } from "../agents/delegation-capability.js";
+@@ -88,6 +89,7 @@ export async function resolveGatewayScopedTools(
+     | "cronCreatorCallerOrigin"
+   > & {
+     cfg: OpenClawConfig;
++    sandboxExecution?: PreparedCliSandboxExecution;
+     /** Workspace from the invocation owner's exact session read. */
+     preparedSessionWorkspaceDir?: string;
+     messageActionTurnCapability?: string;
+@@ -499,16 +501,37 @@ export async function resolveGatewayScopedTools(
+   const includeMediatedBaseCodingTools =
+     providerMemoryFlush || mediatedToolFamilies.has("base-coding");
+   const includeMediatedShellTools = !providerMemoryFlush && mediatedToolFamilies.has("shell");
+-  const mediatedCodingTools =
+-    surface === "loopback" && (includeMediatedBaseCodingTools || includeMediatedShellTools)
++  const sandboxExecution = params.sandboxExecution;
++  const mediatedSandbox = sandboxExecution?.sandbox ?? undefined;
++  const wantsMediatedTools =
++    surface === "loopback" && (includeMediatedBaseCodingTools || includeMediatedShellTools);
++  const missingSandbox = wantsMediatedTools && sandboxed && !mediatedSandbox;
++  if (missingSandbox) {
++    logWarn(
++      `mediated coding tools withheld for sandboxed session ${params.sessionKey}: no prepared sandbox`,
++    );
++  }
++  const cannotFence = mediatedSandbox && mediatedSandbox.fsBridge?.enforcesMutationFence !== true;
++  if (wantsMediatedTools && cannotFence) {
++    logWarn(
++      `mediated write tools withheld for sandboxed session ${params.sessionKey}: sandbox bridge lacks mutation fencing`,
++    );
++  }
++  const builtMediatedCodingTools =
++    wantsMediatedTools && !missingSandbox
+       ? await createOpenClawCodingToolsInternalAsync({
+           ...commonToolOptions(),
++          sandbox: mediatedSandbox,
++          workspaceDir: sandboxExecution?.effectiveWorkspace ?? workspaceDir,
++          requireWorkspaceOnly: sandboxExecution?.effectiveFsWorkspaceOnly ? true : undefined,
++          sessionPermissionPolicy:
++            sandboxExecution?.sessionPermissionPolicy ?? sessionPermissionPolicy,
+           sessionEventSourcePolicy: params.sessionEventSourcePolicy,
+           agentId: policyAgentId,
+           sessionKey: runtimePolicySessionKey,
+           runSessionKey: params.sessionKey,
+           operationalRunInstance: params.admittedRunContext?.operationalRunInstance,
+-          cwd: params.cwd?.trim() || workspaceDir,
++          cwd: sandboxExecution?.effectiveCwd ?? (params.cwd?.trim() || workspaceDir),
+           messageProvider: params.messageProvider,
+           messageChannel: params.messageProvider,
+           currentChannelId: params.currentChannelId,
+@@ -575,6 +598,11 @@ export async function resolveGatewayScopedTools(
+         })
+       : [];
+   assertCurrent();
++  const mediatedCodingTools = cannotFence
++    ? builtMediatedCodingTools.filter(
++        (tool) => !["write", "edit", "apply_patch"].includes(tool.name),
++      )
++    : builtMediatedCodingTools;
+   // CLI backends already own their local shell. This extra surface is deliberately
+   // fixed to node so it cannot become a second path to Gateway-local execution.
+   const baseTools = nodeExecSurface
+diff --git a/src/plugin-sdk/file-access-runtime.ts b/src/plugin-sdk/file-access-runtime.ts
+index e6635f68..311fe914 100644
+--- a/src/plugin-sdk/file-access-runtime.ts
++++ b/src/plugin-sdk/file-access-runtime.ts
+@@ -46,6 +46,7 @@ export const removePathWithinRoot: (params: {
+   relativePath: string;
+   recursive?: boolean;
+   force?: boolean;
++  assertBeforeMutation?: () => void;
+ }) => Promise<void> = removePathWithinRootCore;
+ export { basenameFromMediaSource, safeFileURLToPath } from "@openclaw/fs-safe/advanced";
+ export { isPathInside, isPathStrictlyInside } from "../infra/path-guards.js";
+diff --git a/src/plugin-sdk/process-runtime.ts b/src/plugin-sdk/process-runtime.ts
+index 55afbbc3..97ce4057 100644
+--- a/src/plugin-sdk/process-runtime.ts
++++ b/src/plugin-sdk/process-runtime.ts
+@@ -15,6 +15,7 @@ export {
+   type SpawnResult,
+ } from "../process/exec.js";
+ export { withCommandProcessScope } from "../process/exec-spawn.js";
++export { runWithSpawnBroker } from "../process/spawn-broker/context.js";
+ export { prepareOomScoreAdjustedSpawn, spawnOomScoreAdjusted } from "../process/linux-oom-score.js";
+ export type { OomScoreAdjustedSpawn, OomWrapOptions } from "../process/linux-oom-score.js";
+ export { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";

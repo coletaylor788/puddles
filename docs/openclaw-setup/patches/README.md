@@ -5,8 +5,8 @@ runner applies them in a detached worktree, builds the real runtime, runs the
 cumulative regressions, and rehearses the installed package. It never modifies
 the configured source checkout or patches installed distribution chunks.
 
-The selected stable release is OpenClaw 2026.9.6 at
-`eb377ac59e6c9fd6c7705028034812becf00271b`. It requires Node 24.16.0 or later
+The selected stable release is OpenClaw 2026.11.4 at
+`d843d6af39a42cd3c30084edbeabeece732fd93a`. It requires Node 24.16.0 or later
 on 24.x, or Node 26.1.0 or later. Earlier runtimes can truncate SQLite text.
 Use the same exact Node binary for packaging, installed rehearsal, and the
 activated gateway. Keep the previous interpreter available for rollback.
@@ -26,27 +26,17 @@ patch inventory and application commands do not authorize a new or changed patch
 | Patch | Purpose |
 |---|---|
 | `file-lock-stale-reclaim-guard.patch` | Guard stale file-lock recovery |
-| `native-parent-continuation.patch` | Native parent delivery regression coverage; test-only worker synchronization |
 | `subagent-cross-agent-spawn-fix.patch` | Explicit targeting and inherited tools |
-| `skill-workshop-sandbox-fix.patch` | Skill workshop in sandboxed agents |
+| `skill-workshop-sandbox-fix.patch` | Preserve configured sandbox Workshop access while using native immediate saves, history, and undo |
 | `imessage-message-part-coalescing.patch` | Selective text, link, and image coalescing |
-| `imessage-group-inbound-policy.patch` | Honor configured unmentioned group events in iMessage |
-| `sandbox-discovery-failure-fix.patch` | Select the configured registry; upstream supplies discovery error propagation |
 | `browser-userdata-dir-fix.patch` | Browser data directory and singleton cleanup |
-| `builtin-memory-migration.patch` | Regression tests for upstream memory migration and per-agent source isolation |
-| `silent-reply-completion-evidence.patch` | Regression tests for upstream silent-reply completion evidence |
 | `native-heartbeat-response.patch` | Native structured completion and notification for built-in heartbeat turns |
 | `stopped-state-migration-sdk.patch` | Expose maintained stopped config repair, cron partition migration, and targeted writes |
-| `scoped-container-temp-root.patch` | Carry explicit private staging through sandbox and browser creation |
-| `active-memory-cold-recall.patch` | Regression tests for upstream cold recall and the configured recall limit |
-| `active-memory-fixture-cleanup.patch` | Join delayed recall fixtures before replacing shared test state |
 | `managed-local-service-lifecycle.patch` | Join gateway-owned service groups before stopped-state changes |
 | `gateway-memory-warmup.patch` | Prepare and retain managed local embeddings before readiness |
-| `gateway-protocol-declaration-portability.patch` | Regression tests for upstream protocol registry identity and types |
 | `harness-tool-work-owner.patch` | Bind tool callbacks to their current harness attempt across reused connections |
 | `talk-conversation-progress.patch` | Keep Live conversational while work runs and forward silent public progress |
 | `talk-overlap-recovery.patch` | Keep Talk connected when the active harness cannot accept a follow-up |
-| `talk-agent-parity.patch` | Optional text-equivalent Talk authorization and consultation work ownership |
 | `core-declaration-portability.patch` | Name portable core declaration exports for tools, sessions, databases, and plugin records |
 | `shared-conversation-context.patch` | Supply native shared history to a persistent harness before each ordinary turn |
 | `untrusted-agent-results.patch` | Enclose configured source agent findings at model-facing boundaries |
@@ -58,11 +48,12 @@ patch inventory and application commands do not authorize a new or changed patch
 | `claude-code-mode-mcp.patch` | Connect native Claude MCP calls to the shared contained runtime and existing execution policy |
 | `claude-configured-mcp.patch` | Carry permitted configured MCP tools through the restricted CLI host bridge and support exact MCP grants in native workspace profiles |
 | `copilot-configured-mcp.patch` | Connect configured MCP tools to the Copilot host tool bridge with role policy and owned cleanup |
+| [`cli-sandbox-handoff.patch`](cli-sandbox-handoff.md) | Bind native sandbox ownership and mutation authority to managed CLI coding tools |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at
 `packages/e2e/openclaw-patch-suite.json`. Keep the visible patch order in
-`apply-and-deploy.sh` synchronized. Do not drop older regression targets.
+`apply-and-deploy.sh` synchronized. Keep native regression targets selected independently after retiring a patch.
 
 ## Separate FaceTime native companion
 
@@ -470,4 +461,12 @@ runtime; it bypasses the cumulative gate, installed rehearsal, and recovery.
 
 ## Compaction snapshots and idle maintenance
 
-[Compaction memory and idle maintenance](compaction-memory-idle.md) retains memory-save input independently of the live turn and admits configured idle compaction through native maintenance. [Native parent continuation](native-parent-continuation.md) replaces the retired custom gather patches.
+[Compaction memory and idle maintenance](compaction-memory-idle.md) retains memory-save input independently of the live turn and admits configured idle compaction through native maintenance. Native parent continuation replaces the retired custom gather patches. Its upstream regressions remain selected independently of a patch.
+
+The former Talk permission-parity patch is retired on `v2026.11.3`. Stable now
+uses ordinary agent permissions and independent consultation work admission.
+The cumulative suite retains native authority, denial, offer-lifetime and
+cancellation coverage. The remaining overlap patch retains the exact closed-offer
+context-engine regression. Remove the obsolete `talk.realtime.confirmationPolicy`
+leaf through a reviewed configuration transition; the old `standard` value maps
+to native behavior. A former `high-impact` selection needs its own behavior review.

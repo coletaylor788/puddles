@@ -2,15 +2,14 @@
 
 ## Problem
 
-OpenClaw config writes use the shared `@openclaw/fs-safe` sidecar lock. Its stale
-recovery reads a lock, checks that the file still matches, then removes the
-pathname. Another process can publish a new lock between the final check and
-removal. The stale reclaimer can then delete the new owner's lock and allow two
-config writers to proceed.
+OpenClaw config writes use the shared `@openclaw/fs-safe` sidecar lock.
+Native stale recovery already serializes reclaimers. Its persistent directory
+can survive a killed reclaimer and block later writers. It also treats the
+persistent guard files from the earlier Puddles implementation as contention.
 
 ## Patch
 
-OpenClaw 2026.9.6 uses `@openclaw/fs-safe` 0.18.1. Upstream now serializes stale
+OpenClaw 2026.11.4 uses `@openclaw/fs-safe` 0.26.7. Upstream serializes stale
 reclaimers with a sibling directory. That prevents overlapping writers, but a
 killed reclaimer leaves the directory behind. It also treats the persistent
 guard files from the earlier Puddles patch as permanent contention.
@@ -24,15 +23,18 @@ platforms keep upstream behavior. The new root-scoped lock path retains its
 upstream ownership tokens and containment checks; the kernel guard applies to
 the existing raw-path locks used by configuration writes.
 
-The source patch registers the dependency patch and its lockfile hash. The
-original multi-process regression still pauses one stale reclaimer and proves
+The source patch registers the dependency patch and its generated lockfile
+references. The original multi-process regression still pauses one stale
+reclaimer and proves
 the second cannot enter its critical section. A new regression starts with an
 existing persistent guard, kills its reclaimer, and proves recovery and
 synchronous/asynchronous interoperability.
 
 ## Validation
 
-The regression is registered in the cumulative OpenClaw patch suite. Run:
+The regression is registered in the cumulative OpenClaw patch suite. The
+frozen install must also resolve every `@openclaw/fs-safe` importer to the
+patched snapshot. Run:
 
 ```bash
 node packages/e2e/bin/openclaw-test-env.mjs ci
@@ -41,3 +43,10 @@ node packages/e2e/bin/openclaw-test-env.mjs ci
 Deployment uses `docs/openclaw-setup/patches/apply-and-deploy.sh`. The managed
 pipeline builds and rehearses the patched dependency before activation. The
 wrapper consumes the sealed artifact and retains rollback snapshots.
+
+
+## v2026.11.4 audit
+
+Native fs-safe0.26.7 still uses mkdir/rmdir reclaim occupancy, with no Darwin kernel guard. Identical reviewed nested patch applies to0.26.7. Preserve its new filesystem containment implementation and update only patch dependency identity, never downgrade to0.26.5.
+
+Composition is qualified separately from installed runtime behavior. The registered regressions remain required.

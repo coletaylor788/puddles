@@ -99,6 +99,8 @@ function validateScenario(scenario) {
   if (scenario.sessionRecall !== undefined &&
       (!scenario.sessionRecall || typeof scenario.sessionRecall.enabled !== "boolean" ||
        Object.keys(scenario.sessionRecall).join(",") !== "enabled")) throw new Error("Invalid session recall fixture");
+  if (scenario.allowGroupSilence !== undefined &&
+      (scenario.allowGroupSilence !== true || scenario.chatType !== "group")) throw new Error("Invalid group silence fixture");
   if (scenario.heartbeat !== undefined && scenario.heartbeat !== true) throw new Error("Invalid fixture heartbeat selection");
   if (scenario.sessionSend !== undefined && scenario.sessionSend !== true) throw new Error("Invalid fixture native session send selection");
   for (const step of scenario.steps) {
@@ -110,6 +112,10 @@ function validateScenario(scenario) {
       !(typeof value === "string" && value.length) && !(Array.isArray(value) && value.length && value.every(text => typeof text === "string" && text.length)))) {
       throw new Error("Invalid fixture reply expectation");
     }
+    if (step.expect.heartbeatRefusal !== undefined &&
+        (step.expect.heartbeatRefusal !== true || !scenario.heartbeat || step.wake)) {
+      throw new Error("Invalid ordinary heartbeat refusal expectation");
+    }
     for (const incoming of step.incoming ?? []) {
       if (incoming.delayMs !== undefined &&
           (!Number.isInteger(incoming.delayMs) || incoming.delayMs < 0 || incoming.delayMs > 1_000)) {
@@ -118,7 +124,7 @@ function validateScenario(scenario) {
     }
     for (const response of step.responses) {
       for (const tool of response.toolCalls ?? []) {
-        if (!(scenario.heartbeat && step.wake && tool.name === "heartbeat_respond") &&
+        if (!(scenario.heartbeat && (step.wake || step.expect.heartbeatRefusal) && tool.name === "heartbeat_respond") &&
             !(scenario.sessionSend && tool.name === "sessions_send") &&
             !(scenario.sessionRecall && tool.name === "sessions_history") && !scenario.adapters?.[tool.name]) throw new Error(`Missing required recording adapter: ${tool.name}`);
       }
@@ -229,7 +235,10 @@ export async function runScenario(installedDir, scenario, options = {}) {
   try {
     if (options.providerFixture) {
       provider = await options.providerFixture({ context, nextResponse, scenario, installedDir, registerCleanup: cleanup => providerCleanups.add(cleanup) });
-    } else {
+      assert.ok(provider === undefined || provider !== null && typeof provider === "object", "invalid scenario provider fixture");
+    }
+    // A companion may explicitly leave a scenario on the native fixture.
+    if (provider === undefined) {
       await new Promise((yes, no) => { server.once("error", no); server.listen(0, "127.0.0.1", yes); });
     }
     const modelPort = server.address()?.port ?? 1;
@@ -274,12 +283,18 @@ export async function runScenario(installedDir, scenario, options = {}) {
       config.tools.profile = "full";
     }
     if (scenario.sessionRecall) {
-      config.agents.entries = { main: {}, reader: { workspace: join(context.stateDir, "reader-workspace") } };
+      config.agents.ownership = "explicit";
+      config.agents.entries = {
+        main: { workspace: context.workspace },
+        reader: { workspace: join(context.stateDir, "reader-workspace") },
+      };
+      config.bindings = [{ agentId: "main", match: { channel: "imessage", accountId: "default" } }];
       config.tools.allow.push("sessions_history");
       config.tools.sessions = { visibility: "all" };
       config.tools.agentToAgent = { enabled: true, allow: ["main", "reader"],
         untrustedAgents: scenario.sessionRecall.enabled ? ["reader"] : [] };
     }
+    if (scenario.allowGroupSilence) config.agents.defaults.silentReply = { group: "allow" };
     atomicJson(context.configPath, provider ? provider.configure(config) : config);
     if (scenario.sessionRecall) await runCommand(process.execPath,
       [join(packageDir, "fixtures/sessions/seed-reader.mjs"), installedDir, context.root],
@@ -373,9 +388,16 @@ export async function runScenario(installedDir, scenario, options = {}) {
       if (scenario.heartbeat) {
       const firstRequest = requests[requestCount - step.responses.length];
       const offered = firstRequest.tools?.map(t => t.function?.name) ?? [];
-      assert.equal(offered.includes("heartbeat_respond"), Boolean(step.wake), "heartbeat tool scope differs");
-      assert.ok(JSON.stringify(firstRequest.messages).includes("FULL_WORKSPACE_CONTEXT_MARKER"), "full bootstrap absent");
-      for (const text of step.expect.promptExcludes ?? []) assert.ok(!JSON.stringify(firstRequest.messages).includes(text), "unwanted history in heartbeat");
+      assert.ok(offered.includes("heartbeat_respond"), "heartbeat tool schema absent");
+      const firstMessages = JSON.stringify(firstRequest.messages);
+      assert.ok(firstMessages.includes("FULL_WORKSPACE_CONTEXT_MARKER"), "full bootstrap absent");
+      for (const text of step.expect.promptExcludes ?? []) assert.ok(!firstMessages.includes(text), "unwanted history in heartbeat");
+      if (!step.wake) {
+        assert.ok(!firstMessages.includes("Use heartbeat_respond to report the wake outcome."), "ordinary turn includes heartbeat completion instructions");
+        for (const heartbeatStep of scenario.steps.filter(candidate => candidate.wake)) {
+          assert.ok(!firstMessages.includes(heartbeatStep.wake), "ordinary turn includes heartbeat scratch");
+        }
+      }
       if(step.wake) {
         for (const req of requests.slice(requestCount - step.responses.length, requestCount)) {
           const messages = JSON.stringify(req.messages);
@@ -389,7 +411,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
         assert.ok(terminalMessages.includes("heartbeat_respond") && terminalMessages.includes("accepted"), "final pass lacks successful heartbeat tool result");
         const prompt = JSON.stringify(firstRequest.messages);
         assert.ok(prompt.includes(step.wake), "monitor scratch missing from model request");
-        assert.ok(prompt.includes("Complete this heartbeat with `heartbeat_respond`"), "native notification instructions absent");
+        assert.ok(prompt.includes("Use heartbeat_respond to report the wake outcome."), "native notification instructions absent");
         assert.ok(!prompt.includes("visible reply MUST use `message(action=send)`"), "contradictory notification instruction");
       }
       }

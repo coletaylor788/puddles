@@ -1,10 +1,15 @@
 # Core declaration portability
 
-OpenClaw 2026.9.6 can fail while writing the unified declarations when the
+OpenClaw 2026.11.3 can fail while writing the unified declarations when the
 compiler tries to name inferred types from Bash tools, database helpers,
 embedded-attempt preparation, and the plugin install schema. The failure
 appeared in the private cumulative CI build, even though the same public source
 completed a clean local declaration build.
+
+The current source moved the GitHub publication database helper into its
+worker module and split the session database scope helpers from the runtime
+scope owner. The explicit types follow those native locations. They do not
+restore the older modules or change query ownership.
 
 This patch gives the affected exports explicit public types. The types
 match the unannotated source, including the nullable retained-window row from
@@ -25,3 +30,10 @@ exercises the private QA declaration build in the cumulative gate.
 This repair is separate from the older gateway protocol portability patch. That
 patch now retains tests for the current protocol registry and does not restore
 obsolete source annotations.
+
+
+## v2026.11.4 audit
+
+Native .4 adds streamed transcript digest and restart input preservation; preserve both. Import merge retains createHash and portable query types. Final declaration build is required before claiming portability.
+
+Composition is qualified separately from installed runtime behavior. The registered regressions remain required.

@@ -33,7 +33,7 @@ vi.mock("../src/process-runner.mjs", () => ({
         mkdirSync(path, { recursive: true });
         writeFileSync(join(path, "package.json"), JSON.stringify({
           packageManager:
-            "pnpm@12.4.0+sha512.37536c26ed40ab4134b6511e09f6b27f3ebb45687468f2406ca3805279a4e5ca158c1931350ad9774d6ab2108d71b3dbaeb39943159294375e4d053e8e05685c",
+            "pnpm@12.15.0+sha512.b3951d6d6ff4a9f13dc7cf56cd28d2b8eb37dbcc9c68e52e1e1191873ea9f82a017287ab50baadc5ccc494f036c67c0e47eb13608c2fa36f47711b61ea128e61",
         }));
         for (const name of ["pnpm-lock.yaml", "pnpm-workspace.yaml", "source.js"]) {
           writeFileSync(join(path, name), name);
@@ -66,8 +66,8 @@ vi.mock("../src/process-runner.mjs", () => ({
       else if (args[0] === "rev-parse") return "a".repeat(40);
       return "";
     }
-    if (command === "corepack" && args[0] === "pnpm@12.4.0" && args[1] === "--version") return "12.4.0";
-    if (command === "corepack" && args[0] === "pnpm@12.4.0" && args[1] === "store") {
+    if (command === "corepack" && args[0] === "pnpm@12.15.0" && args[1] === "--version") return "12.15.0";
+    if (command === "corepack" && args[0] === "pnpm@12.15.0" && args[1] === "store") {
       return join(options.env!.PNPM_CONFIG_STORE_DIR, "v11");
     }
     if (command === "corepack" && args[1] === "install") {

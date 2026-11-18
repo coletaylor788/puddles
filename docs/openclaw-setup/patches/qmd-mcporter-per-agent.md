@@ -2,7 +2,8 @@
 
 **Status:** Historical fix for 2026.7.1. OpenClaw 2026.9.3 removed QMD and its
 transport. The current stack uses
-[builtin memory migration coverage](builtin-memory-migration.md) instead.
+native builtin memory migration, with coverage selected by the
+[cumulative suite](../../../packages/e2e/openclaw-patch-suite.json) instead.
 Do not apply the historical configuration below to the current release.
 
 ## The bug

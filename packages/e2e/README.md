@@ -88,7 +88,7 @@ remain explicit host prerequisites; the suite does not install those services.
 The standalone command owns one deterministic `<artifact>.tests` scratch tree and
 bounded SQLite control files under `<artifact>.tests.lock`, all within the feature
 workspace. Success, failure and catchable signals join children before removing
-scratch, including native transform caches and the combined-project config.
+scratch, including native transform caches.
 Incremental build/compiler caches stay with the build workspace. After SIGKILL
 the next invocation joins the recorded process scope and
 reclaims the same tree before restarting. Whole-workspace finalization also owns
@@ -102,13 +102,33 @@ are never install destinations.
 A companion supplies `E2E_APPLICATION_EXTENSION=/absolute/companion/scripts/application-suite.mjs`.
 It declares additional application targets and checks. A companion check may declare
 `timeoutMs` from 1 millisecond through six hours when its sequential phases need
-a different bound. Omitted values retain the 30-minute default. The runner combines mapped
-public/private targets by Vitest project, preserves distinct required modes,
-checks collection, and runs each selected target once per project. Independent
-projects share four workers by default; explicitly serial tests keep one worker.
-Set `E2E_TEST_WORKERS` to change the full-suite worker count. Missing tests
+a different bound. Omitted values retain the 30-minute default. The runner groups mapped
+public/private targets by native Vitest project, preserves distinct required modes,
+and checks every selection before execution. Each original project config runs
+in a separate process and completes teardown before the next starts. This bounds
+coordinator memory across projects and preserves their serial and exclusive
+fixture ownership. Every selected target still runs once per required project.
+Each invocation has a four-worker ceiling by default; native configs retain
+stricter limits. Set `E2E_TEST_WORKERS` to change that ceiling. Missing tests
 or failed checks fail the suite. It prints durations and does not build, deploy,
 archive reports, or run release-tool implementation tests.
+
+After common Python preparation and companion preflight checks, qualification runs
+exactly two lanes concurrently. The source lane runs lint, package/Python tests,
+prompt snapshots, typechecks, native regressions, candidate checks and companion
+source checks. The installed lane runs synthetic scenarios followed by companion
+installed checks. Existing worker limits and each lane's command ordering remain.
+Both lanes must settle, including command descendant cleanup, before the suite
+returns. Any failure fails qualification; a failed lane cannot release scratch
+while the other is still running. Signals prevent new commands from starting.
+The final `application-lanes` timing line reports each lane and overall elapsed time.
+
+Companion checks may declare `lane: 'preflight'`, `'source'`, or `'installed'`.
+Preflight checks run before both lanes; use them for output verification or other
+shared prerequisites. An omitted lane defaults to installed, after scenarios,
+preserving legacy companion ordering. Source checks must not depend on installed
+checks or mutate the frozen output. Keep writable fixture state and process
+ownership separate. This does not share fixtures or remove restart coverage.
 
 Every changed behavior needs a committed regression. Use package tests for local
 behavior and `openclaw-patch-suite.json` for upstream patches and cross-component

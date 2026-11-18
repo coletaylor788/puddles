@@ -1,8 +1,69 @@
 import { expect, it } from "vitest";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { createServer } from "node:http";
 // @ts-expect-error Executable gateway fixture helper.
-import { assertCommunicationGatewayRunning, ownedCommunicationContainers } from "../fixtures/communication.mjs";
+import { assertCommunicationGatewayRunning, communicationJsonRequest, ownedCommunicationContainers, runCommunicationHeartbeat } from "../fixtures/communication.mjs";
+
+const heartbeatResponse = (details: unknown) => ({ httpStatus: 200, body: { ok: true, result: { details } } });
+
+it("waits through native busy replies and requires a heartbeat to actually run", async () => {
+  let calls = 0;
+  const ran = heartbeatResponse({ status: "ran" });
+  const value = await runCommunicationHeartbeat(async () => ++calls < 3
+    ? heartbeatResponse({ status: "skipped", reason: "requests-in-flight" }) : ran, { retryMs: 1 });
+  expect(calls).toBe(3);
+  expect(value).toBe(ran);
+});
+
+it.each([
+  heartbeatResponse({ status: "skipped", reason: "disabled" }),
+  heartbeatResponse({ status: "failed", reason: "model failure" }),
+  { httpStatus: 503, body: { ok: false } },
+  { httpStatus: 200, body: { ok: false } },
+  { httpStatus: 200, body: { ok: true, result: { isError: true, details: { status: "ran" } } } },
+])("does not retry or accept other heartbeat failures: %j", async response => {
+  let calls = 0;
+  await expect(runCommunicationHeartbeat(async () => { calls++; return response; })).rejects.toThrow();
+  expect(calls).toBe(1);
+});
+
+it("fails a persistently busy heartbeat within its original request budget", async () => {
+  const budgets: number[] = [];
+  await expect(runCommunicationHeartbeat(async (remaining: number) => {
+    budgets.push(remaining);
+    return heartbeatResponse({ status: "skipped", reason: "requests-in-flight" });
+  }, { timeoutMs: 40, retryMs: 5 })).rejects.toThrow("Native heartbeat remained busy");
+  expect(budgets.length).toBeGreaterThan(0);
+  expect(budgets.every(value => value > 0 && value <= 40)).toBe(true);
+});
+
+it("surfaces gateway or model failures while waiting for heartbeat admission", async () => {
+  let calls = 0;
+  await expect(runCommunicationHeartbeat(async () => {
+    calls++;
+    return heartbeatResponse({ status: "skipped", reason: "requests-in-flight" });
+  }, { check() { if (calls) throw new Error("Gateway exited"); } })).rejects.toThrow("Gateway exited");
+  expect(calls).toBe(1);
+});
+
+it("bounds a tool response that stalls after sending JSON headers", async () => {
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.flushHeaders();
+    response.write('{"pending":');
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Missing fixture port");
+  try {
+    await expect(communicationJsonRequest(`http://127.0.0.1:${address.port}`, {}, 100)).rejects.toThrow();
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
 
 it("reports a gateway signal exit instead of a missing native reply", async () => {
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });

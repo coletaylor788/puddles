@@ -69,7 +69,7 @@ if (process.argv[3] !== "--child") {
   await upsert(scope(targetKey), { sessionId: "main-session", updatedAt: 1 });
   setConfig(cfg);
   process.argv[1] = join(runtime, "openclaw.mjs");
-  const registry = loadRegistry({ config: cfg, workspaceDir: root, onlyPluginIds: ["approved-session-send"],
+  const registry = await loadRegistry({ config: cfg, workspaceDir: root, onlyPluginIds: ["approved-session-send"],
     cache: false, throwOnLoadError: true, allowProcessHomeSessionCatalogs: false,
     logger: { debug() {}, info() {}, warn() {}, error() {} },
   });
@@ -147,7 +147,7 @@ if (process.argv[3] !== "--child") {
     assert.equal(broker.resolve(approval.id, "allow-once"), true);
     const result = await running;
     assert.equal(result.details?.reply, "Dinner is at seven.", JSON.stringify({ result, accessRequests }));
-    assert.deepEqual(result.details.delivery, { status: "skipped", mode: "announce" });
+    assert.deepEqual(result.details.delivery, { status: "skipped" });
     assert.equal(sends().length, 1); assert.ok(sends()[0].params.message.endsWith("\n" + args().message));
     assert.equal(sends()[0].params.message.includes("replacement"), false);
     assert.equal(sends()[0].params.inputProvenance.sourceSessionKey, requesterKey);
