@@ -16,7 +16,7 @@
     "puddles-release": "bin/puddles-release.mjs",
     "puddles-ci": "bin/puddles-ci.mjs"
   },
-  "packageManager": "pnpm@12.4.0",
+  "packageManager": "pnpm@12.15.0",
   "devDependencies": {
     "@types/node": "22.19.17",
     "typescript": "^5.0.0",
