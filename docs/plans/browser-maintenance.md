@@ -164,6 +164,10 @@ shell access to retain an obsolete probe. Real subscription navigation, eval and
 authentication-refusal checks remain required. Both fixtures use the maintained
 sandbox/environment helpers, the exact packaged CLI and verified Docker cleanup.
 
+The relocated plugin test now closes the native daemon with stock `close --all`
+before removing its synthetic state. It asserts no socket or PID file survives.
+Closing the MCP client alone does not stop that daemon.
+
 The earlier combined runner repair is superseded by the landed upgrade's native
 per-project subprocesses. No custom batch runner or upstream patch is included
 in this change. The earlier failed production attempt never transferred or
