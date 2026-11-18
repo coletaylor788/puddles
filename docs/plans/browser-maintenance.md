@@ -1,6 +1,6 @@
 # Refresh Chromium and use the configured local timezone
 
-Status: Production approved for browser refresh and Pacific timezone correction
+Status: Production deployed; development cleanup held by retained CI references
 Issue: https://github.com/coletaylor788/puddles/issues/364
 Last updated: 2026-11-18
 
@@ -40,46 +40,25 @@ new update-request tool is a separate choice, not part of this repair.
 
 ### Status
 
-**Approval:** Production approved.
+**Approval:** Production approved. The requester asked to update the outdated
+browser and correct UTC to Pacific Time on 2026-11-16. This authorizes bounded
+maintenance of the existing architecture. Recurring automation and new agent
+update permissions remain outside scope.
 
-**Approval reference:** The requester asked to update the outdated browser and
-correct UTC to Pacific Time on 2026-11-16. This authorizes bounded maintenance of
-the existing architecture. No recurring automation or new agent update permission
-is included.
-
-The replacement image contains Chromium 156.0.8078.79 and Pacific timezone data.
-The archive fixture repair, provider qualification repair and earlier browser
-checks passed focused validation and retained review. Production has not changed.
-
-DEV passed with native volume mounts, the recreated-state regression and provider
-checks. The production submission stopped before transfer when the old combined
-native regression process exhausted its JavaScript heap. Its source queue and
-cleanup are closed. The separate OpenClaw upgrade has since landed. Both branches
-now consume its native per-project test runner and supported sandboxed MCP tools.
-The superseded batching implementation is removed. The refreshed DEV run passed
-the container checks, then exposed a missing Docker binding in provider
-qualification. Its target and source cleanup are closed. The
-repair passes that frozen binding explicitly. The next DEV run reached the protected
-read check, where the read was correctly refused but its native error wording was
-not recognized. Qualification now accepts that exact guard for the requested path.
-Focused regressions, fresh DEV, the full application suite and TEST passed.
-Production preparation then rejected an incorrectly captured settings digest.
-Recovery and cleanup are complete. The capture now hashes the settings file's
-bytes, matching the existing guard. A regression rejects a parsed-JSON digest for
-the same file. The corrected candidate passed DEV. Its production suite then
-failed during cleanup of an installed reader fixture, before deployment. A
-short-lived worker can disappear between separate membership and ancestry
-snapshots. The helper now uses one snapshot for both checks and keeps the existing
-ownership rules. Focused regressions and both installed reader fixtures pass,
-including teardown. A fresh release remains required.
+Chromium 156.0.8078.79 and `America/Los_Angeles` are deployed. DEV, the full
+application suite, TEST and production acceptance passed. Both source PRs merged
+at their exact tested commits, and the deployment transaction and transfer cleanup
+are complete. Development workspace retirement is held because retained CI
+candidates still reference its build. Preserve those references until maintained
+cleanup permits retirement.
 
 ## Agent section
 
 ### State
 
-The maintenance baseline browser was Chromium 152.0.7977.82 on Debian 12 and UTC. The existing
-image includes timezone data. The separate macOS Chrome is version 157 and the
-host is already on Pacific Time. Private paths and exact image identities stay
+Production now uses Chromium 156.0.8078.79 on Debian 12 with Pacific timezone
+data. The previous browser was Chromium 152.0.7977.82 and UTC. The separate macOS
+Chrome installation is independent. Private paths and image identities remain
 in the companion configuration and local release records.
 
 ### Scope and acceptance criteria
@@ -124,6 +103,20 @@ original concurrent-start and ownership behavior.
 
 ### Validation
 
+Final candidate `5f38e002f628032354f729dc733a86a7bb51ddb715131b4e7e9eb4b0155c9e2e`
+passed DEV run `gh-44346099632-1` and production run `gh-44348370221-1`.
+The latter completed the full application suite, TEST, backup and read-only PROD
+acceptance. Its terminal record is `passed`, `phase=complete`, `child=null`.
+Source submission `submission-7365fae3-fa89-41d4-a349-20f5c783f332` closed with
+transfer cleanup `cleaned`. Installed browser settings independently match the
+reviewed image and `America/Los_Angeles`.
+
+Public PR #365 merged as `539bbe4e32daa61415aac2666c73f0275949f891`.
+Both paired merges have the exact expected base/head parents and tested trees.
+The companion merge identity remains in its private PR and local release record.
+The fixes and intermediate failures below explain the final implementation;
+all required release gates subsequently passed on the final candidate.
+
 Focused launcher tests cover timezone handling and malformed values. Installed
 synthetic qualification checks JavaScript timezone and daylight saving offsets
 before and after recreation, alongside existing login and isolation checks.
@@ -139,7 +132,7 @@ stopped before transfer on archive fixture creation. The repaired fixture keeps
 checks, while reading its two input files once. Timeouts are unchanged. The
 focused regression passed in 5.7 seconds and all 312 package tests passed with
 the complete host PATH and required process inspection access. The repaired
-candidate still requires DEV and the full production lifecycle.
+candidate was superseded by the final validated release.
 
 Docker Desktop 4.70.0 with Engine 29.4.0 reproduced the missing-bind error after
 removing and recreating an ancestor of a populated browser profile. Five native
@@ -192,7 +185,7 @@ The earlier combined runner repair is superseded by the landed upgrade's native
 per-project subprocesses. No custom batch runner or upstream patch is included
 in this change. The earlier failed production attempt never transferred or
 changed production. Its queue and transfer cleanup are closed. The refreshed
-source requires a new frozen candidate and DEV/TEST/PROD evidence.
+source was rebuilt and passed the final DEV/TEST/PROD lifecycle.
 
 The refreshed candidate passed DEV, the full application suite and TEST. Production
 preparation correctly rejected the settings predecessor because the local baseline
@@ -220,14 +213,19 @@ Retained review independently passed all 19 cleanup tests and found no issues.
 
 The existing lifecycle stops browser writers, backs up state, replaces the image
 and configuration, validates production read-only, merges exact source and closes
-cleanup. Require whole-profile backup coverage before production. Consolidate the existing
-child entries into one profile-root entry during a reviewed idle controller
-configuration cutover. Keep the existing backup untouched until normal CI replaces
-it. A regression verifies rollback removes new root files and directories.
+cleanup. Whole-profile backup coverage is configured and was exercised by the release.
+The reviewed controller cutover replaced individual child entries with one profile
+root, preserving the previous backup until normal CI replaced it. A regression
+verifies rollback removes new root files and directories.
 Preserve the old image/profile for rollback. Never mutate the running
 container's package installation or inspect real authentication data.
 
 ### Review log
+
+The retained reviewer cleared the complete final diff and remediation. The
+maintained build retirement command returned `held: Retained candidate references
+build` after source closure. No retained candidate, warm output, recovery state or
+worktree was deleted. This hold does not keep the deployment lane occupied.
 
 The retained browser reviewer found that individual profile-child backup entries
 miss files introduced by a newer browser. Whole-root coverage is now required by
@@ -258,5 +256,6 @@ suite uses its maintained CI entrypoints, not the retired delivery route.
 - [x] Check later stable OpenClaw and supported image maintenance.
 - [x] Prepare and verify the replacement image.
 - [x] Review and test the configuration change.
-- [ ] Pass DEV and production lifecycle.
-- [ ] Verify exact merges, terminal receipts and eligible cleanup.
+- [x] Pass DEV and production lifecycle.
+- [x] Verify exact merges, terminal receipts and transfer cleanup.
+- [ ] Retire the development workspace after retained CI references permit cleanup.
