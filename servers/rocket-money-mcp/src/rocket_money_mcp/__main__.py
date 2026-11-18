@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from importlib.resources import files
 from pathlib import Path
 
@@ -17,6 +18,16 @@ from mcp.types import CallToolResult, Resource, TextContent, Tool
 
 from .errors import GatewayError
 from .service import TOOLS, RocketMoney, error
+
+
+async def keep_alive(ping, interval=1800):
+    """Run once on startup, then thirty minutes after each completed check."""
+    while True:
+        try:
+            await ping()
+        except Exception:  # noqa: BLE001 - no sensitive diagnostics on MCP stdout/stderr
+            pass
+        await asyncio.sleep(interval)
 
 
 async def serve(directory, executable):
@@ -30,6 +41,12 @@ async def serve(directory, executable):
         if service is None:
             service = RocketMoney(directory, executable=executable)
         return service.call(name, params)
+
+    def ping():
+        nonlocal service
+        if service is None:
+            service = RocketMoney(directory, executable=executable)
+        service.keep_alive()
 
     @server.list_tools()
     async def list_tools():
@@ -63,12 +80,17 @@ async def serve(directory, executable):
             isError=value.get("status") == "error",
         )
 
+    heartbeat = asyncio.create_task(keep_alive(lambda: loop.run_in_executor(pool, ping)))
     try:
         async with stdio_server() as (reader, writer):
             await server.run(reader, writer, server.create_initialization_options())
     finally:
-        if service:
-            await loop.run_in_executor(pool, service.close)
+        heartbeat.cancel()
+        with suppress(asyncio.CancelledError):
+            await heartbeat
+        # A cancelled Future does not stop its worker. Queue cleanup after it,
+        # including a first ping that has not finished constructing the service.
+        await loop.run_in_executor(pool, lambda: service.close() if service else None)
         pool.shutdown(wait=True)
 
 

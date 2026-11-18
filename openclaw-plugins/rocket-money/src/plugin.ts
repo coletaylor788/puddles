@@ -10,7 +10,7 @@ import tools from "./tools.json" with { type: "json" };
 export const TOOLS = tools;
 type Config = { command: string; stateDir: string; chromeExecutable?: string; writesEnabled?: boolean;
   llmProvider: string; llmProviderOptions?: Record<string, unknown>; model?: string };
-type Caller = { callTool(name: string, args: Record<string, unknown>): Promise<CallToolResult>; close(): Promise<void> };
+type Caller = { callTool(name: string, args: Record<string, unknown>): Promise<CallToolResult>; close(): Promise<void>; isClosed?(): boolean };
 
 export async function connect(config: Config): Promise<Caller> {
   const args = ["-I", fileURLToPath(new URL("./python/run.py", import.meta.url)), "--state-dir", config.stateDir];
@@ -20,9 +20,12 @@ export async function connect(config: Config): Promise<Caller> {
   // Never relay process diagnostics, which may include browser/provider data.
   transport.stderr?.on("data", () => undefined);
   const client = new Client({ name: "puddles-rocket-money", version: "0.1.0" });
+  let closed = false;
+  client.onclose = () => { closed = true; };
   try { await client.connect(transport); }
   catch { await transport.close(); throw new Error("MCP_UNAVAILABLE"); }
   return {
+    isClosed: () => closed,
     async callTool(name, args) {
       return await client.callTool({ name, arguments: args }, undefined, { timeout: 150_000 }) as CallToolResult;
     },
@@ -33,6 +36,10 @@ export async function connect(config: Config): Promise<Caller> {
 function configuration(api: OpenClawPluginApi, ctx: OpenClawPluginToolContext): Config | null {
   if (ctx.agentId !== "main" || !ctx.sessionKey || !ctx.workspaceDir) return null;
   const runtime = ctx.getRuntimeConfig?.() ?? ctx.runtimeConfig ?? ctx.config ?? api.config;
+  return configuredService(runtime);
+}
+
+function configuredService(runtime: OpenClawPluginApi["config"]): Config | null {
   const entry = runtime?.plugins?.entries?.["rocket-money"];
   if (!entry || entry.enabled === false) return null;
   const cfg = entry.config as Config | undefined;
@@ -47,7 +54,8 @@ function result(value: unknown) {
 }
 
 export function createBridgeRuntime() {
-  return { bridge: null as Promise<Caller> | null, bound: null as string | null, pending: Promise.resolve() };
+  return { bridge: null as Promise<Caller> | null, bound: null as string | null, pending: Promise.resolve(),
+    serviceTimer: null as ReturnType<typeof setTimeout> | null, serviceRunning: false };
 }
 type BridgeRuntime = ReturnType<typeof createBridgeRuntime>;
 const runtimeKey = Symbol.for("puddles.rocket-money.mcp.v1");
@@ -136,7 +144,37 @@ export function createPlugin(connector: typeof connect = connect, runtime = shar
           },
         }));
       }, { names: TOOLS.map(t => t.name) });
-      api.registerService({ id: "rocket-money-mcp", start() {}, stop: () => serialized(close) });
+      const maintain = async () => {
+        try { await serialized(async () => {
+        if (!runtime.serviceRunning) return;
+        const cfg = configuredService(api.config);
+        if (!cfg) { await close(); return; }
+        const key = JSON.stringify([cfg.command, cfg.stateDir, cfg.chromeExecutable]);
+        if (runtime.bound && runtime.bound !== key) await close();
+        if (runtime.bridge && (await runtime.bridge.catch(() => null))?.isClosed?.()) await close();
+        try {
+          if (!runtime.bridge) { runtime.bound = key; runtime.bridge = connector(cfg); }
+          await runtime.bridge;
+        } catch {
+          await close();
+        }
+        }); } finally {
+          if (runtime.serviceRunning) {
+            runtime.serviceTimer = setTimeout(() => { void maintain(); }, 30_000);
+            runtime.serviceTimer.unref();
+          }
+        }
+      };
+      api.registerService({ id: "rocket-money-mcp", start: async () => {
+        if (runtime.serviceRunning) return;
+        runtime.serviceRunning = true;
+        await maintain();
+      }, stop: () => {
+        runtime.serviceRunning = false;
+        if (runtime.serviceTimer) clearTimeout(runtime.serviceTimer);
+        runtime.serviceTimer = null;
+        return serialized(close);
+      } });
     },
   };
 }
