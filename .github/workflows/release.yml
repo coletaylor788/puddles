@@ -35,9 +35,9 @@ jobs:
           package-manager-cache: false
       - name: Install pinned package manager
         run: |
-          npm install --prefix "$RUNNER_TEMP/puddles-pnpm" --no-save --no-audit --no-fund pnpm@12.4.0
+          npm install --prefix "$RUNNER_TEMP/puddles-pnpm" --no-save --no-audit --no-fund pnpm@12.15.0
           echo "$RUNNER_TEMP/puddles-pnpm/node_modules/.bin" >> "$GITHUB_PATH"
-          test "$("$RUNNER_TEMP/puddles-pnpm/node_modules/.bin/pnpm" --version)" = 12.4.0
+          test "$("$RUNNER_TEMP/puddles-pnpm/node_modules/.bin/pnpm" --version)" = 12.15.0
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm test
