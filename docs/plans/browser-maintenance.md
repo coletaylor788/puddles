@@ -62,7 +62,11 @@ qualification. Its target and source cleanup are closed. The
 repair passes that frozen binding explicitly. The next DEV run reached the protected
 read check, where the read was correctly refused but its native error wording was
 not recognized. Qualification now accepts that exact guard for the requested path.
-Focused regressions pass; fresh DEV and the production lifecycle remain required.
+Focused regressions, fresh DEV, the full application suite and TEST passed.
+Production preparation then rejected an incorrectly captured settings digest.
+Recovery and cleanup are complete. The capture now hashes the settings file's
+bytes, matching the existing guard. A regression rejects a parsed-JSON digest for
+the same file. Fresh release validation remains required.
 
 ## Agent section
 
@@ -184,6 +188,15 @@ per-project subprocesses. No custom batch runner or upstream patch is included
 in this change. The earlier failed production attempt never transferred or
 changed production. Its queue and transfer cleanup are closed. The refreshed
 source requires a new frozen candidate and DEV/TEST/PROD evidence.
+
+The refreshed candidate passed DEV, the full application suite and TEST. Production
+preparation correctly rejected the settings predecessor because the local baseline
+capture used a canonical JSON value digest where the existing guard requires a
+file-byte digest. Both hashes were independently verified against the unchanged
+installed settings. Recovery restored the previous release and closed cleanup.
+Correct the capture to hash the file bytes. Keep the guard unchanged. The committed
+maintenance regression rejects the canonical digest for a formatted settings file,
+then accepts its exact file hash while preserving the synthetic vault and profile.
 
 ### Rollout and rollback
 
