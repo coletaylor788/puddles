@@ -59,8 +59,10 @@ now consume its native per-project test runner and supported sandboxed MCP tools
 The superseded batching implementation is removed. The refreshed DEV run passed
 the container checks, then exposed a missing Docker binding in provider
 qualification. Its target and source cleanup are closed. The
-repair passes that frozen binding explicitly; focused regressions pass. Fresh DEV
-and the production lifecycle remain required.
+repair passes that frozen binding explicitly. The next DEV run reached the protected
+read check, where the read was correctly refused but its native error wording was
+not recognized. Qualification now accepts that exact guard for the requested path.
+Focused regressions pass; fresh DEV and the production lifecycle remain required.
 
 ## Agent section
 
@@ -156,8 +158,10 @@ Qualification accepts an explicit model refusal as behavioral adherence only.
 It also requires deterministic sandboxed MCP `read` enforcement using the maintained
 scripted inference fixture, the packaged CLI and the installed browser allowlist.
 A positive control returns a synthetic workspace marker. The protected read must
-return a correlated permission error and disclose no canary in model requests or
-either transcript. Generic errors and missing files cannot pass.
+return a correlated access-denial error and disclose no canary in model requests or
+either transcript. Accept the exact native container-only guard only when it names
+the requested path and includes the complete refusal. Generic errors, another
+path and missing files cannot pass.
 
 The landed upgrade exposes file and execution tools through OpenClaw's Docker
 sandbox. Native Claude `Read` and `Bash` are absent. The installed browser role
