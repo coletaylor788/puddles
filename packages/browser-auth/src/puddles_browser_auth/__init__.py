@@ -32,6 +32,7 @@ class BrowserAuth:
                 raise AuthError("INVALID_AUTH_CONFIG")
         self.executable = executable
         self.context = None
+        self.http_context = None
         self.driver = None
         self.lock = None
 
@@ -89,10 +90,29 @@ class BrowserAuth:
             self.mark("unavailable")
             raise AuthError("AUTH_UNAVAILABLE") from None
 
-    def post(self, body):
-        context = self.start()
+    def start_http(self):
+        """Use saved cookies without launching Chrome; reuse a live browser jar."""
+        if self.context or self.http_context:
+            return
+        lock = account_lock(self.directory, timeout=2)
+        lock.__enter__()
+        self.lock = lock
         try:
-            response = context.request.post(
+            from playwright.sync_api import sync_playwright
+
+            self.driver = sync_playwright().start()
+            self.http_context = self.driver.request.new_context(
+                storage_state=read_private(self.directory / "session.json", {"cookies": [], "origins": []}),
+                timeout=30000,
+            )
+        except Exception:  # noqa: BLE001 - never expose host or credential diagnostics
+            self.close()
+            raise AuthError("AUTH_UNAVAILABLE") from None
+
+    def post(self, body):
+        request = self.http_context or self.start().request
+        try:
+            response = request.post(
                 self.site.api, data=body, timeout=30000, max_redirects=0, max_retries=0
             )
             try:
@@ -123,9 +143,10 @@ class BrowserAuth:
             raise AuthError("PROVIDER_ERROR") from None
 
     def persist(self):
-        if self.context:
+        context = self.http_context or self.context
+        if context:
             # Deliberately host-private; never returned through MCP or logs.
-            atomic_json(self.directory / "session.json", self.context.storage_state())
+            atomic_json(self.directory / "session.json", context.storage_state())
 
     def open_login(self, interactive=False, *, verify: Callable[[], None] | None = None,
                    before_submit: Callable[[object, float], bool] | None = None):
@@ -205,6 +226,11 @@ class BrowserAuth:
 
     def close(self):
         try:
+            if self.http_context:
+                try:
+                    self.persist()
+                finally:
+                    self.http_context.dispose()
             if self.context:
                 try:
                     self.persist()
@@ -214,6 +240,7 @@ class BrowserAuth:
             pass
         finally:
             self.context = None
+            self.http_context = None
             try:
                 if self.driver:
                     self.driver.stop()

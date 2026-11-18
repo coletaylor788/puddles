@@ -12,12 +12,14 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
-from playwright.sync_api import BrowserType
+import pytest
+from playwright.sync_api import APIRequest, BrowserType
 from puddles_browser_auth import BrowserAuth, Site
 from puddles_browser_auth.state import read_private
 
 
-def test_browser_http_cookie_rotation_and_restart(tmp_path, monkeypatch):
+@pytest.mark.parametrize("http_only", [False, True])
+def test_browser_http_cookie_rotation_and_restart(tmp_path, monkeypatch, http_only):
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "fixture.local")])
     cert = (
@@ -86,6 +88,10 @@ def test_browser_http_cookie_rotation_and_restart(tmp_path, monkeypatch):
         return original(self, path, **{**kwargs, "headless": True, "ignore_https_errors": True})
 
     monkeypatch.setattr(BrowserType, "launch_persistent_context", fixture_launch)
+    original_request = APIRequest.new_context
+    def fixture_request(self, **kwargs):
+        return original_request(self, **{**kwargs, "ignore_https_errors": True})
+    monkeypatch.setattr(APIRequest, "new_context", fixture_request)
     user_chrome = Path.home() / "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
     executable = str(user_chrome) if user_chrome.is_file() else None
     auth = BrowserAuth(tmp_path / "auth", site, executable=executable)
@@ -103,9 +109,11 @@ def test_browser_http_cookie_rotation_and_restart(tmp_path, monkeypatch):
         assert stored["cookies"][0]["value"] == "fixture-rotated"
         assert (tmp_path / "auth/session.json").stat().st_mode & 0o077 == 0
         auth = BrowserAuth(tmp_path / "auth", site, executable=executable)
+        if http_only:
+            auth.start_http()
         auth.post({"query": "fixture"})
         assert requests[-1] == "session=fixture-rotated"
-        assert len(launches) == 2
+        assert len(launches) == (1 if http_only else 2)
     finally:
         auth.close()
         http.shutdown()

@@ -27,3 +27,9 @@ Run this from the plugin directory. It loads the packaged adapter under two nati
 OpenClaw plugin instances, calls the real MCP status tool four times against fresh
 synthetic state, and requires one subprocess connection. It does not open Chrome
 or access a live account. The same command can check an installed plugin entry.
+
+The service starts the shared MCP subprocess at gateway startup so its 30-minute
+session keepalive does not depend on an agent turn. A serialized liveness check
+reconnects a lost subprocess within 30 seconds after the preceding check finishes.
+It performs no model calls or financial operations. Gateway shutdown stops this
+check and joins the shared connection before closing it.

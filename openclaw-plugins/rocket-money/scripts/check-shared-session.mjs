@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm, readdir, realpath } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, access, rm, readdir, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -31,13 +31,26 @@ try {
   const owner = new Instance('rocket-money');
   const invoke = await owner.run(async()=>{
    const module = await import(pathToFileURL(entry).href+'?registry='+index);
-   let factory;
-   module.createPlugin(async config=>{connections++;return module.connect(config);}).register({config:cfg,registerTool:f=>{factory=f;},registerService:s=>{stops.push(()=>owner.runCleanup(()=>s.stop()));}});
+   let factory, start;
+   module.createPlugin(async config=>{connections++;return module.connect(config);}).register({config:cfg,registerTool:f=>{factory=f;},registerService:s=>{start=s.start;stops.push(()=>owner.runCleanup(()=>s.stop()));}});
+   await start();
    const tool = factory({agentId:'main',sessionKey:'agent:main:main',workspaceDir:root,getRuntimeConfig:()=>cfg}).find(t=>t.name==='rocket_money_status');
    return ()=>owner.run(()=>tool.execute('synthetic-'+index,{}));
   });
   invocations.push(invoke);
  }
+ // Startup alone must run the scheduler, without any tool or live credentials.
+ const receiptPath=join(root,'state/keepalive.json');
+ const deadline=Date.now()+5000;
+ let receipt;
+ while (Date.now()<deadline) {
+  try { receipt=JSON.parse(await readFile(receiptPath,'utf8')); break; }
+  catch(error) { if(error.code!=='ENOENT') throw error; }
+  await new Promise(resolve=>setTimeout(resolve,25));
+ }
+ assert.equal(receipt?.outcome,'needs_user_login');
+ assert.equal(receipt?.intervalSeconds,1800);
+ await assert.rejects(access(join(root,'state/auth/chrome')),{code:'ENOENT'});
  for (const invoke of [...invocations,...invocations]) {
   const result = await invoke();
   const body = JSON.parse(result.content[0].text);
@@ -45,7 +58,7 @@ try {
   assert.equal(body.authentication,'unknown');
  }
  assert.equal(connections,1,'Registries must share one real MCP subprocess');
- console.log(JSON.stringify({status:'passed',nativeInstances:2,toolCalls:4,mcpConnections:connections,liveAccountAccess:false}));
+ console.log(JSON.stringify({status:'passed',nativeInstances:2,toolCalls:4,mcpConnections:connections,keepaliveStarted:true,liveAccountAccess:false}));
 } finally {
  for (const stop of stops) await stop();
  await rm(root,{recursive:true,force:true});

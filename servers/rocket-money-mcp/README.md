@@ -55,3 +55,18 @@ python -m ruff check packages/browser-auth/src servers/rocket-money-mcp
 Tests use synthetic data, including real Chrome against local HTTPS. They never
 sign in to a live account or mutate real transactions. A lost write response
 stays unknown until a read-back resolves it. Reusing its UUID never replays it.
+
+## Session keepalive
+
+The MCP performs a read-only account identity check on startup and every 30
+minutes after the previous check completes. It uses the same serialized worker
+and account locks as tool calls. Without a live Chrome context, it uses an HTTP
+client with the private saved cookies, so the timer does not launch Chrome.
+Rotated cookies persist through the existing host-only session store.
+
+The timer never submits a login or changes financial data. Expiry or account
+mismatch requires the owner to sign in again; transient transport failures retry
+on the next interval. `rocket_money_status.keepalive` reports `checkedAt`,
+`lastSuccessAt`, `intervalSeconds` and the fixed `outcome`. Status itself remains
+a cached read. Activity may extend an idle session but cannot guarantee that the
+provider will keep a session valid indefinitely.

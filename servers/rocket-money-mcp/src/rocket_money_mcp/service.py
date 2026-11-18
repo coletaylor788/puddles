@@ -89,6 +89,42 @@ class RocketMoney:
                 self.auth.close()
                 raise GatewayError("NEEDS_USER_LOGIN") from None
 
+    def keep_alive(self):
+        """One read-only identity check. Never initiate or submit a login."""
+        with account_lock(self.directory, timeout=2):
+            path = self.directory / "keepalive.json"
+            previous = read_private(path, {})
+            receipt = {
+                "intervalSeconds": 1800,
+                "checkedAt": now(),
+                "lastSuccessAt": previous.get("lastSuccessAt"),
+                "outcome": "needs_user_login",
+            }
+            pin = read_private(self.identity_file)
+            state = self.auth.status().get("authentication")
+            if not isinstance(pin, dict) or not pin.get("viewerId") or state in (
+                "expired", "needs_user_login",
+            ):
+                self.auth.close()
+            else:
+                try:
+                    self.auth.start_http()
+                    self.verify_identity()
+                    receipt.update(outcome="passed", lastSuccessAt=now())
+                except GatewayError as exc:
+                    if exc.code in ("NEEDS_USER_LOGIN", "ACCOUNT_MISMATCH"):
+                        self.auth.mark("needs_user_login")
+                    elif exc.code == "BUSY":
+                        receipt["outcome"] = "busy"
+                    else:
+                        receipt["outcome"] = "unavailable"
+                except Exception:  # noqa: BLE001 - keep upstream diagnostics private
+                    receipt["outcome"] = "unavailable"
+                finally:
+                    self.auth.close()
+            atomic_json(path, receipt)
+            return receipt
+
     def snapshot(self, tx):
         body = self.post({"query": SNAPSHOT, "variables": {"id": tx}, "operationName": "TransactionState"})
         try:
@@ -204,7 +240,7 @@ class RocketMoney:
             if len(json.dumps(params).encode()) > 1024 * 1024 or not SCHEMAS[name].is_valid(params):
                 return error("INVALID_INPUT")
             if name == "rocket_money_status":
-                return self.auth.status()
+                return {**self.auth.status(), "keepalive": read_private(self.directory / "keepalive.json")}
             if name == "rocket_money_read":
                 validated = validate(params, "rocket_money_read")
                 self.ready()
