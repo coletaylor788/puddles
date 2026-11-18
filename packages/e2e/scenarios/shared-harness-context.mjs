@@ -58,7 +58,7 @@ if (process.argv[3] !== "--child") {
   });
   const sdk = async (n) => import(pathToFileURL(join(runtime, "dist/plugin-sdk", n + ".js")));
   const { upsertSessionEntry } = await sdk("session-store-runtime");
-  const { appendSessionTranscriptMessageByIdentity } = await sdk("session-transcript-runtime");
+  const { appendSessionTranscriptMessageByIdentity, readSessionTranscriptEvents } = await sdk("session-transcript-runtime");
   const harnessPath = ["dist/extensions/copilot/harness.js", "dist/extensions/copilot/dist/harness.js"]
     .map((file) => join(runtime, file)).find(existsSync);
   assert.ok(harnessPath, "Candidate must contain compiled Copilot harness");
@@ -74,8 +74,9 @@ if (process.argv[3] !== "--child") {
     entry: { sessionId: scope.sessionId, updatedAt: Date.now() },
   });
   const captured = [];
+  const sessionOperations = [];
   let turns = 0;
-  const makeSession = (id, config) => {
+  const makeSession = (id) => {
     const listeners = new Map();
     const emit = (type, data) => {
       const e = {
@@ -98,7 +99,7 @@ if (process.argv[3] !== "--child") {
       disconnect: async () => {},
       sendAndWait: async (options) => {
         turns++;
-        captured.push({ options, system: config.systemMessage });
+        captured.push({ options, sessionId: id });
         emit("user.message", { content: options.prompt });
         const result = emit("assistant.message", {
           content: "Recorded response",
@@ -110,8 +111,14 @@ if (process.argv[3] !== "--child") {
     };
   };
   const client = {
-    createSession: async (c) => makeSession("sdk-probe", c),
-    resumeSession: async (id, c) => makeSession(id, c),
+    createSession: async () => {
+      sessionOperations.push({ operation: "create", sessionId: "sdk-probe" });
+      return makeSession("sdk-probe");
+    },
+    resumeSession: async (id) => {
+      sessionOperations.push({ operation: "resume", sessionId: id });
+      return makeSession(id);
+    },
     deleteSession: async () => {},
   };
   const pool = {
@@ -200,7 +207,8 @@ if (process.argv[3] !== "--child") {
   assert.equal(second.journalValidated, true);
   assert.equal(turns, 2);
   assert.equal(captured[1].options.prompt, "What code word did I just say on the call?");
-  assert.match(captured[1].system.content, /COBALT/);
+  // Stock Copilot owns its SDK conversation. Shared transcript writes must not
+  // replay user requests; custom hydration of its system prompt was retired.
   await appendSessionTranscriptMessageByIdentity({
     ...scope,
     eventId: "text:correction",
@@ -217,16 +225,38 @@ if (process.argv[3] !== "--child") {
     userTurnTranscriptRecorder: recorder("Which word is current?"),
   });
   assert.equal(third.terminal.kind, "ok");
-  const context = captured.at(-1).system.content;
-  assert.ok(context.indexOf("AMBER") > context.indexOf("COBALT"));
+  assert.equal(third.replayMetadata.replaySafe, true);
+  assert.equal(third.journalValidated, true);
   assert.equal(turns, 3);
+  assert.deepEqual(captured.map(({ options }) => options.prompt), [
+    params.prompt,
+    "What code word did I just say on the call?",
+    "Which word is current?",
+  ]);
+  assert.deepEqual(captured.map(({ sessionId }) => sessionId), [
+    "sdk-probe", "sdk-probe", "sdk-probe",
+  ]);
+  assert.deepEqual(sessionOperations, [
+    { operation: "create", sessionId: "sdk-probe" },
+    { operation: "resume", sessionId: "sdk-probe" },
+    { operation: "resume", sessionId: "sdk-probe" },
+  ]);
+  const transcript = await readSessionTranscriptEvents(scope);
+  const sharedMessages = transcript
+    .filter((event) => event.type === "message")
+    .map((event) => event.message)
+    .filter((message) => JSON.stringify(message.content).match(/COBALT|AMBER/));
+  assert.deepEqual(sharedMessages.map((message) => message.content), [
+    [{ type: "text", text: "The voice-only code word is COBALT." }],
+    [{ type: "text", text: "Change the code word to AMBER." }],
+  ]);
+  assert.equal(sharedMessages[0].provenance.kind, "realtime_voice");
   console.log(
     JSON.stringify({
       status: "passed",
       checks: [
-        "ordinary-turn-context",
-        "resumed-speech-context",
-        "later-text-correction",
+        "stock-backup-session-resume",
+        "shared-transcript-preserved",
         "current-request-unchanged",
         "journal-replay-safe",
       ],

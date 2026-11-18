@@ -1,6 +1,6 @@
 # Selective iMessage message-part coalescing
 
-**Status:** Ported to OpenClaw 2026.9.6 with recording fixtures.
+**Status:** Source ported to OpenClaw 2026.11.4. Composed runtime qualification is pending.
 
 ## Symptom
 
@@ -15,7 +15,7 @@ Without coalescing, the first row starts an agent turn before the payload
 arrives. The reply therefore lacks the link or image, and the payload starts a
 second turn after the fact.
 
-OpenClaw 2026.9.6 keeps a generic text-only debounce in
+OpenClaw 2026.11.4 keeps a generic text-only debounce in
 `monitor/monitor-provider.ts`, but its retired-config migration explicitly
 deletes `coalesceSameSenderDms`. That debounce does not provide the selective
 text, link, and media grouping described here. This patch retains a Puddles
@@ -75,8 +75,11 @@ immediate turn. A new eligible lead-in flushes the prior pair and starts a fresh
 composition deadline.
 
 The existing merge bounds remain unchanged: 4,000 text characters, 20
-attachments, and 10 source rows, with every source GUID retained for replay
-deduplication.
+attachments, and 10 source rows. Native durable ingress retains every source
+GUID for replay deduplication. The upgrade keeps its native bounded merger and
+removes the obsolete custom merged-payload GUID/cursor fields. The coalescer
+suite imports the stable merger regressions; the registered ingress and monitor
+suites cover durable cursor and claim ownership.
 
 ## Enable
 
@@ -118,6 +121,11 @@ Keep the window long enough to cover the observed gap between Messages.app
 parts on the host.
 
 ## Verification
+
+The stable port keeps the new event-driven ACP readiness fixture, media staging
+policy tests, and native temporary-state cleanup. The focused coalescer suite
+passes 41 tests using exact stable helper implementations. Full monitor, schema
+and installed delivery tests still require the composed source and CI candidate.
 
 The configured ACP readiness test waits for explicit readiness and dispatch
 signals. Durable admission has no one-second completion contract. The test keeps
@@ -213,3 +221,10 @@ openclaw config unset channels.imessage.coalesceSameSenderDms
 ```
 
 No message data or persistent state migration is involved.
+
+
+## v2026.11.4 audit
+
+Native text debounce does not group text/link/media parts; retired option still removed natively. Preserve durable queue/claim ownership. Root package delta is reduced to iMessage bundle inclusion only; discard unrelated native metadata/script/dependency changes carried in old patch. Preserve native .4 package identities.
+
+Composition is qualified separately from installed runtime behavior. The registered regressions remain required.

@@ -2,7 +2,7 @@
 
 Status: Production approved for browser refresh and Pacific timezone correction
 Issue: https://github.com/coletaylor788/puddles/issues/364
-Last updated: 2026-11-17
+Last updated: 2026-11-18
 
 ## Human section
 
@@ -52,20 +52,18 @@ The archive fixture repair, provider qualification repair and earlier browser
 checks passed focused validation and retained review. Production has not changed.
 
 DEV passed with native volume mounts, the recreated-state regression and provider
-checks. The production submission then stopped before transfer because the broad
-native regression process exhausted its JavaScript heap. Production is unchanged
-and cleanup closed. The test runner now uses bounded batches with fresh processes,
-preserving every project/file pair and the existing isolation settings. Focused
-checks and retained review pass. The first native batch exposed an older
-OpenClaw health-response fixture failure. Its correction belongs to the separately
-approved upgrade; this browser change will consume it after that release lands.
-Full validation and production deployment remain required.
+checks. The production submission stopped before transfer when the old combined
+native regression process exhausted its JavaScript heap. Its source queue and
+cleanup are closed. The separate OpenClaw upgrade has since landed. Both branches
+now consume its native per-project test runner and supported sandboxed MCP tools.
+The superseded batching implementation is removed. Fresh qualification and the
+production lifecycle remain required.
 
 ## Agent section
 
 ### State
 
-The running browser is Chromium 152.0.7977.82 on Debian 12 and UTC. The existing
+The maintenance baseline browser was Chromium 152.0.7977.82 on Debian 12 and UTC. The existing
 image includes timezone data. The separate macOS Chrome is version 157 and the
 host is already on Pacific Time. Private paths and exact image identities stay
 in the companion configuration and local release records.
@@ -81,7 +79,8 @@ in the companion configuration and local release records.
 
 ### Architecture and decisions
 
-Installed OpenClaw is 2026.9.6. Checked the later stable release v2026.11.4 and
+The initial investigation used OpenClaw 2026.9.6. The separately approved upgrade
+has now shipped v2026.11.4. Checked that stable release and
 current official sandbox image documentation. Image builds remain a separate
 maintenance operation; updating OpenClaw or host Chrome does not refresh an
 explicitly pinned browser image. The installed Vercel 0.43.0 CLI has no native
@@ -151,40 +150,25 @@ checks passed in 2.6 seconds. The retained reviewer cleared the final diff and
 independently passed all nine launcher tests.
 
 Qualification accepts an explicit model refusal as behavioral adherence only.
-It also requires deterministic native Read enforcement using the maintained
-scripted inference fixture, the pinned CLI and the installed browser profile.
-The positive control must return a synthetic workspace marker. The protected
-Read must return a correlated permission error and disclose no canary in model
-requests or either transcript. Generic errors and missing files cannot pass.
-The real subscription navigation, eval, Bash and authentication-refusal checks
-remain required. Both fixture processes share the existing verified cleanup path.
+It also requires deterministic sandboxed MCP `read` enforcement using the maintained
+scripted inference fixture, the packaged CLI and the installed browser allowlist.
+A positive control returns a synthetic workspace marker. The protected read must
+return a correlated permission error and disclose no canary in model requests or
+either transcript. Generic errors and missing files cannot pass.
 
-The full mapped regression run exhausted V8 heap in its combined Vitest process.
-The custom combined configuration bypasses upstream's bounded-process handling.
-Partition its sorted project/file pairs into batches of at most 64. Verify exact
-discovery for every batch before executing any, then run each in a fresh native
-process. Keep each project's pool, isolation, setup and serial settings, the
-four-worker limit, and the separate e2e transport path. Do not increase global
-heap limits or patch upstream. Any discovery or execution failure fails the gate
-and retains the normal joined-process cleanup.
+The landed upgrade exposes file and execution tools through OpenClaw's Docker
+sandbox. Native Claude `Read` and `Bash` are absent. The installed browser role
+allows `read` and `write` but does not grant `exec` or `process`. Qualification
+preserves that policy, verifies the advertised tool surface, and does not add
+shell access to retain an obsolete probe. Real subscription navigation, eval and
+authentication-refusal checks remain required. Both fixtures use the maintained
+sandbox/environment helpers, the exact packaged CLI and verified Docker cleanup.
 
-A native Vitest 5 probe found that `--shard` can omit one project mode and repeat
-another when the same file belongs to two projects. Explicit per-project includes
-avoid that ambiguity. The replacement probe ran all 66 pairs exactly once across
-two fresh processes. Committed regressions cover duplicate modes, the 64-pair
-boundary, discovery failure before any execution, and execution-failure cleanup.
-All 14 focused checks and package type checking pass. Retained review independently
-passed the focused checks, including the native duplicate-mode regression. The
-first real batch completed 64 files without heap exhaustion: 2,471 tests passed
-and one health-response fixture failed. The failure reproduces with that file
-alone. Its raw server never drains the incoming request, so Node 26.13.1 does not
-observe socket closure within the unchanged one-second assertion. The separately
-approved upgrade corrects that fixture. Do not copy its patch into this older
-source under the browser task's approval. The other four batches and the separate
-e2e checks passed. Across the 278 mapped project/file pairs, only that known fixture
-failed; no bounded process exhausted its heap. Diagnostic scratch and processes
-closed. This is still a failed overall result, not a passing application gate.
-Refresh from the landed upgrade and repeat affected qualification before release.
+The earlier combined runner repair is superseded by the landed upgrade's native
+per-project subprocesses. No custom batch runner or upstream patch is included
+in this change. The earlier failed production attempt never transferred or
+changed production. Its queue and transfer cleanup are closed. The refreshed
+source requires a new frozen candidate and DEV/TEST/PROD evidence.
 
 ### Rollout and rollback
 
@@ -216,7 +200,7 @@ transaction or production deployment occurred, and source cleanup closed. Rebuil
 with the configured toolchain and repeat affected DEV validation.
 
 A narrow build-qualification prerequisite aligns the exact Node pin with current
-CI while retaining the existing pnpm pin. Fourteen packaging and overlay tests
+CI and pnpm 12.15.0 pins after the landed upgrade. Fourteen packaging and overlay tests
 pass. This does not migrate the production Gateway interpreter. Historical
 delivery commands are recovery-only; preserved recovery continues to use its
 original immutable source, toolchain and artifacts. The current application

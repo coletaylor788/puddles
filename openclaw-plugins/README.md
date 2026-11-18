@@ -38,7 +38,7 @@ The maintained plugins are:
 
 ## Prerequisites
 
-The maintained release is OpenClaw 2026.9.6. These plugins compile against that
+The maintained release is OpenClaw 2026.11.3. These plugins compile against that
 exact development dependency and import public types from
 `openclaw/plugin-sdk/core`. The retired root SDK entrypoint is not exported by
 this release. Use Node 24.16.0 or later on 24.x, or Node 26.1.0 or later, for

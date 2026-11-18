@@ -48,6 +48,7 @@ export default [
   {
     id: "no-output",
     chatType: "group",
+    allowGroupSilence: true,
     steps: [{ incoming: [{ text: "Do not reply." }], responses: [{ text: "NO_REPLY" }], expect: { sends: [], quietMs: 1800 } }],
   },
   {

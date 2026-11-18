@@ -9,7 +9,7 @@ const candidate = process.env.OPENCLAW_CANDIDATE;
 if (!candidate) throw new Error("OPENCLAW_CANDIDATE is required for candidate-source tests");
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-it("preserves applied skill history, ownership and content across reopen", async () => {
+it("archives retired drafts by owner and preserves applied content across reopen", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "candidate-workshop-")));
   roots.push(root);
   for (const name of ["home", "scratch"]) mkdirSync(join(root, name));
@@ -20,5 +20,5 @@ it("preserves applied skill history, ownership and content across reopen", async
       OPENCLAW_STATE_DIR: join(root, "state"), OPENCLAW_CONFIG_PATH: join(root, "state/openclaw.json"),
       OPENCLAW_SERVICE_REPAIR_POLICY: "external", NO_COLOR: "1" },
   });
-  expect(JSON.parse(result.stdout)).toEqual({ passed: true, historyPreserved: true, ownershipPreserved: true, repeatable: true });
+  expect(JSON.parse(result.stdout)).toEqual({ passed: true, draftArchived: true, ownershipPreserved: true, appliedContentPreserved: true, repeatable: true });
 }, 110_000);

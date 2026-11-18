@@ -12,6 +12,10 @@ and result capture. Hooks run once. Hook changes to either script-code alias are
 reconciled before execution. Guarded raw results enter Code Mode before transport
 serialization.
 
+The MCP grant captures the verified requester. Direct calls and nested Code Mode
+calls reuse that captured identity for owner-only hooks. Tool arguments and HTTP
+headers cannot replace it.
+
 The grant also preserves how the original catalog constructed its coding tools.
 An exact list of callable names must not turn node-only `exec` into gateway or
 sandbox execution. This host-owned selection stays separate from the name

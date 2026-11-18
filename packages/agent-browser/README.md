@@ -45,8 +45,10 @@ created session can lose recent state before it reaches disk.
 
 ## Boundaries
 
-Claude's workspace profile protects the vault, key, browser profile, controller
-state, and Docker socket from native Bash and file tools. Chromium cannot read
+The agent's sandbox and tool policy protect the vault, key, browser profile,
+controller state, and Docker socket from file and execution tools. The current
+Claude integration uses OpenClaw's sandboxed MCP tools and disables equivalent
+native CLI tools. Chromium cannot read
 the host vault because it is not mounted. These controls do not make the trusted
 Vercel process itself filesystem-confined: native screenshots accept an output
 path and can overwrite an existing writable host file with image bytes. This

@@ -87,9 +87,17 @@ if (process.argv[3] !== "--child") {
   assert.equal(route("+15555550101").agentId, "household");
   assert.notEqual(route("+15555550100", "another-account").sessionKey, owner.sessionKey);
   assert.notEqual(route("+15555550100", "default", "group").sessionKey, owner.sessionKey);
-  const target = prepare(cfg);
+  const target = await prepare(cfg);
   assert.equal(target.canonicalKey, owner.sessionKey);
-  assert.deepEqual(prepare(cfg, "agent:main:main"), { ...target, sessionKey: "agent:main:main" });
+  const explicit = await prepare(cfg, "agent:main:main");
+  assert.deepEqual(
+    { ...explicit, assertCurrent: undefined },
+    { ...target, sessionKey: "agent:main:main", assertCurrent: undefined },
+  );
+  assert.equal(typeof target.assertCurrent, "function");
+  assert.equal(typeof explicit.assertCurrent, "function");
+  target.assertCurrent(cfg);
+  explicit.assertCurrent(cfg);
   const scope = {
     agentId: target.agentId,
     sessionKey: target.canonicalKey,
@@ -107,7 +115,7 @@ if (process.argv[3] !== "--child") {
   assert.deepEqual(await history(target, () => {}), [
     { role: "user", text: "The synthetic appointment is on Tuesday." },
   ]);
-  const voiceSessionId = createCall({ ...scope, origin: "client", transcriptCapable: true });
+  const voiceSessionId = await createCall({ ...scope, origin: "client", transcriptCapable: true });
   const speech = {
     ...scope,
     sessionTarget: scope,
@@ -126,7 +134,7 @@ if (process.argv[3] !== "--child") {
     text: "We are discussing Wednesday.",
   });
   await appendText("text-during-call", "Use the afternoon slot.");
-  assert.equal(createCall({ ...scope, origin: "client", voiceSessionId }), voiceSessionId);
+  assert.equal(await createCall({ ...scope, origin: "client", voiceSessionId }), voiceSessionId);
   assert.equal(await ensure(scope), sessionId);
   const context = await history(target, () => {});
   assert.deepEqual(

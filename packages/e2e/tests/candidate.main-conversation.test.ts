@@ -21,7 +21,7 @@ it("shares the owner's text and voice history in the installed main session", ()
   });
 }, 50_000);
 
-it("refreshes the persistent harness from shared speech without replaying requests", () => {
+it("keeps stock backup requests and shared transcript updates without replay", () => {
   expect(candidate, "OPENCLAW_CANDIDATE is required").toBeTruthy();
   const result = spawnSync(
     process.execPath,

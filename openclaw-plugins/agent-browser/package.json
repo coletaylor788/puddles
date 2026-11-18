@@ -21,6 +21,6 @@
   "devDependencies": {
     "esbuild": "^0.25.0",
     "@puddles/agent-browser": "workspace:*",
-    "openclaw": "2026.9.6"
+    "openclaw": "2026.11.3"
   }
 }

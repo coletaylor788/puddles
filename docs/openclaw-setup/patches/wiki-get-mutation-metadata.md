@@ -11,6 +11,11 @@ in its model-visible JSON text. Ordinary tool calls retain their body-only text.
 Memory fallback has no wiki metadata. Existing page visibility and filesystem
 controls apply before metadata is returned.
 
+The v2026.11.3 port preserves native opaque memory references, query cancellation,
+page visibility and schema-derived tool arguments. The regression uses the
+current native `create_synthesis` operation. Source compatibility is complete;
+composed query/tool and installed qualification remain pending.
+
 The regression reads rich claim evidence and citations through the actual tool,
 updates the summary with that snapshot, and checks preservation. It also checks
 pagination, ordinary reads and denied bridge sources. The accumulated pool runs

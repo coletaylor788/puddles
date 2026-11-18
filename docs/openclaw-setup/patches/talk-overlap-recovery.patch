@@ -1,330 +1,6 @@
-diff --git a/extensions/openai/realtime-quicksilver-delegation-controller.ts b/extensions/openai/realtime-quicksilver-delegation-controller.ts
---- a/extensions/openai/realtime-quicksilver-delegation-controller.ts
-+++ b/extensions/openai/realtime-quicksilver-delegation-controller.ts
-@@ -421,15 +421,33 @@
-         try {
-           await steer({ prompt: delegation.prompt, signal: controller.signal });
-         } catch (error) {
--          this.revokeRequesterFinal();
-           if (
-             this.stopped ||
-             controller.signal.aborted ||
-+            this.consultController !== controller ||
-             readErrorName(error) === "AbortError" ||
-             extractErrorCode(error) === "ABORT_ERR"
-           ) {
-+            this.revokeRequesterFinal();
-             return;
-           }
-+          if (extractErrorCode(error) === "TALK_STEERING_UNSUPPORTED") {
-+            // The host confirmed no input was injected. Preserve the original
-+            // task and its completion owner while keeping the voice call open.
-+            // Do not replay the request or report that it was queued.
-+            try {
-+              this.sendAppend(
-+                "The additional request was not accepted. The earlier task is still running. " +
-+                  "Tell the user you can keep chatting, and ask them to repeat the additional request after the earlier task finishes.",
-+                "speakable",
-+                delegation.id,
-+              );
-+              continue;
-+            } catch (deliveryError) {
-+              error = deliveryError;
-+            }
-+          }
-+          this.revokeRequesterFinal();
-           const fatal = toErrorObject(error, "Realtime delegation steering failed");
-           // The queued delegation belongs to this steering attempt. Do not let the
-           // active-run finalizer relaunch it after its owner has failed.
-diff --git a/src/gateway/talk/client-agent-consult.ts b/src/gateway/talk/client-agent-consult.ts
---- a/src/gateway/talk/client-agent-consult.ts
-+++ b/src/gateway/talk/client-agent-consult.ts
-@@ -590,6 +590,16 @@
-           : undefined,
-       mode: "steer",
-     });
-+    // This capability refusal happens before injection. Tell the provider that
-+    // only the additional request was rejected, not the active voice session.
-+    // Never classify accepted-but-unconfirmed input as safe to retry.
-+    if (
-+      !result.ok &&
-+      result.queued === false &&
-+      result.reason === "guarded_injection_unsupported"
-+    ) {
-+      throw Object.assign(new Error(result.message), { code: "TALK_STEERING_UNSUPPORTED" });
-+    }
-     if (!result.ok || result.queued !== true || !isOwnerCurrent(owner, identity.sessionId)) {
-       throw new Error(result.message);
-     }
-diff --git a/extensions/openai/realtime-quicksilver-delegation.test.ts b/extensions/openai/realtime-quicksilver-delegation.test.ts
---- a/extensions/openai/realtime-quicksilver-delegation.test.ts
-+++ b/extensions/openai/realtime-quicksilver-delegation.test.ts
-@@ -679,6 +679,77 @@
-     ).toEqual([]);
-   });
- 
-+  it.each([false, true])(
-+    "keeps listening and the original completion after unsupported steering: yielded=%s",
-+    async (yielded) => {
-+      const result = deferred<{ text: string; yielded?: true }>();
-+      let appendFinal: ((text: string) => boolean) | undefined;
-+      const runAgentConsult = vi.fn<ConsultRunner>(async ({ requesterFinal }) => {
-+        appendFinal = requesterFinal?.append;
-+        return await result.promise;
-+      });
-+      const steerAgentConsult = vi.fn(async () => {
-+        throw Object.assign(new Error("private runtime detail"), {
-+          code: "TALK_STEERING_UNSUPPORTED",
-+        });
-+      });
-+      const onTranscript = vi.fn();
-+      const { controller, socket, onFatalError } = createDelegationHarness({
-+        runAgentConsult,
-+        steerAgentConsult,
-+        onTranscript,
-+      });
-+      try {
-+        delegate(controller, "original", "check my calendar");
-+        for (const id of ["weather", "match"]) {
-+          delegate(controller, id, `also check ${id}`);
-+          await vi.waitFor(() =>
-+            expect(parseSent(socket)).toContainEqual(
-+              expect.objectContaining({
-+                delegation_item_id: id,
-+                content: [{ type: "input_text", text: expect.stringContaining("not accepted") }],
-+              }),
-+            ),
-+          );
-+        }
-+        expect(onFatalError).not.toHaveBeenCalled();
-+        expect(runAgentConsult).toHaveBeenCalledOnce();
-+        expect(runAgentConsult.mock.calls[0]?.[0].signal?.aborted).toBe(false);
-+        controller.handleEvent({ kind: "transcript-done", role: "user", text: "still here" });
-+        expect(onTranscript).toHaveBeenCalledWith("user", "still here", true);
-+        result.resolve(yielded ? { text: "", yielded: true } : { text: "calendar result" });
-+        await nextEventLoopTurn();
-+        if (yielded) {
-+          expect(appendFinal?.("calendar result")).toBe(true);
-+          expect(appendFinal?.("duplicate")).toBe(false);
-+        }
-+        await vi.waitFor(() =>
-+          expect(parseSent(socket)).toContainEqual(
-+            expect.objectContaining({
-+              delegation_item_id: "original",
-+              content: [{ type: "input_text", text: "calendar result" }],
-+            }),
-+          ),
-+        );
-+        runAgentConsult.mockResolvedValueOnce({ text: "next result" });
-+        delegate(controller, "next", "now check weather");
-+        await vi.waitFor(() =>
-+          expect(parseSent(socket)).toContainEqual(
-+            expect.objectContaining({
-+              delegation_item_id: "next",
-+              content: [{ type: "input_text", text: "next result" }],
-+            }),
-+          ),
-+        );
-+        expect(JSON.stringify(parseSent(socket))).not.toContain("private runtime detail");
-+        expect(onFatalError).not.toHaveBeenCalled();
-+      } finally {
-+        result.resolve({ text: "" });
-+        controller.stop(new Error("test complete"));
-+      }
-+    },
-+  );
-+
-   it("drops queued work when steering fails", async () => {
-     let appendRequesterFinal: ((text: string) => boolean) | undefined;
-     const runAgentConsult = vi.fn<ConsultRunner>(async ({ requesterFinal, signal }) => {
-diff --git a/src/gateway/talk/client-gateway-control.agent-consult.test.ts b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
---- a/src/gateway/talk/client-gateway-control.agent-consult.test.ts
-+++ b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
-@@ -850,83 +850,108 @@
-     }
-   });
- 
--  it("installs steering ownership before readiness and delays backend admission", async () => {
--    const ready = deferred<void>();
--    const finish = deferred<void>();
--    const chatAbortControllers = new Map();
--    const handle = createEmbeddedRunHandle({ runId: "run-talk" });
--    const operationalRunInstance = {
--      instanceId: "instance:readiness",
--      runId: "run-talk",
--    };
--    mocks.createOperationalRunInstanceRef.mockReturnValueOnce(operationalRunInstance);
--    mocks.runEmbeddedAgentCore.mockImplementationOnce(async () => {
--      await withGatewayToolCallerIdentity(
--        {
-+  it.each(["accepted", "unsupported", "unconfirmed", "other-rejection"])(
-+    "preserves consult ownership and classifies steering admission: %s",
-+    async (outcome) => {
-+      const ready = deferred<void>();
-+      const finish = deferred<void>();
-+      const chatAbortControllers = new Map();
-+      const handle = createEmbeddedRunHandle({ runId: "run-talk" });
-+      const operationalRunInstance = {
-+        instanceId: "instance:readiness",
-+        runId: "run-talk",
-+      };
-+      mocks.createOperationalRunInstanceRef.mockReturnValueOnce(operationalRunInstance);
-+      mocks.runEmbeddedAgentCore.mockImplementationOnce(async () => {
-+        await withGatewayToolCallerIdentity(
-+          {
-+            agentId: "researcher",
-+            sessionKey: "agent:researcher:talk",
-+            operationalRunInstance,
-+            embeddedRunToolAuthorityBinding: () => ({
-+              source: "attempt",
-+              project: () => "authority",
-+              assertActive: () => {},
-+            }),
-+          },
-+          () => setActiveEmbeddedRun("session-talk", handle, "agent:researcher:talk"),
-+        );
-+        await finish.promise;
-+        clearActiveEmbeddedRun("session-talk", handle, "agent:researcher:talk");
-+        return { payloads: [] };
-+      });
-+      const runner = createTalkClientAgentConsultRunner({
-+        config,
-+        context: { chatAbortControllers, logGateway: { warn: vi.fn() } } as never,
-+        sessionTarget: {
-           agentId: "researcher",
--          sessionKey: "agent:researcher:talk",
--          operationalRunInstance,
--          embeddedRunToolAuthorityBinding: () => ({
--            source: "attempt",
--            project: () => "authority",
--            assertActive: () => {},
--          }),
-+          sessionKey: "main",
-+          canonicalKey: "agent:researcher:talk",
-+          storePath: "/tmp/sessions",
-         },
--        () => setActiveEmbeddedRun("session-talk", handle, "agent:researcher:talk"),
-+        ownerConnId: "connection-owner",
-+        getVoiceSessionId: () => "voice-session",
-+        initialItems: [],
-+        registerRun: vi.fn(),
-+        isRunCurrent: () => true,
-+      });
-+      const readiness = vi.fn(() => ready.promise);
-+      const assertCurrent = vi.fn();
-+      const run = runner.runOwnedArgs(
-+        { question: "first task" },
-+        new AbortController().signal,
-+        readiness,
-+        assertCurrent,
-       );
--      await finish.promise;
--      clearActiveEmbeddedRun("session-talk", handle, "agent:researcher:talk");
--      return { payloads: [] };
--    });
--    const runner = createTalkClientAgentConsultRunner({
--      config,
--      context: { chatAbortControllers, logGateway: { warn: vi.fn() } } as never,
--      sessionTarget: {
--        agentId: "researcher",
--        sessionKey: "main",
--        canonicalKey: "agent:researcher:talk",
--        storePath: "/tmp/sessions",
--      },
--      ownerConnId: "connection-owner",
--      getVoiceSessionId: () => "voice-session",
--      initialItems: [],
--      registerRun: vi.fn(),
--      isRunCurrent: () => true,
--    });
--    const readiness = vi.fn(() => ready.promise);
--    const assertCurrent = vi.fn();
--    const run = runner.runOwnedArgs(
--      { question: "first task" },
--      new AbortController().signal,
--      readiness,
--      assertCurrent,
--    );
--    const steer = runner.runOwnedArgs.steer;
--    if (!steer) {
--      throw new Error("owned Talk runner did not expose steering");
--    }
--    const steering = steer({ prompt: "latest task" });
--
--    try {
--      expect(readiness).toHaveBeenCalledOnce();
--      expect(assertCurrent).not.toHaveBeenCalled();
--      expect(mocks.consultRealtimeVoiceAgent).not.toHaveBeenCalled();
--      await Promise.resolve();
--      expect(mocks.controlRealtimeVoiceAgentRun).not.toHaveBeenCalled();
--      ready.resolve();
--      await steering;
--      expect(assertCurrent).toHaveBeenCalledTimes(3);
--      expect(mocks.consultRealtimeVoiceAgent).toHaveBeenCalledOnce();
--      expect(mocks.controlRealtimeVoiceAgentRun).toHaveBeenCalledOnce();
--      finish.resolve();
--      await expect(run).resolves.toEqual({ text: "done" });
--    } finally {
--      ready.resolve();
--      finish.resolve();
--      await steering.catch(() => undefined);
--      await run.catch(() => undefined);
--    }
--  });
-+      const steer = runner.runOwnedArgs.steer;
-+      if (!steer) {
-+        throw new Error("owned Talk runner did not expose steering");
-+      }
-+      if (outcome !== "accepted") {
-+        mocks.controlRealtimeVoiceAgentRun.mockResolvedValueOnce({
-+          ok: false,
-+          queued: outcome === "unconfirmed",
-+          reason:
-+            outcome === "unsupported"
-+              ? "guarded_injection_unsupported"
-+              : outcome === "unconfirmed"
-+                ? "delivery_unconfirmed"
-+                : "not_streaming",
-+          message: "Steering rejected.",
-+        });
-+      }
-+      const steering = steer({ prompt: "latest task" });
-+      const observed = steering.catch((error: unknown) => error);
-+
-+      try {
-+        expect(readiness).toHaveBeenCalledOnce();
-+        expect(assertCurrent).not.toHaveBeenCalled();
-+        expect(mocks.consultRealtimeVoiceAgent).not.toHaveBeenCalled();
-+        await Promise.resolve();
-+        expect(mocks.controlRealtimeVoiceAgentRun).not.toHaveBeenCalled();
-+        ready.resolve();
-+        const outcomeResult = await observed;
-+        if (outcome === "accepted") {
-+          expect(outcomeResult).toEqual({ text: "" });
-+        } else {
-+          expect(outcomeResult).toBeInstanceOf(Error);
-+          expect((outcomeResult as Error & { code?: string }).code).toBe(
-+            outcome === "unsupported" ? "TALK_STEERING_UNSUPPORTED" : undefined,
-+          );
-+        }
-+        expect(assertCurrent).toHaveBeenCalledTimes(3);
-+        expect(mocks.consultRealtimeVoiceAgent).toHaveBeenCalledOnce();
-+        expect(mocks.controlRealtimeVoiceAgentRun).toHaveBeenCalledOnce();
-+        finish.resolve();
-+        await expect(run).resolves.toEqual({ text: "done" });
-+      } finally {
-+        ready.resolve();
-+        finish.resolve();
-+        await steering.catch(() => undefined);
-+        await run.catch(() => undefined);
-+      }
-+    },
-+  );
- 
-   it("rechecks reusable browser ownership after yielding before backend admission", async () => {
-     let current = true;
 diff --git a/extensions/openai/realtime-quicksilver-concurrency.test.ts b/extensions/openai/realtime-quicksilver-concurrency.test.ts
 new file mode 100644
+index 00000000..7710a1e9
 --- /dev/null
 +++ b/extensions/openai/realtime-quicksilver-concurrency.test.ts
 @@ -0,0 +1,259 @@
@@ -587,3 +263,386 @@ new file mode 100644
 +    }
 +  });
 +});
+diff --git a/extensions/openai/realtime-quicksilver-delegation-controller.ts b/extensions/openai/realtime-quicksilver-delegation-controller.ts
+index 2c0b7f1c..20196797 100644
+--- a/extensions/openai/realtime-quicksilver-delegation-controller.ts
++++ b/extensions/openai/realtime-quicksilver-delegation-controller.ts
+@@ -402,15 +402,33 @@ export class OpenAIQuicksilverDelegationController {
+         try {
+           await steer({ prompt: delegation.prompt, signal: controller.signal });
+         } catch (error) {
+-          this.revokeRequesterFinal();
+           if (
+             this.stopped ||
+             controller.signal.aborted ||
++            this.consultController !== controller ||
+             readErrorName(error) === "AbortError" ||
+             extractErrorCode(error) === "ABORT_ERR"
+           ) {
++            this.revokeRequesterFinal();
+             return;
+           }
++          if (extractErrorCode(error) === "TALK_STEERING_UNSUPPORTED") {
++            // The host confirmed no input was injected. Preserve the original
++            // task and its completion owner while keeping the voice call open.
++            // Do not replay the request or report that it was queued.
++            try {
++              this.sendAppend(
++                "The additional request was not accepted. The earlier task is still running. " +
++                  "Tell the user you can keep chatting, and ask them to repeat the additional request after the earlier task finishes.",
++                "speakable",
++                delegation.id,
++              );
++              continue;
++            } catch (deliveryError) {
++              error = deliveryError;
++            }
++          }
++          this.revokeRequesterFinal();
+           const fatal = toErrorObject(error, "Realtime delegation steering failed");
+           // The queued delegation belongs to this steering attempt. Do not let the
+           // active-run finalizer relaunch it after its owner has failed.
+diff --git a/extensions/openai/realtime-quicksilver-delegation.test.ts b/extensions/openai/realtime-quicksilver-delegation.test.ts
+index c5e9e7e1..17e26326 100644
+--- a/extensions/openai/realtime-quicksilver-delegation.test.ts
++++ b/extensions/openai/realtime-quicksilver-delegation.test.ts
+@@ -462,6 +462,77 @@ describe("GPT-Live sideband protocol", () => {
+     ).toEqual([]);
+   });
+ 
++  it.each([false, true])(
++    "keeps listening and the original completion after unsupported steering: yielded=%s",
++    async (yielded) => {
++      const result = deferred<{ text: string; yielded?: true }>();
++      let appendFinal: ((text: string) => boolean) | undefined;
++      const runAgentConsult = vi.fn<ConsultRunner>(async ({ requesterFinal }) => {
++        appendFinal = requesterFinal?.append;
++        return await result.promise;
++      });
++      const steerAgentConsult = vi.fn(async () => {
++        throw Object.assign(new Error("private runtime detail"), {
++          code: "TALK_STEERING_UNSUPPORTED",
++        });
++      });
++      const onTranscript = vi.fn();
++      const { controller, socket, onFatalError } = createDelegationHarness({
++        runAgentConsult,
++        steerAgentConsult,
++        onTranscript,
++      });
++      try {
++        delegate(controller, "original", "check my calendar");
++        for (const id of ["weather", "match"]) {
++          delegate(controller, id, `also check ${id}`);
++          await vi.waitFor(() =>
++            expect(parseSent(socket)).toContainEqual(
++              expect.objectContaining({
++                delegation_item_id: id,
++                content: [{ type: "input_text", text: expect.stringContaining("not accepted") }],
++              }),
++            ),
++          );
++        }
++        expect(onFatalError).not.toHaveBeenCalled();
++        expect(runAgentConsult).toHaveBeenCalledOnce();
++        expect(runAgentConsult.mock.calls[0]?.[0].signal?.aborted).toBe(false);
++        controller.handleEvent({ kind: "transcript-done", role: "user", text: "still here" });
++        expect(onTranscript).toHaveBeenCalledWith("user", "still here", true);
++        result.resolve(yielded ? { text: "", yielded: true } : { text: "calendar result" });
++        await nextEventLoopTurn();
++        if (yielded) {
++          expect(appendFinal?.("calendar result")).toBe(true);
++          expect(appendFinal?.("duplicate")).toBe(false);
++        }
++        await vi.waitFor(() =>
++          expect(parseSent(socket)).toContainEqual(
++            expect.objectContaining({
++              delegation_item_id: "original",
++              content: [{ type: "input_text", text: "calendar result" }],
++            }),
++          ),
++        );
++        runAgentConsult.mockResolvedValueOnce({ text: "next result" });
++        delegate(controller, "next", "now check weather");
++        await vi.waitFor(() =>
++          expect(parseSent(socket)).toContainEqual(
++            expect.objectContaining({
++              delegation_item_id: "next",
++              content: [{ type: "input_text", text: "next result" }],
++            }),
++          ),
++        );
++        expect(JSON.stringify(parseSent(socket))).not.toContain("private runtime detail");
++        expect(onFatalError).not.toHaveBeenCalled();
++      } finally {
++        result.resolve({ text: "" });
++        controller.stop(new Error("test complete"));
++      }
++    },
++  );
++
+   it("drops queued work when steering fails", async () => {
+     let appendRequesterFinal: ((text: string) => boolean) | undefined;
+     const runAgentConsult = vi.fn<ConsultRunner>(async ({ requesterFinal, signal }) => {
+diff --git a/src/gateway/talk/client-agent-consult.ts b/src/gateway/talk/client-agent-consult.ts
+index dfa0c567..62a505b2 100644
+--- a/src/gateway/talk/client-agent-consult.ts
++++ b/src/gateway/talk/client-agent-consult.ts
+@@ -517,6 +517,16 @@ export function createTalkClientAgentConsultRunner(params: {
+           : undefined,
+       mode: "steer",
+     });
++    // This capability refusal happens before injection. Tell the provider that
++    // only the additional request was rejected, not the active voice session.
++    // Never classify accepted-but-unconfirmed input as safe to retry.
++    if (
++      !result.ok &&
++      result.queued === false &&
++      result.reason === "guarded_injection_unsupported"
++    ) {
++      throw Object.assign(new Error(result.message), { code: "TALK_STEERING_UNSUPPORTED" });
++    }
+     if (!result.ok || result.queued !== true || !isOwnerCurrent(owner, identity.sessionId)) {
+       throw new Error(result.message);
+     }
+diff --git a/src/gateway/talk/client-gateway-control.agent-consult.test.ts b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
+index 02a3caf0..4a8e9311 100644
+--- a/src/gateway/talk/client-gateway-control.agent-consult.test.ts
++++ b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
+@@ -1,3 +1,4 @@
++import { AsyncLocalStorage } from "node:async_hooks";
+ import { copyFileSync, renameSync } from "node:fs";
+ import path from "node:path";
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+@@ -9,8 +10,10 @@ import {
+   createEmbeddedRunHandle,
+   testing as embeddedRunsTesting,
+ } from "../../agents/embedded-agent-runner/runs.test-support.js";
++import { prepareContextEngineSubagentSpawn } from "../../agents/subagents/spawn/subagent-spawn-context.js";
+ import { withGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
+ import type { ReplyToolAuthorityOverlay } from "../../auto-reply/reply/reply-run-registry.contracts.js";
++import { AsyncWorkScope } from "../../shared/async-work-scope.js";
+ import { closeOpenClawAgentDatabasesAsync } from "../../state/openclaw-agent-db-lifecycle.js";
+ import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
+ import { captureClientVoiceSessionSource } from "../../talk/client-voice-session-source.js";
+@@ -57,6 +60,51 @@ describe("Talk client agent consult admission", () => {
+     embeddedRunsTesting.resetActiveEmbeddedRuns();
+   });
+ 
++  it.each(["before-consult", "during-consult"] as const)(
++    "prepares a reader after the offer request closes (%s)",
++    async (closedAt) => {
++      const request = new AsyncWorkScope();
++      const caller = new AsyncLocalStorage<string>();
++      const callback = caller.run("authenticated-owner", () =>
++        request.run(() => AsyncLocalStorage.snapshot()),
++      );
++      const entered = deferred<void>();
++      const proceed = deferred<void>();
++      mocks.runEmbeddedAgentCore.mockImplementationOnce(async () => {
++        entered.resolve();
++        await proceed.promise;
++        expect(caller.getStore()).toBe("authenticated-owner");
++        const result = await prepareContextEngineSubagentSpawn({
++          cfg: {},
++          context: { status: "ok", mode: "isolated" },
++          requesterInternalKey: "agent:researcher:talk",
++          childSessionKey: "agent:reader:subagent:voice-test",
++          runTimeoutSeconds: 30,
++        });
++        if (result.status === "error") {
++          throw new Error(result.error);
++        }
++        if (result.status === "ok") {
++          await result.preparation.dispose();
++        }
++        return { payloads: [] };
++      });
++      if (closedAt === "before-consult") {
++        await request.drain();
++      }
++      const run = callback(() => createRunner().runPrompt({ prompt: "read my calendar" }));
++      try {
++        await entered.promise;
++        await request.drain();
++        proceed.resolve();
++        await expect(run).resolves.toEqual({ text: "done" });
++      } finally {
++        proceed.resolve();
++        await run.catch(() => undefined);
++      }
++    },
++  );
++
+   it("waits for backend publication and projects its registered caller authority", async () => {
+     const announced = deferred<void>();
+     const publish = deferred<void>();
+@@ -525,75 +573,100 @@ describe("Talk client agent consult admission", () => {
+     }
+   });
+ 
+-  it("installs steering ownership before readiness and delays backend admission", async () => {
+-    const ready = deferred<void>();
+-    const finish = deferred<void>();
+-    const chatAbortControllers = new Map();
+-    const handle = createEmbeddedRunHandle({ runId: "run-talk" });
+-    const operationalRunInstance = {
+-      instanceId: "instance:readiness",
+-      runId: "run-talk",
+-    };
+-    mocks.createOperationalRunInstanceRef.mockReturnValueOnce(operationalRunInstance);
+-    mocks.runEmbeddedAgentCore.mockImplementationOnce(async () => {
+-      const project = (_overlay: ReplyToolAuthorityOverlay) => "authority";
+-      await withGatewayToolCallerIdentity(
+-        {
+-          agentId: "researcher",
+-          sessionKey: "agent:researcher:talk",
+-          operationalRunInstance,
+-          embeddedRunToolAuthorityBinding: () => ({
+-            source: "attempt",
+-            project,
+-            projectAsync: async (overlay) => project(overlay),
+-            assertActive: () => {},
+-          }),
+-        },
+-        () => setActiveEmbeddedRun("session-talk", handle, "agent:researcher:talk"),
++  it.each(["accepted", "unsupported", "unconfirmed", "other-rejection"] as const)(
++    "preserves consult ownership and classifies steering admission: %s",
++    async (outcome) => {
++      const ready = deferred<void>();
++      const finish = deferred<void>();
++      const chatAbortControllers = new Map();
++      const handle = createEmbeddedRunHandle({ runId: "run-talk" });
++      const operationalRunInstance = {
++        instanceId: "instance:readiness",
++        runId: "run-talk",
++      };
++      mocks.createOperationalRunInstanceRef.mockReturnValueOnce(operationalRunInstance);
++      mocks.runEmbeddedAgentCore.mockImplementationOnce(async () => {
++        const project = (_overlay: ReplyToolAuthorityOverlay) => "authority";
++        await withGatewayToolCallerIdentity(
++          {
++            agentId: "researcher",
++            sessionKey: "agent:researcher:talk",
++            operationalRunInstance,
++            embeddedRunToolAuthorityBinding: () => ({
++              source: "attempt",
++              project,
++              projectAsync: async (overlay) => project(overlay),
++              assertActive: () => {},
++            }),
++          },
++          () => setActiveEmbeddedRun("session-talk", handle, "agent:researcher:talk"),
++        );
++        await finish.promise;
++        clearActiveEmbeddedRun("session-talk", handle, "agent:researcher:talk");
++        return { payloads: [] };
++      });
++      const runner = createConsultRunner({
++        context: { chatAbortControllers, logGateway: { warn: vi.fn() } } as never,
++        ownerConnId: "connection-owner",
++      });
++      const readiness = vi.fn(() => ready.promise);
++      const assertCurrent = vi.fn();
++      const run = runner.runOwnedArgs(
++        { question: "first task" },
++        new AbortController().signal,
++        readiness,
++        assertCurrent,
+       );
+-      await finish.promise;
+-      clearActiveEmbeddedRun("session-talk", handle, "agent:researcher:talk");
+-      return { payloads: [] };
+-    });
+-    const runner = createConsultRunner({
+-      context: { chatAbortControllers, logGateway: { warn: vi.fn() } } as never,
+-      ownerConnId: "connection-owner",
+-    });
+-    const readiness = vi.fn(() => ready.promise);
+-    const assertCurrent = vi.fn();
+-    const run = runner.runOwnedArgs(
+-      { question: "first task" },
+-      new AbortController().signal,
+-      readiness,
+-      assertCurrent,
+-    );
+-    const steer = runner.runOwnedArgs.steer;
+-    if (!steer) {
+-      throw new Error("owned Talk runner did not expose steering");
+-    }
+-    const steering = steer({ prompt: "latest task" });
+-
+-    try {
+-      expect(readiness).toHaveBeenCalledOnce();
+-      expect(assertCurrent).not.toHaveBeenCalled();
+-      expect(mocks.consultRealtimeVoiceAgent).not.toHaveBeenCalled();
+-      await Promise.resolve();
+-      expect(mocks.controlRealtimeVoiceAgentRun).not.toHaveBeenCalled();
+-      ready.resolve();
+-      await steering;
+-      // Voice registration rechecks live ownership before and after its worker wait.
+-      expect(assertCurrent).toHaveBeenCalledTimes(5);
+-      expect(mocks.consultRealtimeVoiceAgent).toHaveBeenCalledOnce();
+-      expect(mocks.controlRealtimeVoiceAgentRun).toHaveBeenCalledOnce();
+-      finish.resolve();
+-      await expect(run).resolves.toEqual({ text: "done" });
+-    } finally {
+-      ready.resolve();
+-      finish.resolve();
+-      await steering.catch(() => undefined);
+-      await run.catch(() => undefined);
+-    }
+-  });
++      const steer = runner.runOwnedArgs.steer;
++      if (!steer) {
++        throw new Error("owned Talk runner did not expose steering");
++      }
++      if (outcome !== "accepted") {
++        mocks.controlRealtimeVoiceAgentRun.mockResolvedValueOnce({
++          ok: false,
++          queued: outcome === "unconfirmed",
++          reason:
++            outcome === "unsupported"
++              ? "guarded_injection_unsupported"
++              : outcome === "unconfirmed"
++                ? "delivery_unconfirmed"
++                : "not_streaming",
++          message: "Steering rejected.",
++        });
++      }
++      const steering = steer({ prompt: "latest task" });
++      const observed = steering.catch((error: unknown) => error);
++
++      try {
++        expect(readiness).toHaveBeenCalledOnce();
++        expect(assertCurrent).not.toHaveBeenCalled();
++        expect(mocks.consultRealtimeVoiceAgent).not.toHaveBeenCalled();
++        await Promise.resolve();
++        expect(mocks.controlRealtimeVoiceAgentRun).not.toHaveBeenCalled();
++        ready.resolve();
++        const outcomeResult = await observed;
++        if (outcome === "accepted") {
++          expect(outcomeResult).toEqual({ text: "" });
++        } else {
++          expect(outcomeResult).toBeInstanceOf(Error);
++          expect((outcomeResult as Error & { code?: string }).code).toBe(
++            outcome === "unsupported" ? "TALK_STEERING_UNSUPPORTED" : undefined,
++          );
++        }
++        // Voice registration rechecks live ownership before and after its worker wait.
++        expect(assertCurrent).toHaveBeenCalledTimes(5);
++        expect(mocks.consultRealtimeVoiceAgent).toHaveBeenCalledOnce();
++        expect(mocks.controlRealtimeVoiceAgentRun).toHaveBeenCalledOnce();
++        finish.resolve();
++        await expect(run).resolves.toEqual({ text: "done" });
++      } finally {
++        ready.resolve();
++        finish.resolve();
++        await steering.catch(() => undefined);
++        await run.catch(() => undefined);
++      }
++    },
++  );
+ 
+   it.each(["state-switch", "file-replaced"] as const)(
+     "keeps browser consult on its published physical source (%s)",
