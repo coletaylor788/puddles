@@ -56,8 +56,11 @@ checks. The production submission stopped before transfer when the old combined
 native regression process exhausted its JavaScript heap. Its source queue and
 cleanup are closed. The separate OpenClaw upgrade has since landed. Both branches
 now consume its native per-project test runner and supported sandboxed MCP tools.
-The superseded batching implementation is removed. Fresh qualification and the
-production lifecycle remain required.
+The superseded batching implementation is removed. The refreshed DEV run passed
+the container checks, then exposed a missing Docker binding in provider
+qualification. Its target and source cleanup are closed. The
+repair passes that frozen binding explicitly; focused regressions pass. Fresh DEV
+and the production lifecycle remain required.
 
 ## Agent section
 
@@ -163,6 +166,10 @@ preserves that policy, verifies the advertised tool surface, and does not add
 shell access to retain an obsolete probe. Real subscription navigation, eval and
 authentication-refusal checks remain required. Both fixtures use the maintained
 sandbox/environment helpers, the exact packaged CLI and verified Docker cleanup.
+Pass the frozen target Docker executable, endpoint, image and user explicitly to
+the in-process browser qualifier. Missing bindings fail before provider startup;
+ambient process settings cannot select a different Docker target. Existing child
+qualifiers retain their declared environment inputs.
 
 The relocated plugin test now closes the native daemon with stock `close --all`
 before removing its synthetic state. It asserts no socket or PID file survives.
