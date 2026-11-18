@@ -320,28 +320,40 @@ repair was implemented. The requester subsequently approved stock backup
 behavior with accepted degradation. Retire backup-only overlays and parity
 requirements while preserving primary Claude and all shared access controls.
 
-**Progress:** The plugin inventory repair is reviewed and passes its installed
-regression. DEV then passed real Claude subscription qualification but failed
-cleanup because Docker Desktop woke its shared VM after the test gateway started.
-The cleanup check incorrectly required the VM to be older than every gateway.
-CI completed teardown naturally and source cleanup is closed. The reviewed repair
-recognizes the shared VM through its exact identity, backing files and container
-mount checks, without depending on start order. It retains all real-consumer
-refusals and never stops Docker or production. Fresh build and DEV are required.
+**Progress:** DEV passed the plugin inventory and real Claude subscription checks,
+and completed cleanup with the corrected shared Docker VM recognition. Production
+CI then stopped in the application suite before touching production. A communication
+fixture mistook arrival of a delegated model request for completion of its native
+reply. The next heartbeat correctly returned busy, which the fixture rejected.
+The test now waits within its existing deadline only for that explicit native busy
+result, requires a heartbeat to run, and retains exact action and reply counts.
+A held synthetic reply exercises the race. Runtime and upstream behavior stay
+unchanged. Fresh review, build and DEV qualify this fixture correction before PROD.
 Phase 2 stays paused until Phase 1 acceptance, exact merge and cleanup.
 
 ## Agent section
 
 ### Sources and findings
 
-#### Current fixture cleanup correction
+#### Current heartbeat fixture correction
 
-Docker Desktop can wake its shared VM after the test gateway starts. The fixture
-cleanup check must recognize that service through its exact process identity,
-backing files and container mounts, without assuming it started first. It still
-rejects real fixture consumers, unknown processes and running or stopped containers
-that mount the fixture. The shared VM is never stopped. Eleven focused cleanup
-tests and retained review cover the correction; fresh installed DEV remains required.
+The scripted model increments its follow-up counter before OpenClaw completes the
+reply operation. Native heartbeat admission may therefore return exactly
+`skipped/requests-in-flight` even after that counter advances. The fixture retries
+only this successful tool response within the original 60-second request budget.
+Each HTTP request receives the remaining deadline. Gateway exit, model failure,
+other skip reasons and unsuccessful responses fail immediately. A busy result must
+leave the heartbeat script state unchanged. Cycle initialization occurs once.
+
+The installed candidate regression holds the final peer response until heartbeat
+five observes busy admission, then releases it. Cleanup also releases a held reply.
+The regression requires at least one busy result and verifies all five heartbeats and the exact existing action/reply
+counts. This changes test synchronization only; no runtime or OpenClaw patch changes.
+The retained reviewer cleared the deterministic hold and retry. Twelve focused
+helper checks passed in 411ms. All three native candidate checks passed in 60.67s,
+including the forced busy response, restart recovery and interrupted cleanup.
+The previous shared Docker VM cleanup correction passed installed DEV and teardown.
+It still rejects real consumers and never stops the shared service.
 
 #### Plugin inventory qualification
 

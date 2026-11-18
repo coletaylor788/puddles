@@ -31,6 +31,27 @@ export async function communicationJsonRequest(url, init, timeoutMs = 60_000) {
   return { httpStatus: response.status, body: await response.json() };
 }
 
+// A model response can arrive before OpenClaw finishes the native reply operation.
+// Keep this fixture's heartbeat pending while that operation owns the session.
+// Other skip reasons and failures are not successful heartbeat execution.
+export async function runCommunicationHeartbeat(invoke, { timeoutMs = 60_000, retryMs = 100, check = () => {} } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let value;
+  while (Date.now() < deadline) {
+    check();
+    value = await invoke(Math.max(1, deadline - Date.now()));
+    check();
+    assert.equal(value.httpStatus, 200, JSON.stringify(value));
+    assert.equal(value.body.ok, true, JSON.stringify(value));
+    assert.ok(!value.body.result?.isError, JSON.stringify(value));
+    const details = value.body.result?.details;
+    if (details?.status === 'ran') return value;
+    assert.deepEqual(details, { status: 'skipped', reason: 'requests-in-flight' }, JSON.stringify(value));
+    await delay(Math.max(0, Math.min(retryMs, deadline - Date.now())));
+  }
+  throw new Error(`Native heartbeat remained busy for ${timeoutMs}ms: ${JSON.stringify(value)}`);
+}
+
 /** Real gateway and tool execution, with scripted models and recording-only account adapters. */
 export async function communicationFixture(installedDir, pluginDir, root, options = {}) {
   mkdirSync(root, { recursive: true, mode: 0o700 }); root = realpathSync(root);
@@ -72,7 +93,8 @@ export async function communicationFixture(installedDir, pluginDir, root, option
   const path = `memory/correspondence/${sender}/2026-09-26.md`;
   const pendingPath = `memory/correspondence/${sender}/2026-09-27.md`;
   const mainWorkspace = join(root, 'main'), readerWorkspace = join(root, 'reader'), workspace = join(mainWorkspace, 'communication-watcher');
-  let child, log, modelError, cycle = 0, step = 0, checkedPending = false, readerCalls = 0, mainCalls = 0, followups = 0, announcements = 0;
+  let child, log, modelError, cycle = 0, step = 0, checkedPending = false, readerCalls = 0, mainCalls = 0, followups = 0, announcements = 0, busyHeartbeats = 0;
+  let releaseFollowup;
   const call = (name, args) => ({ name, args });
   const server = createServer(async (req, res) => {
     try {
@@ -96,6 +118,9 @@ export async function communicationFixture(installedDir, pluginDir, root, option
         else { const data = parseResult(last); assert.ok(Array.isArray(data.items), JSON.stringify(data)); text = data.items.length ? 'Dinner was proposed by a known contact. Other items are routine or blocked.' : 'No pending messages.'; }
       } else if (offered.includes('communication_report') && request.messages.some(m => m.role === 'user' && JSON.stringify(m.content).includes('Please clarify the tentative status.'))) {
         followups++; text = 'REPLY_SKIP';
+        // Hold the final synthetic peer response until heartbeat five observes
+        // native busy admission. This reproduces the race without timing luck.
+        if (options.holdFollowup && followups === 2) await new Promise(resolve => { releaseFollowup = resolve; });
       } else if (offered.includes('communication_report')) {
         assert.ok(!offered.includes('sessions_send') && !offered.includes('write') && !offered.includes('read'));
         if (!checkedPending) { checkedPending = true; tools = [call('communication_memory_pending', {})]; }
@@ -173,6 +198,7 @@ export async function communicationFixture(installedDir, pluginDir, root, option
   };
   let cleanupPromise;
   const cleanup = () => cleanupPromise ??= (async () => {
+    releaseFollowup?.(); releaseFollowup = undefined;
     writeFileSync(join(root, 'model-requests.json'), JSON.stringify(requests, null, 2));
     await stop(); if (log !== undefined) { closeSync(log); log = undefined; }
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
@@ -242,15 +268,27 @@ export async function communicationFixture(installedDir, pluginDir, root, option
       }
       throw new Error('Gateway startup timed out');
     };
-    const invoke = async (tool, args, sessionKey = 'agent:communication-watcher:fixture') => {
+    const invoke = async (tool, args, sessionKey = 'agent:communication-watcher:fixture', timeoutMs = 60_000) => {
       progress(`heartbeat-${cycle}:${tool}`);
-      return communicationJsonRequest(`http://127.0.0.1:${port}/tools/invoke`, { method: 'POST', headers: { authorization: 'Bearer synthetic-communication-token', 'Content-Type': 'application/json' }, body: JSON.stringify({ tool, args, sessionKey }) });
+      return communicationJsonRequest(`http://127.0.0.1:${port}/tools/invoke`, { method: 'POST', headers: { authorization: 'Bearer synthetic-communication-token', 'Content-Type': 'application/json' }, body: JSON.stringify({ tool, args, sessionKey }) }, timeoutMs);
     };
     const heartbeat = async () => {
       cycle++; step = 0; checkedPending = false;
-      const value = await invoke('fixture_heartbeat', {}, 'agent:main:fixture-driver');
-      if (modelError) throw modelError;
-      assert.equal(value.body.result?.details?.status, 'ran', JSON.stringify(value));
+      await runCommunicationHeartbeat(async timeoutMs => {
+        const scriptState = { step, checkedPending };
+        const value = await invoke('fixture_heartbeat', {}, 'agent:main:fixture-driver', timeoutMs);
+        if (value.body.result?.details?.reason === 'requests-in-flight') {
+          assert.deepEqual({ step, checkedPending }, scriptState, 'a skipped heartbeat must not consume its script');
+          busyHeartbeats++;
+          if (cycle === 5) { releaseFollowup?.(); releaseFollowup = undefined; }
+        }
+        return value;
+      }, {
+        check() {
+          assertCommunicationGatewayRunning(child, `heartbeat-${cycle}`);
+          if (modelError) throw modelError;
+        },
+      });
       progress(`heartbeat-${cycle}:complete`);
       await delay(500);
     };
@@ -324,7 +362,7 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     assert.ok(!JSON.stringify(requests.filter(r => r.tools?.some(t => t.function?.name === 'communication_report'))).includes('CALENDAR_READER_ONLY'), 'full calendar content stays with the reader');
     const visible = JSON.stringify(requests);
     assert.ok(!visible.includes('SYNTHETIC_PRIVATE_VALUE') && !visible.includes('INJECT_FIXTURE'), 'raw source text must not reach any agent');
-    const result = { passed: true, heartbeatCycles: cycle, mainCalls, readerCalls, followups, nativeProvenance: true, recoveryWithoutDuplicate: true, rawToolsDenied: true, ruleRefresh: true, pendingReportRecovery: true, oneReportPerHeartbeat: true, readOnlyMounts: options.docker === true, detachedRepliesValidated: supportsDetachedReplies };
+    const result = { passed: true, heartbeatCycles: cycle, busyHeartbeats, mainCalls, readerCalls, followups, nativeProvenance: true, recoveryWithoutDuplicate: true, rawToolsDenied: true, ruleRefresh: true, pendingReportRecovery: true, oneReportPerHeartbeat: true, readOnlyMounts: options.docker === true, detachedRepliesValidated: supportsDetachedReplies };
     writeFileSync(join(root, 'result.json'), JSON.stringify(result)); return result;
   } catch (error) {
     throw new Error(`Communication fixture failed during ${stage} after ${Date.now() - started}ms: ${error.message}`, { cause: error });
@@ -335,5 +373,5 @@ export async function communicationFixture(installedDir, pluginDir, root, option
 if (process.argv[1] === new URL(import.meta.url).pathname) {
   installSignalHandlers({ cleanup: cleanupNativeFixtures });
   const [installedDir, pluginDir, root] = process.argv.slice(2, 5).map(path => resolve(path));
-  console.log(JSON.stringify(await communicationFixture(installedDir, pluginDir, root, { docker: process.argv.includes("--docker"), interrupt: process.argv.includes("--interrupt") })));
+  console.log(JSON.stringify(await communicationFixture(installedDir, pluginDir, root, { docker: process.argv.includes("--docker"), interrupt: process.argv.includes("--interrupt"), holdFollowup: process.argv.includes("--hold-followup") })));
 }

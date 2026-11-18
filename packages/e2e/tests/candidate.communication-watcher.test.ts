@@ -136,7 +136,9 @@ it("runs real heartbeat intake, guarded actions, native handoff, and restart rec
   const logPath = join(root, "fixture.log");
   let output;
   try {
-    output = await runCommand(process.execPath, [join(repo, "packages/e2e/fixtures/communication.mjs"), candidate!, plugin, root], {
+    // Keep a native peer reply in flight after its model request arrives. The next
+    // heartbeat must wait for native admission, without duplicating any actions.
+    output = await runCommand(process.execPath, [join(repo, "packages/e2e/fixtures/communication.mjs"), candidate!, plugin, root, "--hold-followup"], {
       capture: true, logPath, timeoutMs: 180_000,
     });
   } catch (error) {
@@ -148,6 +150,7 @@ it("runs real heartbeat intake, guarded actions, native handoff, and restart rec
   if (typeof output !== "string") throw new Error("Missing communication fixture output");
   const result = JSON.parse(output.trim().split("\n").at(-1)!);
   expect(result).toMatchObject({ passed: true, heartbeatCycles: 5, nativeProvenance: true, recoveryWithoutDuplicate: true, pendingReportRecovery: true, oneReportPerHeartbeat: true });
+  expect(result.busyHeartbeats).toBeGreaterThan(0);
 }, 210_000); // Same 180s execution limit, plus owned-process teardown.
 
 it("cleans its detached gateway when interrupted during a pending main reply", () => {
