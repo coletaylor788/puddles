@@ -66,7 +66,12 @@ Focused regressions, fresh DEV, the full application suite and TEST passed.
 Production preparation then rejected an incorrectly captured settings digest.
 Recovery and cleanup are complete. The capture now hashes the settings file's
 bytes, matching the existing guard. A regression rejects a parsed-JSON digest for
-the same file. Fresh release validation remains required.
+the same file. The corrected candidate passed DEV. Its production suite then
+failed during cleanup of an installed reader fixture, before deployment. A
+short-lived worker can disappear between separate membership and ancestry
+snapshots. The helper now uses one snapshot for both checks and keeps the existing
+ownership rules. Focused regressions and both installed reader fixtures pass,
+including teardown. A fresh release remains required.
 
 ## Agent section
 
@@ -197,6 +202,19 @@ installed settings. Recovery restored the previous release and closed cleanup.
 Correct the capture to hash the file bytes. Keep the guard unchanged. The committed
 maintenance regression rejects the canonical digest for a formatted settings file,
 then accepts its exact file hash while preserving the synthetic vault and profile.
+
+The next candidate passed DEV but stopped in the full application suite before
+transfer. The reader fixture reached acceptance, then cleanup rejected a worker
+that could no longer be proved through a second process-table snapshot. A
+deterministic reproduction triggered the same assertion when a worker exited
+between those observations. Derive current group membership and ancestry from one
+snapshot. Keep captured PID identities, owner checks, the original leader and
+parent chain for new members, and waiting for detached descendants. All 19 focused
+cleanup tests pass, including the new reproduction, real detached and zombie
+processes, foreign group members and reused PIDs. No OpenClaw patch is involved.
+The affected package typecheck passes. Both installed reader fixtures pass in
+247 seconds and remove their synthetic state after owned processes close.
+Retained review independently passed all 19 cleanup tests and found no issues.
 
 ### Rollout and rollback
 

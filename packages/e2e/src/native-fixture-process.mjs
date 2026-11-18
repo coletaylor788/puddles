@@ -74,7 +74,10 @@ export async function stopFixtureProcess(handle, {
   handle.descendantIdentities = descendantIdentities;
   const owned = new Map(members.map(row => [row.pid, row]));
   const currentOwned = () => {
-    const current = readGroup(child.pid);
+    // Group membership and ancestry must come from the same observation. A
+    // short-lived worker can disappear between two ps calls during shutdown.
+    const fresh = readProcesses();
+    const current = fresh.filter(row => row.group === child.pid).map(processIdentity);
     for (const row of current) {
       if (owned.has(row.pid)) assert.deepEqual(row, owned.get(row.pid), "Fixture process group identity changed");
     }
@@ -85,7 +88,6 @@ export async function stopFixtureProcess(handle, {
       // member or a replacement for a PID whose identity we already recorded.
       assert.deepEqual(current.find(row => row.pid === child.pid), identity,
         "New fixture descendant requires its original group leader");
-      const fresh = readProcesses();
       assert.deepEqual(processIdentity(fresh.find(row => row.pid === child.pid) ?? {}), identity,
         "Fixture process identity changed before descendant admission");
       const admitted = new Set([child.pid]);
