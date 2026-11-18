@@ -62,3 +62,15 @@ test('tooling teardown removes only its job output and temporary package manager
   assert.equal(readFileSync(join(workspace,'packages/release/source.mjs'),'utf8'),'preserve');
   assert.equal(readFileSync(join(temp,'foreign'),'utf8'),'preserve');
 });
+
+test('tooling bootstrap and lockfile use the package manager selected by the package', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const version = manifest.packageManager.match(/^pnpm@(\d+\.\d+\.\d+)$/)?.[1];
+  assert.ok(version, 'Release tool must pin an exact pnpm version');
+  const bootstrap = parse('release.yml').jobs.release.steps.find(step => step.name === 'Install pinned package manager').run;
+  assert.ok(bootstrap.includes('pnpm@' + version));
+  assert.ok(bootstrap.includes('--version)" = ' + version));
+  const lock = JSON.parse(execFileSync('/usr/bin/ruby', ['-rpsych', '-rjson', '-e',
+    'puts JSON.generate(Psych.load_file(ARGV[0]))', fileURLToPath(new URL('../pnpm-lock.yaml', import.meta.url))], {encoding: 'utf8'}));
+  assert.deepEqual(lock.importers['.'].packageManagerDependencies.pnpm, {specifier: version, version});
+});
