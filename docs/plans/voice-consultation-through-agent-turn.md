@@ -320,21 +320,38 @@ repair was implemented. The requester subsequently approved stock backup
 behavior with accepted degradation. Retire backup-only overlays and parity
 requirements while preserving primary Claude and all shared access controls.
 
-**Progress:** The refreshed candidate passed DEV, including the early predecessor
-checks. Its production submission stopped in the local installed tests before
-any target deployment. The Gmail discovery fixture closed its input while the
-packaged MCP server could still be answering. The fixture now uses the packaged
-MCP client to finish initialization and discovery before closing. The real package,
-delayed-response and error cases pass, as do all six installed plugin checks.
-Installed groups now retain full logs and include named, bounded diagnostics in
-the final failure. Production acceptance and fresh CI qualification remain open.
-Phase 2 stays paused until Phase 1 acceptance, exact merge and eligible cleanup.
+**Progress:** The latest candidate passed DEV, the full application suite and TEST.
+Production installation then failed when native Doctor loaded FaceTime's raw
+TypeScript from the npm installation directory. Node refuses that file format
+under `node_modules`. CI recovered the previous runtime and closed the transaction.
+The repair uses upstream's package compiler and native explicit plugin selection
+so both the entrypoint and Doctor contract resolve to compiled JavaScript. No
+OpenClaw loader patch or FaceTime behavior change is added. The offline installed
+regression now uses an npm directory, enables synthetic FaceTime configuration,
+and verifies the exact selected entry and contract. Fresh build and CI remain
+required. Phase 2 stays paused until Phase 1 acceptance, exact merge and cleanup.
 
 ## Agent section
 
 ### Sources and findings
 
-#### Current qualification repair
+#### Current FaceTime packaging repair
+
+The prior candidate passed the complete source and installed suites and TEST,
+then failed native Doctor after the production copy. Source-only FaceTime files
+loaded in a checkout but not beneath npm's `node_modules` directory. Compile with
+the target upstream package builder and use its generated runtime manifest.
+Explicit native plugin selection preserves bundled provenance while selecting
+package-local compiled entrypoints and Doctor contracts. Keep the helper,
+resources, frozen dependencies, owner configuration and realtime mode unchanged.
+
+The synthetic registered-service fixture now mirrors the npm path, enables only
+FaceTime and rejects its load warnings. It must retain one enabled registry entry
+whose source is compiled JavaScript and whose Doctor contract hash matches the
+compiled file. Keep its database, skill-draft, service and runtime-preservation
+checks. This proves package loading, not physical calling or Phase 2 acceptance.
+
+#### Previous qualification repair
 
 The previous full application suite and TEST passed. Its production preparation
 caught an exact service-launcher fingerprint changed by a reviewed CI activation.
