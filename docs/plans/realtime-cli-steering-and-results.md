@@ -134,9 +134,14 @@ upstream-based Talk repair and extension-only FaceTime adaptation through CI,
 source merge and eligible cleanup. No new FaceTime Gateway entrypoint is allowed.
 
 The extension-only FaceTime client is implemented and source-reviewed. Focused
-attachment and shutdown regressions pass. The retained patches compose cleanly on 11.5. Combined core and extension
-typechecks and focused fixture checks pass; runtime qualification is in progress. No Phase 2 candidate has
-been submitted to CI; production is unchanged.
+attachment and shutdown regressions, composition, and core and extension type
+checks pass. Two DEV attempts failed during startup; both transactions and their
+cleanup have closed. The recording fixture now permits the native broker's
+startup sequence. Full local startup then exposed a lost ownership result in
+the retained local-service lifecycle patch's 11.5 port. Restore that existing
+contract, review and test it, and require full local readiness before another
+DEV submission. Production remains on Phase 1. Live subscription, realtime and
+production acceptance for Phase 2 are still pending.
 
 ## Agent section
 
@@ -146,6 +151,25 @@ Production-approved implementation. Public base `fc295c9e8a0c2545181c62809783534
 Compared OpenClaw 11.4 `d843d6af39a42cd3c30084edbeabeece732fd93a` with 11.5
 `e13cf15ece9bbd969b7362927c315362c90c97ff`. Replaces the deferred Phase 2 outline
 in [the upgrade plan](voice-consultation-through-agent-turn.md).
+
+### DEV startup repair checkpoint
+
+DEV runs `gh-44479246590-1` and `gh-44483099167-1` failed before installed
+acceptance. Both target receipts are terminal with `phase=complete` and no child;
+the corresponding source queues and cleanup are closed. Do not retry their
+unchanged candidates.
+
+The native resource broker retries a missing socket while its listener starts.
+The recording fixture must allow that attempt beneath the validated owned
+broker directory, rather than throw synchronously. Existing invalid socket
+leaves and unrelated network access remain denied. Focused fixture checks pass.
+
+Full local startup with the declared model assets then reaches memory warmup,
+where the retained service lease lacks its ownership result. Correct that
+existing lifecycle patch without replacing native startup or credential checks.
+Review and run its registered regressions, rebuild, and require local readiness
+and process closure before submitting the successor. This local proof does not
+replace DEV, subscription, realtime, TEST or PROD acceptance.
 
 ### Scope and acceptance criteria
 
