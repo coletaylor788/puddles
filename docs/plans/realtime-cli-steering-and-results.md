@@ -124,6 +124,56 @@ permissions, sandboxing, stored sessions and ordinary text behavior intact.
 Use deterministic recordings plus real subscription CLI and voice qualification;
 report physical device acceptance separately.
 
+#### Proposed extension: sandboxed delegated CLI admission
+
+**Approval: Proposed.** This is a separate extension to the existing
+[CLI sandbox handoff](../openclaw-setup/patches/cli-sandbox-handoff.md), not part
+of the approved routing repair. Implementation requires requester approval.
+
+The installed voice path now completes the steered foreground command. Its next
+research child is rejected by native sandboxed CLI admission. That guard also
+applies to ordinary text chat, existed in 11.4, and remains in 11.5 and 11.6.
+The current handoff patch deliberately preserves it. Updating to 11.6 or changing
+the fixture cannot establish the requested delegated CLI behavior.
+
+Propose admitting only a trusted bundled Claude backend whose file and shell
+effects use the existing MCP tools and child-owned Docker sandbox. The CLI stays
+on the host for account access and inference, as it does for the supported main
+session. Exact tool-selection fields alone are not proof of containment.
+
+```mermaid
+flowchart TD
+  C[Chat or voice requests a child] --> A[Native child admission and policy]
+  A --> E[Trusted bundled CLI eligible for mediated tools]
+  E --> G[Prepare child-owned Docker lease and MCP grant]
+  G --> V[Validate final native tools and current authority]
+  V --> L[Launch host CLI for login and inference]
+  L --> M[File and shell effects through MCP and Docker]
+  V -->|Missing or changed boundary| X[Reject before launch]
+```
+
+At child creation, retain native requester, agent, model, workspace and sandbox
+policy checks. The narrow backend eligibility decision must not authorize a
+later launch by itself. Immediately before execution, verify that final native
+CLI tools cannot perform host file or shell operations and that the current
+child owns the required Docker lease and invocation grant. Use the existing
+prepared workspace and grant lifecycle, not a parent grant or a generic bypass
+flag. Missing Docker, lost authority or unsupported tool settings must fail.
+
+Repeat the admission checks for resumed work, fallback, runtime changes and
+configuration changes. Unsupported CLI backends and host fallback remain denied.
+Native child coordination, steering, result delivery and Stop remain unchanged.
+The proposal applies to child requests from both ordinary chat and voice. Cron
+admission and stock Copilot behavior remain unchanged.
+
+Before shipping, prove hidden and visible child creation, resume and fallback,
+then refusal for missing Docker, native-tool overrides, revoked grants and any
+unmediated CLI file or shell path. Verify workspace confinement, exact tool
+selection, child cleanup and ordinary main-session behavior. Finally rerun the
+real CLI Talk scenario through reader yield and proactive completion. The
+current failure is evidence for this proposal, not proof that the extension is
+implemented or safe to enable.
+
 ### Status
 
 **Approval:** Production approved. **Approval reference:** On 2026-11-18 the
@@ -133,15 +183,16 @@ implement and ship.” This approves the combined 11.5 upgrade, four removals,
 upstream-based Talk repair and extension-only FaceTime adaptation through CI,
 source merge and eligible cleanup. No new FaceTime Gateway entrypoint is allowed.
 
-The extension-only FaceTime client is implemented and source-reviewed. Focused
-attachment and shutdown regressions, composition, and core and extension type
-checks pass. Two DEV attempts failed during startup; both transactions and their
-cleanup have closed. The recording fixture now permits the native broker's
-startup sequence. Full local startup then exposed a lost ownership result in
-the retained local-service lifecycle patch's 11.5 port. Restore that existing
-contract, review and test it, and require full local readiness before another
-DEV submission. Production remains on Phase 1. Live subscription, realtime and
-production acceptance for Phase 2 are still pending.
+The approved implementation is source-reviewed. The latest DEV run passed the
+installed, subscription and boundary checks, and its real Talk transcript proves
+the steered command completed successfully. Native admission then rejected the
+sandboxed reader child. The failed run and source cleanup are closed. Production
+remains on Phase 1; full Talk, TEST, PROD and physical call acceptance are open.
+
+**Additional admission scope: Proposed.** The extension above changes a native
+authority decision that the existing handoff explicitly preserves. It is not
+authorized by the earlier shipping approval. No admission implementation,
+configuration change or new candidate is included in this documentation update.
 
 ## Agent section
 
@@ -170,6 +221,26 @@ existing lifecycle patch without replacing native startup or credential checks.
 Review and run its registered regressions, rebuild, and require local readiness
 and process closure before submitting the successor. This local proof does not
 replace DEV, subscription, realtime, TEST or PROD acceptance.
+
+### Delegated CLI admission checkpoint
+
+DEV run `gh-44614428420-1` closed with a failed application result and complete
+cleanup. The canonical transcript records the main command's successful
+`steer_DONE` result, followed by native refusal of the reader child. Four native
+sandboxed-child admission regressions pass, confirming the refusal is deliberate.
+This is separate from the earlier fixture startup and steering-order repairs.
+
+The checked 11.5 and 11.6 file
+`src/agents/subagents/spawn/subagent-spawn-child-plan.ts` has identical Git blob
+`48dc48175daaea6d6561646ea1f6f87264055d4f`; review also confirms the refusal in
+11.4. The newer release does not provide the proposed supported path. Keep the
+approved 11.5 pin while the additional authority scope is reviewed.
+
+The existing handoff's no-broaden-admission obligation remains in force. Any
+approved successor must bind eligibility to the trusted bundled backend and
+recheck actual final tool selection plus child-owned sandbox/grant authority at
+launch. Required negative and installed proofs are listed in the Human section.
+No runtime or test files change with this proposal.
 
 ### Scope and acceptance criteria
 

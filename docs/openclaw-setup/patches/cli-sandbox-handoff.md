@@ -85,3 +85,13 @@ do not constitute deployed Windows or OpenShell service qualification.
 Use installed build, ci-dev and ci-prod. CI owns tests, deployment, recovery,
 source merge and cleanup. Retire the patch when a stable release supplies the
 same guarantees and passes the retained behavior tests.
+
+## Proposed delegated admission extension
+
+The [Phase 2 proposal](../../plans/realtime-cli-steering-and-results.md#proposed-extension-sandboxed-delegated-cli-admission)
+now describes a separate, unapproved extension for trusted bundled Claude
+children. The existing no-broaden-admission obligation above still applies.
+No patch hunk or admission behavior changes with that proposal. Its required
+boundary is final native-tool confinement plus a live child-owned Docker lease
+and MCP grant, rechecked on execution and selection changes. Cron and stock
+Copilot admission remain outside the proposed extension.
