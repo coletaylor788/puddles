@@ -101,8 +101,8 @@ Tests qualify the resulting candidate without silently expanding its scope.
 | --- | --- | --- |
 | `shared-conversation-context` | **Remove** | Its remaining production change only exports `readSessionConversationContext`. No runtime caller remains in the composed source or either repository. Native CLI history already supplies conversation updates. Delete the unused helper and its patch registration; preserve native cross-mode history tests. The neighboring patch document describes an older caller that is no longer present. |
 | `talk-request-recovery` | **Remove** | Use native realtime request classification, dispatch, acknowledgment and follow-up handling. Drop the entire patch, including custom status patterns, “also” classification, displaced-input messages and unaccepted-input handling. 11.5 fixes the misleading acknowledgment; the other removals deliberately choose stock behavior rather than claiming upstream equivalence. |
-| `talk-overlap-recovery` | **Keep** | 11.5 still revokes the original answer and fails the voice connection when steering throws. Keep the narrow nonfatal treatment of confirmed unsupported steering. This protects the running task and call, including an unsupported backup runtime; it does not add steering capability to that runtime. |
-| `talk-conversation-progress` | **Keep** | Native instructions still delegate reasoning and broad follow-ups, and the runner lacks the progress callback. Preserve conversational reasoning during research, silent user-facing progress, and the existing guards against progress/steering after transport retirement. This is separate from the new runtime-selection fix. |
+| `talk-overlap-recovery` | **Remove** | Use native steering success and failure handling. The supported CLI path must pass qualification; actual failures should surface normally. Remove the special nonfatal fallback for unsupported steering. |
+| `talk-conversation-progress` | **Remove** | Its custom conversation policy and silent progress callbacks are not required for CLI routing, native steering or proactive final answers. Use native Talk behavior and supported instructions instead. Remove the entire patch, including its added hangup/steering guards; qualify those races against native behavior without carrying the hunks forward. |
 | `facetime-talk-client` | **Keep** | 11.5's FaceTime changes do not add shared Talk mode, the carrier session API, shared result/steering ownership, or our helper packaging. Preserve those integrations, inbound-call restriction, audio startup and accepted-work lifetime. Port to the changed native call APIs; do not restore obsolete upstream types or duplicate the new native greeting logic. |
 | `facetime-native/call-lifecycle` | **Keep** | This patches the separately pinned native helper, not OpenClaw. Updating OpenClaw does not replace its verified-muted answer acknowledgment or all-alias closure checks. Keep its separate source pin and compiled regressions. |
 
@@ -116,8 +116,8 @@ unchanged apart from required compatibility with the upgraded baseline.
 #### Acceptance
 
 One continuous Browser Talk and FaceTime conversation must delegate research,
-remain conversational, accept a same-task refinement, and deliver the corrected
-answer proactively. Cover a busy parent, native yield/resume, compaction,
+remain responsive, accept a same-task refinement, and deliver the corrected
+answer proactively. Custom silent progress updates are not an acceptance requirement. Cover a busy parent, native yield/resume, compaction,
 completion racing steering, failure, Stop and hangup/reconnect. Keep current
 permissions, sandboxing, stored sessions and ordinary text behavior intact.
 Use deterministic recordings plus real subscription CLI and voice qualification;
@@ -152,8 +152,8 @@ access and containment. Backup routing stays separately owned.
 
 Inspected current production patch hunks and their 11.4-to-11.5 counterparts:
 
-- [Delegation controller](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/openai/realtime-quicksilver-delegation-controller.ts): native acknowledgment, steering error handling and pending-input behavior.
-- [Control classifier](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/talk/agent-run-control-shared.ts), [instructions](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/openai/realtime-quicksilver-instructions.ts) and [consult runner](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/talk/agent-consult-runtime.ts): retained policy/progress gaps.
+- [Delegation controller](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/openai/realtime-quicksilver-delegation-controller.ts): native acknowledgment, steering error handling and pending-input behavior; use these directly.
+- [Control classifier](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/talk/agent-run-control-shared.ts), [instructions](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/openai/realtime-quicksilver-instructions.ts) and [consult runner](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/talk/agent-consult-runtime.ts): custom policy/progress additions being removed in favor of native behavior.
 - [FaceTime driver](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/facetime/src/talk-driver.ts) and [separate native helper contract](../openclaw-setup/patches/facetime-native/README.md).
 - [Native CLI history](https://github.com/openclaw/openclaw/blob/v2026.11.5/docs/gateway/cli-backends.md): conversation updates on native CLI resume.
 
@@ -181,8 +181,9 @@ and eligible cleanup. No manual production changes or older-harness rollback.
 
 ### Review log
 
-2026-11-18: Source audit completed; requester selected native dispatch and full removal of
-`talk-request-recovery`. Decisions and document simplified for review.
+2026-11-18: Source audit completed; requester selected native dispatch and native steering failures. Propose full
+removal of request recovery, overlap recovery and conversation progress.
+Only the existing FaceTime patches remain in the public realtime keep list.
 Local links, structure and whitespace checked. Runtime acceptance remains open.
 
 ### Checklist
