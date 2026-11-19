@@ -1,5 +1,9 @@
 # Realtime delegation through the configured agent runtime
 
+Status: Original scope approved; admission extension proposed
+Issue: https://github.com/coletaylor788/puddles/issues/377
+Last updated: 2026-11-19
+
 ## Human section
 
 ### Design
@@ -176,71 +180,33 @@ implemented or safe to enable.
 
 ### Status
 
-**Approval:** Production approved. **Approval reference:** On 2026-11-18 the
-requester said: “mark it change and adapt it to be a facetime extension change
-only that has it attach to main session. Then design is approved to push
-implement and ship.” This approves the combined 11.5 upgrade, four removals,
-upstream-based Talk repair and extension-only FaceTime adaptation through CI,
-source merge and eligible cleanup. No new FaceTime Gateway entrypoint is allowed.
+**Approval: Production approved for the original scope.** On 2026-11-18 the
+requester approved the combined 11.5 upgrade, four removals, upstream-based Talk
+repair and extension-only FaceTime attachment through shipping and cleanup.
+That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 
-The approved implementation is source-reviewed. The latest DEV run passed the
-installed, subscription and boundary checks, and its real Talk transcript proves
-the steered command completed successfully. Native admission then rejected the
-sandboxed reader child. The failed run and source cleanup are closed. Production
-remains on Phase 1; full Talk, TEST, PROD and physical call acceptance are open.
-
-**Additional admission scope: Proposed.** The extension above changes a native
-authority decision that the existing handoff explicitly preserves. It is not
-authorized by the earlier shipping approval. No admission implementation,
-configuration change or new candidate is included in this documentation update.
+The approved implementation is reviewed. DEV passes the installed, subscription
+and boundary checks; real Talk completes its steered command, then native
+admission rejects the reader child. The failed transaction is closed and
+production remains on Phase 1. **Additional child-admission scope: Proposed**,
+awaiting separate requester approval and implementation proof. Full Talk, TEST,
+PROD and physical-call acceptance remain open. No admission code or candidate
+change accompanies this proposal.
 
 ## Agent section
 
 ### State
 
-Production-approved implementation. Public base `fc295c9e8a0c2545181c62809783534c8f68a4e4`.
-Compared OpenClaw 11.4 `d843d6af39a42cd3c30084edbeabeece732fd93a` with 11.5
-`e13cf15ece9bbd969b7362927c315362c90c97ff`. Replaces the deferred Phase 2 outline
-in [the upgrade plan](voice-consultation-through-agent-turn.md).
+Original Phase 2 scope is production approved; the admission extension is
+Proposed. Public base `fc295c9e8a0c2545181c62809783534c8f68a4e4`; approved native
+pin 11.5 `e13cf15ece9bbd969b7362927c315362c90c97ff`. This replaces the deferred
+outline in [the upgrade plan](voice-consultation-through-agent-turn.md).
 
-### DEV startup repair checkpoint
-
-DEV runs `gh-44479246590-1` and `gh-44483099167-1` failed before installed
-acceptance. Both target receipts are terminal with `phase=complete` and no child;
-the corresponding source queues and cleanup are closed. Do not retry their
-unchanged candidates.
-
-The native resource broker retries a missing socket while its listener starts.
-The recording fixture must allow that attempt beneath the validated owned
-broker directory, rather than throw synchronously. Existing invalid socket
-leaves and unrelated network access remain denied. Focused fixture checks pass.
-
-Full local startup with the declared model assets then reaches memory warmup,
-where the retained service lease lacks its ownership result. Correct that
-existing lifecycle patch without replacing native startup or credential checks.
-Review and run its registered regressions, rebuild, and require local readiness
-and process closure before submitting the successor. This local proof does not
-replace DEV, subscription, realtime, TEST or PROD acceptance.
-
-### Delegated CLI admission checkpoint
-
-DEV run `gh-44614428420-1` closed with a failed application result and complete
-cleanup. The canonical transcript records the main command's successful
-`steer_DONE` result, followed by native refusal of the reader child. Four native
-sandboxed-child admission regressions pass, confirming the refusal is deliberate.
-This is separate from the earlier fixture startup and steering-order repairs.
-
-The checked 11.5 and 11.6 file
-`src/agents/subagents/spawn/subagent-spawn-child-plan.ts` has identical Git blob
-`48dc48175daaea6d6561646ea1f6f87264055d4f`; review also confirms the refusal in
-11.4. The newer release does not provide the proposed supported path. Keep the
-approved 11.5 pin while the additional authority scope is reviewed.
-
-The existing handoff's no-broaden-admission obligation remains in force. Any
-approved successor must bind eligibility to the trusted bundled backend and
-recheck actual final tool selection plus child-owned sandbox/grant authority at
-launch. Required negative and installed proofs are listed in the Human section.
-No runtime or test files change with this proposal.
+DEV `gh-44621348881-1` is terminal failed with target and source cleanup complete.
+The canonical transcript proves successful `steer_DONE`, followed by native
+refusal of the sandboxed reader child. Earlier startup and fixture issues have
+been repaired; they are not the current blocker. Preserve the existing runtime,
+configuration and seals while the new authority scope is reviewed.
 
 ### Scope and acceptance criteria
 
@@ -266,7 +232,7 @@ not held PR #347. Resolve the open evidence gaps and additional integration
 items listed above. Port retained behavior to native interfaces;
 retain meaningful regressions independently of deleted patch registrations.
 
-### Upgrade compatibility
+#### Upgrade compatibility
 
 Native 11.5 Cron replaces the retired heartbeat tool path. Remove the now-unused
 `native-heartbeat-response` patch and qualify quiet completion, one alert,
@@ -277,12 +243,18 @@ supports the configured sandboxed grant. Neither change adds custom routing.
 
 ### Validation
 
-Focused FaceTime attachment tests, combined core and extension typechecks, and
-63 fixture and manifest tests pass. The complete patch stack applies in order
-from the pinned upstream tree and has independent source review. Final native
-runtime and installed acceptance gates remain pending. Qualify the combined candidate,
-including real CLI/voice, existing state and Doctor, ordinary chat, and the
-upstream review's steering, compaction/relay and partial-settlement findings.
+Combined source composition, core and extension typechecks, and focused native
+FaceTime/Talk/sandbox checks pass. R10 DEV passes installed, subscription and
+boundary qualification. Real Talk proves successful foreground steering but not
+the blocked child/yield/proactive-result sequence. Four native sandboxed-child
+admission regressions pass, confirming the refusal is deliberate.
+
+The 11.5 and 11.6 `subagent-spawn-child-plan.ts` files share exact Git blob
+`48dc48175daaea6d6561646ea1f6f87264055d4f`; review confirms the same refusal in
+11.4. The newer release does not provide the proposed path. Keep the approved
+11.5 pin. Required positive, negative and installed proofs for any approved
+admission extension are listed in the Human design; none are claimed complete.
+This documentation-only update runs no runtime tests or candidate lifecycle.
 
 ### Rollout and rollback
 
@@ -291,6 +263,13 @@ normal CI gates. Yield after dispatch. CI owns deployment, recovery, exact merge
 and eligible cleanup. No manual production changes or older-harness rollback.
 
 ### Review log
+
+2026-11-19: The parent and retained reviewer reviewed the additional admission
+boundary as a proposal. Final tool confinement and child-owned Docker/grant
+custody are required; exact selection fields alone are insufficient. Runtime
+implementation remains unapproved. Current plan structure and local links were
+reviewed directly; no documentation-wording tests or runtime gates were run.
+
 
 2026-11-18: Source audit completed; requester selected native dispatch and native steering failures. Propose full
 removal of request recovery, overlap recovery and conversation progress.
@@ -302,4 +281,5 @@ Local links, structure and whitespace checked. Runtime acceptance remains open.
 
 - [x] Inspect stable delta and choose patch dispositions.
 - [x] Record production approval and the extension-only FaceTime boundary.
-- [ ] Implement and qualify the combined candidate through CI.
+- [ ] Obtain separate approval for the proposed delegated admission extension.
+- [ ] Implement any approved extension and qualify the combined candidate through CI.
