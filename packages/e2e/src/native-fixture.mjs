@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { createServer } from "node:http";
 import {
@@ -44,6 +45,7 @@ export function isolatedContext(root) {
 }
 
 export function fixtureEnv(context) {
+  const profile = `puddles-fixture-${createHash("sha256").update(context.root).digest("hex").slice(0, 16)}`;
   return {
     ...(process.env.PUDDLES_PROCESS_SCOPES === undefined ? {} : { PUDDLES_PROCESS_SCOPES: process.env.PUDDLES_PROCESS_SCOPES }),
     PATH: `${dirname(process.execPath)}:${process.env.PATH ?? "/usr/bin:/bin"}`,
@@ -53,6 +55,7 @@ export function fixtureEnv(context) {
     XDG_DATA_HOME: join(context.home, ".local", "share"),
     OPENCLAW_HOME: context.home, OPENCLAW_STATE_DIR: context.stateDir,
     OPENCLAW_CONFIG_PATH: context.configPath,
+    OPENCLAW_PROFILE: profile,
     E2E_MOCK_STATE: context.recordingsDir,
     OPENCLAW_DISABLE_BONJOUR: "1", OPENCLAW_SKIP_CANVAS_HOST: "1",
     npm_config_offline: "true", npm_config_cache: join(context.home, ".npm"),
