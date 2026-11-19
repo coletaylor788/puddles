@@ -1,25 +1,25 @@
 diff --git a/src/agents/bash-tools.exec-run.ts b/src/agents/bash-tools.exec-run.ts
-index 17f18f1c..19f56177 100644
+index bfd99d510..bad746537 100644
 --- a/src/agents/bash-tools.exec-run.ts
 +++ b/src/agents/bash-tools.exec-run.ts
-@@ -733,4 +733,4 @@ export function createExecTool(defaults?: ExecToolDefaults) {
+@@ -743,4 +743,4 @@ export function createExecTool(defaults?: ExecToolDefaults) {
+   });
  }
  
- /** Default exec tool instance used by agent tool registries. */
 -export const execTool = createExecTool();
 +export const execTool: AgentToolWithMeta<typeof execSchema, ExecToolDetails> = createExecTool();
 diff --git a/src/agents/bash-tools.process.ts b/src/agents/bash-tools.process.ts
-index b14e81b6..694fc2bc 100644
+index 5116e7bdc..5415c80a0 100644
 --- a/src/agents/bash-tools.process.ts
 +++ b/src/agents/bash-tools.process.ts
-@@ -641,4 +641,4 @@ export function createProcessTool(
+@@ -701,4 +701,4 @@ export function createProcessTool(
+   return tool;
  }
  
- /** Shared process-control tool instance used by the default Bash tool barrel. */
 -export const processTool = createProcessTool();
 +export const processTool: AgentToolWithMeta<typeof processSchema, unknown> = createProcessTool();
 diff --git a/src/agents/embedded-agent-runner/run/attempt-bundle-tools.ts b/src/agents/embedded-agent-runner/run/attempt-bundle-tools.ts
-index b1b18d36..f9248dd8 100644
+index 4b88a4d5e..aba5f67e8 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-bundle-tools.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-bundle-tools.ts
 @@ -18,6 +18,7 @@ import {
@@ -27,7 +27,7 @@ index b1b18d36..f9248dd8 100644
    type RuntimeToolSchemaQuarantineRecorder,
  } from "../../tool-schema-quarantine.js";
 +import type { AnyAgentTool } from "../../tools/common.js";
- import { captureFinalEffectiveCronCreatorToolAllowlist } from "../../tools/cron-tool.js";
+ import { captureFinalEffectiveCronCreatorToolAllowlist } from "../../tools/cron-tool-creator-cap.js";
  import { applyFinalEffectiveToolPolicy } from "../effective-tool-policy.js";
  import { log } from "../logger.js";
 @@ -32,13 +33,22 @@ import type { EmbeddedRunAttemptParams } from "./types.js";
@@ -55,10 +55,10 @@ index b1b18d36..f9248dd8 100644
      cronCreatorToolAllowlist,
      cronCreatorToolAllowlistCaptureRef,
 diff --git a/src/agents/embedded-agent-runner/run/attempt-client-tools.ts b/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
-index b342b80d..62256910 100644
+index a1856ea53..9e7b795fd 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
-@@ -15,6 +15,7 @@ import { resolveToolLoopDetectionConfig } from "../../agent-tools.js";
+@@ -14,6 +14,7 @@ import { wrapToolWithAbortSignal } from "../../agent-tools.abort.js";
  import { isCodeModeExecTool } from "../../code-mode-control-tools.js";
  import { isCoreToolResultMediaTrustedName } from "../../embedded-agent-tool-media.js";
  import type { AgentTool } from "../../runtime/index.js";
@@ -66,7 +66,7 @@ index b342b80d..62256910 100644
  import {
    createToolDefinitionFromAgentTool,
    wrapToolDefinition,
-@@ -35,6 +36,22 @@ import {
+@@ -34,6 +35,22 @@ import {
  } from "../tool-name-allowlist.js";
  import type { EmbeddedAttemptClientToolCallSlot, EmbeddedRunAttemptParams } from "./types.js";
  
@@ -87,9 +87,9 @@ index b342b80d..62256910 100644
 +};
 +
  export function prepareEmbeddedAttemptClientTools(params: {
-   attempt: EmbeddedRunAttemptParams;
-   catalogToolHookContext: Parameters<typeof toToolDefinitions>[1];
-@@ -51,7 +68,7 @@ export function prepareEmbeddedAttemptClientTools(params: {
+   attempt: Pick<
+     EmbeddedRunAttemptParams,
+@@ -53,7 +70,7 @@ export function prepareEmbeddedAttemptClientTools(params: {
    uncompactedEffectiveTools: AgentTool[];
    clientTools: EmbeddedRunAttemptParams["clientTools"];
    getToolAbortSignal?: () => AbortSignal;
@@ -99,10 +99,10 @@ index b342b80d..62256910 100644
    const clientToolCallSlots: EmbeddedAttemptClientToolCallSlot[] = [];
    const clientToolCallSlotsById = new Map<string, EmbeddedAttemptClientToolCallSlot>();
 diff --git a/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts b/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts
-index 49494aba..51fcbd8c 100644
+index 16a35dfdd..acda7034c 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts
-@@ -47,7 +47,10 @@ import { log } from "../logger.js";
+@@ -42,7 +42,10 @@ import { log } from "../logger.js";
  import { declarePromptHistoryRewrite } from "../prompt-cache-observability.js";
  import { recordRuntimeContextProjection } from "../session-prompt-state.js";
  import { resolveEmbeddedAgentApiKey } from "../stream-resolution.js";
@@ -112,9 +112,9 @@ index 49494aba..51fcbd8c 100644
 +  type PreparedEmbeddedAttemptClientTools,
 +} from "./attempt-client-tools.js";
  import { createAttemptCompactionThinkingResolver } from "./attempt-compaction-thinking.js";
- import { resolveAttemptTranscriptPolicy } from "./attempt-history.js";
  import { normalizeMessagesForLlmBoundary } from "./attempt-llm-boundary.js";
-@@ -85,6 +88,20 @@ import {
+ import type { LlmBoundaryOptions } from "./attempt-llm-boundary.types.js";
+@@ -82,6 +85,20 @@ import {
  } from "./tool-loop-recovery.js";
  import type { EmbeddedRunAttemptParams } from "./types.js";
  
@@ -135,7 +135,7 @@ index 49494aba..51fcbd8c 100644
  export async function prepareEmbeddedAttemptAgentSession(input: {
    attempt: EmbeddedRunAttemptParams;
    activeContextEngineInfo?: ContextEngine["info"];
-@@ -104,7 +121,7 @@ export async function prepareEmbeddedAttemptAgentSession(input: {
+@@ -101,7 +118,7 @@ export async function prepareEmbeddedAttemptAgentSession(input: {
    sessionManager: ReturnType<typeof guardSessionManager>;
    prepareInitialUserTurnReplay?: InitialUserTurnReplayPreparation;
    prepareSystemPromptUpdate?: SystemPromptUpdatePreparation;
@@ -143,13 +143,13 @@ index 49494aba..51fcbd8c 100644
 +}): Promise<PreparedEmbeddedAttemptAgentSession> {
    const { attempt, prepareSystemPromptUpdate } = input;
    const settingsManager = createPreparedEmbeddedAgentSettingsManager({
-     sessionId: attempt.sessionId,
+     agentId: input.sessionAgentId,
 diff --git a/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts b/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
-index 1e49738f..5bb32689 100644
+index c087f89e2..5f44594c3 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
-@@ -53,6 +53,34 @@ type EmbeddedAttemptSessionRuntimeState = {
-   systemPromptText: string;
+@@ -59,6 +59,34 @@ type EmbeddedAttemptSessionRuntimeState = {
+   systemPromptSeries?: ReturnType<typeof prepareSessionSystemPrompt>["seriesStatus"];
  };
  
 +type PreparedSessionManager = Awaited<ReturnType<typeof prepareEmbeddedAttemptSessionManager>>;
@@ -175,7 +175,7 @@ index 1e49738f..5bb32689 100644
 +  toolResultPromptProjectionState: ReturnType<
 +    typeof retainEmbeddedSessionPromptState
 +  >["state"]["toolResults"];
-+  trajectoryRecorder: Awaited<ReturnType<typeof prepareEmbeddedAttemptTrajectory>>;
++  trajectoryRecorder: Awaited<ReturnType<typeof createTrajectoryRuntimeRecorder>>;
 +  transcriptPolicy: PreparedSessionManager["transcriptPolicy"];
 +  transport: Awaited<ReturnType<typeof prepareEmbeddedAttemptTransport>>;
 +};
@@ -183,7 +183,7 @@ index 1e49738f..5bb32689 100644
  export async function prepareEmbeddedAttemptSessionRuntime(input: {
    attempt: EmbeddedRunAttemptParams;
    activeContextEngine?: ContextEngine;
-@@ -72,7 +100,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
+@@ -78,7 +106,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
      abortActiveSession: SessionSettleTracker["abortActiveSession"];
      activeSession: AgentSession;
    }) => void;
@@ -193,7 +193,7 @@ index 1e49738f..5bb32689 100644
    const {
      agentCoreThinkingLevel,
 diff --git a/src/config/plugin-install-record-map.ts b/src/config/plugin-install-record-map.ts
-index 3921eaa6..5a5a21e7 100644
+index c98c81cd9..98bbd7000 100644
 --- a/src/config/plugin-install-record-map.ts
 +++ b/src/config/plugin-install-record-map.ts
 @@ -3,7 +3,9 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
@@ -208,44 +208,43 @@ index 3921eaa6..5a5a21e7 100644
  const NORMALIZED_STRING_FIELDS = [
    "spec",
 diff --git a/src/config/sessions/session-accessor.sqlite-read.ts b/src/config/sessions/session-accessor.sqlite-read.ts
-index dcd68377..0ae43f7d 100644
+index 2d3380cea..2205838b0 100644
 --- a/src/config/sessions/session-accessor.sqlite-read.ts
 +++ b/src/config/sessions/session-accessor.sqlite-read.ts
-@@ -1,6 +1,7 @@
- import { createHash } from "node:crypto";
+@@ -1,5 +1,6 @@
  import { parseDateFirstTimestampMs } from "@openclaw/normalization-core/number-coercion";
  import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 +import type { SelectQueryBuilder } from "kysely";
  import {
    executeSqliteQuerySync,
    executeSqliteQueryTakeFirstSync,
-@@ -31,6 +32,7 @@ import type {
+@@ -30,6 +31,7 @@ import type {
+ } from "./session-accessor.sqlite-contract.js";
  import { readSessionStateDeleteSnapshot } from "./session-accessor.sqlite-delete-snapshot.js";
  import type { SessionStateDeleteSnapshot } from "./session-accessor.sqlite-delete-snapshot.types.js";
- import { readTranscriptExportInSlices } from "./session-accessor.sqlite-export-slices.js";
 +import type { SessionSqliteDatabase } from "./session-accessor.sqlite-scope-helpers.js";
  import {
    getSessionKysely,
    resolveSqliteTranscriptReadScope,
-@@ -433,7 +435,7 @@ export function prepareTranscriptEventReadQuery(
-     afterEventSeq?: number;
-     maxEventBytes?: number;
-   } = {},
+@@ -301,7 +303,7 @@ export function prepareTranscriptEventReadQuery(
+   database: Pick<OpenClawAgentDatabase, "db">,
+   sessionId: string,
+   options: Omit<TranscriptEventReadOptions, "projection"> = {},
 -) {
 +): SelectQueryBuilder<SessionSqliteDatabase, "transcript_events", Partial<Omit<unknown, never>>> {
-   const { beforeEventSeq, maxEventBytes } = options;
-   const db = getSessionKysely(database.db);
-   if (maxEventBytes !== undefined && Number.isFinite(maxEventBytes) && maxEventBytes >= 0) {
+   assertTranscriptEventReadBudget(database, sessionId, options);
+   return getSessionKysely(database.db)
+     .selectFrom("transcript_events")
 diff --git a/src/config/sessions/session-accessor.sqlite-scope-helpers.ts b/src/config/sessions/session-accessor.sqlite-scope-helpers.ts
-index 5dc44856..4700cbad 100644
+index fbf96a98a..4da763e10 100644
 --- a/src/config/sessions/session-accessor.sqlite-scope-helpers.ts
 +++ b/src/config/sessions/session-accessor.sqlite-scope-helpers.ts
 @@ -1,3 +1,4 @@
 +import type { Kysely } from "kysely";
  // Shared query and logical-identity helpers do not resolve or open physical stores.
  import { getNodeSqliteKysely } from "../../infra/kysely-sync.js";
- import {
-@@ -9,7 +10,7 @@ import type { OpenClawAgentDatabaseOptions } from "../../state/openclaw-agent-db
+ import type { EngineConnection } from "../../infra/sql-connection.js";
+@@ -10,7 +11,7 @@ import type { OpenClawAgentDatabaseOptions } from "../../state/openclaw-agent-db
  import type { DB as OpenClawAgentKyselyDatabase } from "../../state/openclaw-agent-db.generated.js";
  import { normalizeStoreSessionKey } from "./store-entry.js";
  
@@ -254,29 +253,26 @@ index 5dc44856..4700cbad 100644
    OpenClawAgentKyselyDatabase,
    | "acp_parent_stream_events"
    | "board_tabs"
-@@ -61,7 +62,9 @@ export type ResolvedTranscriptReadScope = ResolvedSqliteReadScope & {
+@@ -62,7 +63,7 @@ export type ResolvedTranscriptReadScope = ResolvedSqliteReadScope & {
    sessionId: string;
  };
  
--export function getSessionKysely(database: import("node:sqlite").DatabaseSync) {
-+export function getSessionKysely(
-+  database: import("node:sqlite").DatabaseSync,
-+): Kysely<SessionSqliteDatabase> {
+-export function getSessionKysely(database: EngineConnection) {
++export function getSessionKysely(database: EngineConnection): Kysely<SessionSqliteDatabase> {
    return getNodeSqliteKysely<SessionSqliteDatabase>(database);
  }
  
 diff --git a/src/config/sessions/session-canonical-key.ts b/src/config/sessions/session-canonical-key.ts
-index 10727b80..fbf7aefb 100644
+index 2b1e5a6c0..339c795a1 100644
 --- a/src/config/sessions/session-canonical-key.ts
 +++ b/src/config/sessions/session-canonical-key.ts
-@@ -1,5 +1,5 @@
- import type { DatabaseSync } from "node:sqlite";
+@@ -1,4 +1,4 @@
 -import { sql } from "kysely";
 +import { sql, type Nullable, type SelectQueryBuilder } from "kysely";
+ import { getPostgresPhysicalFacts } from "../../infra/database-engine/physical-facts.js";
  import { registerNodeSqliteDisposeCallback } from "../../infra/kysely-sync-cache-state.js";
  import {
-   createSqliteQueryCache,
-@@ -48,7 +48,10 @@ import {
+@@ -56,7 +56,10 @@ import {
    invalidateOpenClawAgentCanonicalValidation,
    markOpenClawAgentCanonicalValidation,
  } from "../../state/openclaw-agent-db-validation-cache.js";
@@ -288,7 +284,7 @@ index 10727b80..fbf7aefb 100644
  import {
    hasSqliteSessionOwnerColumns,
    projectSqliteSessionOwner,
-@@ -71,6 +74,32 @@ type CanonicalSessionDatabase = Pick<
+@@ -80,6 +83,32 @@ type CanonicalSessionDatabase = Pick<
    | "session_windows"
    | "session_canonical_validation_pending"
  >;
@@ -321,9 +317,9 @@ index 10727b80..fbf7aefb 100644
  const mainKeyReader = createSqliteQueryCache((db) =>
    prepareSqliteQueryTakeFirstSync<void, { main_key: string }>(db, () =>
      getNodeSqliteKysely<CanonicalSessionDatabase>(db)
-@@ -443,7 +472,11 @@ export function assertCanonicalSessionEntryLineageWrite(entry: SessionEntry): vo
+@@ -479,7 +508,11 @@ export function assertCanonicalSessionEntryLineageWrite(entry: SessionEntry): vo
  export function canonicalSessionValidationQuery(
-   database: { db: DatabaseSync },
+   database: { db: EngineConnection },
    options: { metadata?: boolean } = {},
 -) {
 +): SelectQueryBuilder<
@@ -336,7 +332,7 @@ index 10727b80..fbf7aefb 100644
      .leftJoin("session_windows as retained_window", (join) =>
 diff --git a/src/config/sessions/session-declaration-portability.test.ts b/src/config/sessions/session-declaration-portability.test.ts
 new file mode 100644
-index 00000000..0e23dc3b
+index 000000000..56bf174a6
 --- /dev/null
 +++ b/src/config/sessions/session-declaration-portability.test.ts
 @@ -0,0 +1,279 @@
@@ -362,7 +358,6 @@ index 00000000..0e23dc3b
 +import type { createEmbeddedAttemptSessionSettleTracker } from "../../agents/embedded-agent-runner/run/attempt-session-settle.js";
 +import type { installEmbeddedAttemptContextGuards } from "../../agents/embedded-agent-runner/run/attempt-setup.js";
 +import type { prepareEmbeddedAttemptTransport } from "../../agents/embedded-agent-runner/run/attempt-stream-settle.js";
-+import type { prepareEmbeddedAttemptTrajectory } from "../../agents/embedded-agent-runner/run/attempt-trajectory.js";
 +import type {
 +  EmbeddedAttemptClientToolCallSlot,
 +  EmbeddedRunAttemptParams,
@@ -383,6 +378,7 @@ index 00000000..0e23dc3b
 +  SessionWindows,
 +} from "../../state/openclaw-agent-db.generated.js";
 +import type { DB as OpenClawStateKyselyDatabase } from "../../state/openclaw-state-db.generated.js";
++import type { createTrajectoryRuntimeRecorder } from "../../trajectory/runtime.js";
 +import type { PluginInstallRecordSchema } from "../plugin-install-record-map.js";
 +import { StrictPluginInstallRecordSchema } from "../zod-schema.installs.js";
 +import type { prepareTranscriptEventReadQuery } from "./session-accessor.sqlite-read.js";
@@ -502,7 +498,7 @@ index 00000000..0e23dc3b
 +  toolResultPromptProjectionState: ReturnType<
 +    typeof retainEmbeddedSessionPromptState
 +  >["state"]["toolResults"];
-+  trajectoryRecorder: Awaited<ReturnType<typeof prepareEmbeddedAttemptTrajectory>>;
++  trajectoryRecorder: Awaited<ReturnType<typeof createTrajectoryRuntimeRecorder>>;
 +  transcriptPolicy: PreparedSessionManager["transcriptPolicy"];
 +  transport: Awaited<ReturnType<typeof prepareEmbeddedAttemptTransport>>;
 +};
@@ -620,7 +616,7 @@ index 00000000..0e23dc3b
 +  expectTypeOf<AnnotationMatchesSessionRuntime>().toEqualTypeOf<true>();
 +});
 diff --git a/src/config/sessions/session-sharing-store.kernel.ts b/src/config/sessions/session-sharing-store.kernel.ts
-index f6fbf9b4..ccf5e683 100644
+index f6fbf9b4e..ccf5e6834 100644
 --- a/src/config/sessions/session-sharing-store.kernel.ts
 +++ b/src/config/sessions/session-sharing-store.kernel.ts
 @@ -1,3 +1,4 @@
@@ -639,7 +635,7 @@ index f6fbf9b4..ccf5e683 100644
    return getNodeSqliteKysely<SessionMemberDatabase>(database.db);
  }
 diff --git a/src/gateway/github-publication-store.worker.ts b/src/gateway/github-publication-store.worker.ts
-index 5cfe0d4f..60095593 100644
+index b4f4c4869..6dd1bcee5 100644
 --- a/src/gateway/github-publication-store.worker.ts
 +++ b/src/gateway/github-publication-store.worker.ts
 @@ -1,3 +1,4 @@
@@ -660,11 +656,11 @@ index 5cfe0d4f..60095593 100644
  export function readGitHubPublicationRequest(
    db: EngineConnection,
 diff --git a/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts b/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts
-index 5d5ac352..d77695f0 100644
+index 4923f41d0..9b81e2efd 100644
 --- a/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts
 +++ b/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts
-@@ -53,7 +53,12 @@ import { createDeferredCore } from "../../../shared/deferred.js";
- import * as ttsRuntime from "../../../tts/tts.js";
+@@ -53,7 +53,12 @@ export { createToolTerminalObserver as createContractToolTerminalObserver } from
+ type ToolResult = AgentToolResult<unknown>;
  
  /** Real process poll producer and notification queue, with a synthetic completed process. */
 -export function createProcessPollDeliveryContract(sessionId: string) {
@@ -679,7 +675,7 @@ index 5d5ac352..d77695f0 100644
    session.scopeKey = sessionKey;
 diff --git a/test/tsconfig/tsconfig.core.test.declaration-portability.json b/test/tsconfig/tsconfig.core.test.declaration-portability.json
 new file mode 100644
-index 00000000..ec1d06db
+index 000000000..ec1d06dbe
 --- /dev/null
 +++ b/test/tsconfig/tsconfig.core.test.declaration-portability.json
 @@ -0,0 +1,7 @@
