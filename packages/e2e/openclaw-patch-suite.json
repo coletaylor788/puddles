@@ -141,7 +141,7 @@
     "src/agents/embedded-agent-runner/compact.hooks.test.ts": "infra",
     "extensions/anthropic/cli-shared.test.ts": "extension-providers",
     "src/agents/cli-runner.spawn.test.ts": "agents-core",
-    "src/agents/harness/tool-surface-bridge.test.ts": "unit-fast",
+    "src/agents/harness/tool-surface-bridge.test.ts": "agents-support",
     "src/agents/code-mode.config.test.ts": "unit-fast",
     "src/agents/embedded-agent-runner/terminal-tool-failure.test.ts": "unit-fast",
     "src/agents/sessions/tools/tool-definition-wrapper.test.ts": "unit-fast",
@@ -219,8 +219,6 @@
     "src/commands/doctor/stopped-config-repair.test.ts": "commands",
     "src/agents/tool-allowlist-guard.test.ts": "unit-fast",
     "src/config/sessions/session-declaration-portability.test.ts": "runtime-config",
-    "src/infra/heartbeat-runner.tool-response.test.ts": "infra",
-    "src/infra/heartbeat-runner.isolated-session-mirror.test.ts": "infra",
     "extensions/imessage/src/approval-reactions.test.ts": "extension-imessage",
     "src/agents/tools/sessions-untrusted-projection.test.ts": "unit-fast",
     "src/agents/untrusted-agent-results.test.ts": "agents-core",
@@ -254,7 +252,8 @@
     "src/agents/sandbox/mcp-grant-mutation-fence.test.ts": "unit-fast",
     "src/commands/agent.test.ts": "commands",
     "src/gateway/mcp-http.memory-audience.test.ts": "gateway-core",
-    "src/agents/sandbox/host-bridge-mutation-fence.test.ts": "agents-support"
+    "src/agents/sandbox/host-bridge-mutation-fence.test.ts": "agents-support",
+    "src/agents/cli-runner/execution-env.profile.test.ts": "agents-support"
   },
   "patches": [
     {
@@ -323,18 +322,6 @@
       "tests": [],
       "candidateTests": [
         "tests/candidate.browser-entrypoint.test.ts"
-      ]
-    },
-    {
-      "name": "native-heartbeat-response",
-      "tests": [
-        "src/infra/heartbeat-runner.tool-response.test.ts",
-        "src/infra/heartbeat-runner.isolated-session-mirror.test.ts",
-        "src/agents/system-prompt.test.ts",
-        "src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts",
-        "src/agents/agent-tools.create-openclaw-coding-tools.test.ts",
-        "extensions/copilot/src/attempt.test.ts",
-        "extensions/copilot/src/attempt-transcript-journal.test.ts"
       ]
     },
     {
@@ -546,7 +533,9 @@
         "src/tui/embedded-backend.test.ts",
         "src/agents/tools/embedded-gateway-stub.history.test.ts",
         "src/commands/doctor-claude-cli.test.ts",
-        "src/agents/cli-runner/prepare.web-search.test.ts"
+        "src/agents/cli-runner/prepare.web-search.test.ts",
+        "src/agents/cli-runner/execution-env.profile.test.ts",
+        "src/agents/command/claude-cli-project-dir.test.ts"
       ]
     },
     {
@@ -659,7 +648,11 @@
     "src/agents/agent-bundle-mcp-harness.test.ts",
     "extensions/copilot/src/tool-bridge.host-surface.test.ts",
     "extensions/copilot/src/tool-bridge.test.ts",
-    "src/agents/sandbox/host-bridge-mutation-fence.test.ts"
+    "src/agents/sandbox/host-bridge-mutation-fence.test.ts",
+    "src/agents/system-prompt.test.ts",
+    "src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts",
+    "src/agents/agent-tools.create-openclaw-coding-tools.test.ts",
+    "extensions/copilot/src/attempt-transcript-journal.test.ts"
   ],
   "candidateTests": [
     "tests/candidate.gmail-approval.test.ts",

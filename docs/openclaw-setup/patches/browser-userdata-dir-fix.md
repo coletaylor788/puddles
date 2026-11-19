@@ -1,6 +1,6 @@
 # Persistent browser sandbox profile
 
-OpenClaw 2026.11.3 still starts sandbox Chromium with a profile under the
+OpenClaw 2026.11.5 still starts sandbox Chromium with a profile under the
 container's temporary home. The retained patch lets the entrypoint read
 `OPENCLAW_BROWSER_USER_DATA_DIR`. An unset or empty value keeps the upstream
 `${HOME}/.chrome` default. A configured path can point at a host profile mounted
@@ -24,8 +24,10 @@ executes the candidate entrypoint with fake Xvfb, Chromium, and CDP probes. It
 checks the configured profile argument and removal of all three stale files
 without launching a real browser or touching a live profile. The same fixture
 fails against the unpatched 9.6 entrypoint because Chromium receives the home
-profile instead of the configured path. The stable entrypoint is unchanged at this seam. Its focused candidate-source
-fixture passes with the maintained patch (one test, 1.07 seconds). Installed
+profile instead of the configured path. The .5 port retains its new headless startup branch. The candidate-source
+fixture passes with the maintained patch. The browser image must be built from
+the patched entrypoint, with the stock .5 Dockerfile. A stock entrypoint still
+ignores the configured persistent profile. Installed
 browser qualification remains part of the complete upgrade gate.
 Run it through
 the shared candidate lifecycle:

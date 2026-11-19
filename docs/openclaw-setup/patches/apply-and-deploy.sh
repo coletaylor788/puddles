@@ -21,7 +21,6 @@ PATCHES=(
   skill-workshop-sandbox-fix
   imessage-message-part-coalescing
   browser-userdata-dir-fix
-  native-heartbeat-response
   stopped-state-migration-sdk
   core-declaration-portability
   talk-native-agent-command

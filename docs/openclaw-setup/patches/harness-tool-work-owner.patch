@@ -1,5 +1,69 @@
+diff --git a/src/agents/harness/host-bound-tool.ts b/src/agents/harness/host-bound-tool.ts
+index 6534665f9..a1104f23e 100644
+--- a/src/agents/harness/host-bound-tool.ts
++++ b/src/agents/harness/host-bound-tool.ts
+@@ -26,6 +26,7 @@ export function bindHostToolSurface(
+     callerIdentity: Parameters<typeof wrapToolWithGatewayCallerIdentity>[1] | undefined;
+     abortSignal: AbortSignal;
+     workspaceReadiness?: AgentWorkspaceReadiness;
++    runWithToolScope?: <T>(run: () => Promise<T>) => Promise<T>;
+   },
+ ): AnyAgentTool[] {
+   params.assertActive();
+@@ -42,6 +43,7 @@ export function bindHostToolSurface(
+         params.assertActive,
+         params.observeResult,
+         isWorkspaceTool(tool) ? params.workspaceReadiness : undefined,
++        params.runWithToolScope,
+       ),
+     );
+ }
+@@ -51,6 +53,7 @@ export function gateBoundTool(
+   assertActive: SessionSourceAssertion,
+   observeResult: (result: unknown) => void,
+   workspaceReadiness?: AgentWorkspaceReadiness,
++  runWithToolScope: <T>(run: () => Promise<T>) => Promise<T> = (run) => run(),
+ ): AnyAgentTool {
+   const execute = tool.execute;
+   const sourcePreparer = getInternalToolExecutionPreparer(tool);
+@@ -92,13 +95,13 @@ export function gateBoundTool(
+               // a tool that started and failed in downstream terminal evidence.
+               throw registerTrustedToolNoStartError(error);
+             }
+-            return acceptResult(await execute(...args));
++            return acceptResult(await runWithToolScope(() => execute(...args)));
+           },
+         }
+       : {}),
+   };
+   copyAgentToolMetadata(tool, gated, (source) =>
+-    gateBoundTool(source, assertActive, observeResult, workspaceReadiness),
++    gateBoundTool(source, assertActive, observeResult, workspaceReadiness, runWithToolScope),
+   );
+   if (sourcePreparer) {
+     attachInternalToolExecutionPreparer(gated, async (preparationParams) => {
+@@ -107,7 +110,7 @@ export function gateBoundTool(
+       } else {
+         await assertCurrent();
+       }
+-      const prepared = await sourcePreparer(preparationParams);
++      const prepared = await runWithToolScope(() => sourcePreparer(preparationParams));
+       try {
+         await assertCurrent();
+       } catch (error) {
+@@ -128,7 +131,9 @@ export function gateBoundTool(
+           } else {
+             await assertCurrent();
+           }
+-          return acceptResult(await prepared.execute(onImplementationStart));
++          return acceptResult(
++            await runWithToolScope(() => prepared.execute(onImplementationStart)),
++          );
+         },
+       };
+     });
 diff --git a/src/agents/harness/host-capability.test.ts b/src/agents/harness/host-capability.test.ts
-index ee7fe8d..0dd6530 100644
+index c8f5b1889..56d512b61 100644
 --- a/src/agents/harness/host-capability.test.ts
 +++ b/src/agents/harness/host-capability.test.ts
 @@ -1,3 +1,4 @@
@@ -7,7 +71,7 @@ index ee7fe8d..0dd6530 100644
  import fs from "node:fs";
  import os from "node:os";
  import path from "node:path";
-@@ -17,7 +18,12 @@ import {
+@@ -22,7 +23,12 @@ import {
    bindGatewayContextResolver,
    withPluginRuntimeGatewayRequestScope,
  } from "../../plugins/runtime/gateway-request-scope.js";
@@ -21,7 +85,7 @@ index ee7fe8d..0dd6530 100644
  import {
    closeAdmittedRunDelegatedAuthority,
    createOperationalRunInstanceRef,
-@@ -132,6 +138,115 @@ afterEach(() => {
+@@ -69,6 +75,115 @@ afterEach(() => {
  });
  
  describe("agent harness host capability", () => {
@@ -138,7 +202,7 @@ index ee7fe8d..0dd6530 100644
      "host close",
      "run replacement",
 diff --git a/src/agents/harness/host-capability.ts b/src/agents/harness/host-capability.ts
-index 33d2517..7d5cfb3 100644
+index 1ba3f5da9..aab685bda 100644
 --- a/src/agents/harness/host-capability.ts
 +++ b/src/agents/harness/host-capability.ts
 @@ -17,7 +17,11 @@ import {
@@ -154,7 +218,7 @@ index 33d2517..7d5cfb3 100644
  import { loadSkillLibrarySelection } from "../../skills/library/selection.js";
  import { resolveSkillResourceCandidates } from "../../skills/runtime/resource-candidates.js";
  import type { SkillEntry } from "../../skills/types.js";
-@@ -111,6 +115,7 @@ export function createAgentHarnessHostCapabilities(params: {
+@@ -112,6 +116,7 @@ export function createAgentHarnessHostCapabilities(params: {
      : undefined;
    const githubPublicationAvailable = attempt.githubPublicationAvailable;
    const workSignal = getAsyncWorkSignal();
@@ -168,69 +232,5 @@ index 33d2517..7d5cfb3 100644
        workspaceReadiness: workspaceReadiness.readiness,
 +      runWithToolScope: (run) => runOutsideAsyncWorkScope(() => trackOwner(run)),
      });
-   const bindToolSurface: AgentHarnessHostCapabilities["bindToolSurface"] = (tools, options) =>
-     bindTools(tools, options, () => {});
-diff --git a/src/agents/harness/host-bound-tool.ts b/src/agents/harness/host-bound-tool.ts
-index 1c2c7bf9..eab24d31 100644
---- a/src/agents/harness/host-bound-tool.ts
-+++ b/src/agents/harness/host-bound-tool.ts
-@@ -26,6 +26,7 @@ export function bindHostToolSurface(
-     callerIdentity: Parameters<typeof wrapToolWithGatewayCallerIdentity>[1] | undefined;
-     abortSignal: AbortSignal;
-     workspaceReadiness?: AgentWorkspaceReadiness;
-+    runWithToolScope?: <T>(run: () => Promise<T>) => Promise<T>;
-   },
- ): AnyAgentTool[] {
-   params.assertActive();
-@@ -42,6 +43,7 @@ export function bindHostToolSurface(
-         params.assertActive,
-         params.observeResult,
-         isWorkspaceTool(tool) ? params.workspaceReadiness : undefined,
-+        params.runWithToolScope,
-       ),
-     );
- }
-@@ -51,6 +53,7 @@ export function gateBoundTool(
-   assertActive: SessionSourceAssertion,
-   observeResult: (result: unknown) => void,
-   workspaceReadiness?: AgentWorkspaceReadiness,
-+  runWithToolScope: <T>(run: () => Promise<T>) => Promise<T> = (run) => run(),
- ): AnyAgentTool {
-   const execute = tool.execute;
-   const sourcePreparer = getInternalToolExecutionPreparer(tool);
-@@ -92,13 +95,13 @@ export function gateBoundTool(
-               // a tool that started and failed in downstream terminal evidence.
-               throw registerTrustedToolNoStartError(error);
-             }
--            return acceptResult(await execute(...args));
-+            return acceptResult(await runWithToolScope(() => execute(...args)));
-           },
-         }
-       : {}),
-   };
-   copyAgentToolMetadata(tool, gated, (source) =>
--    gateBoundTool(source, assertActive, observeResult, workspaceReadiness),
-+    gateBoundTool(source, assertActive, observeResult, workspaceReadiness, runWithToolScope),
-   );
-   if (sourcePreparer) {
-     attachInternalToolExecutionPreparer(gated, async (preparationParams) => {
-@@ -107,7 +110,7 @@ export function gateBoundTool(
-       } else {
-         await assertCurrent();
-       }
--      const prepared = await sourcePreparer(preparationParams);
-+      const prepared = await runWithToolScope(() => sourcePreparer(preparationParams));
-       try {
-         await assertCurrent();
-       } catch (error) {
-@@ -128,7 +131,9 @@ export function gateBoundTool(
-           } else {
-             await assertCurrent();
-           }
--          return acceptResult(await prepared.execute(onImplementationStart));
-+          return acceptResult(
-+            await runWithToolScope(() => prepared.execute(onImplementationStart)),
-+          );
-         },
-       };
-     });
+   const bindModelExecution: AgentHarnessHostCapabilities["bindModelExecution"] =
+     nativeModelPolicySupported

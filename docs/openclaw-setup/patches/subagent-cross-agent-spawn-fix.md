@@ -1,13 +1,13 @@
 # Explicit cron targets and cross-agent tool policy
 
-OpenClaw 2026.11.3 already supports `subagents.requireAgentId` in configuration
+OpenClaw 2026.11.5 already supports `subagents.requireAgentId` in configuration
 and native request admission. This patch uses that support. It does not restore
 the older schema or duplicate upstream's native explicit-target check.
 
 Two maintained differences remain. Scheduled native requests require an explicit
 non-requester agent by default, and a child assigned to another agent uses that
 agent's configured tool policy without inheriting the requester's allow and deny
-lists. Unpatched 2026.11.3 still passes both inherited lists unconditionally to child creation in
+lists. Unpatched 2026.11.5 still passes both inherited lists unconditionally to child creation in
 `src/agents/subagents/spawn/subagent-spawn.ts`. Same-agent children continue to
 inherit the requester's restrictions.
 

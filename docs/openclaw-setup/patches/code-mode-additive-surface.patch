@@ -1,8 +1,8 @@
 diff --git a/packages/gateway-protocol/src/schema/worker-gateway-tool.ts b/packages/gateway-protocol/src/schema/worker-gateway-tool.ts
-index 6de98ba1..a0749b00 100644
+index 44d321fe2..cb94853bf 100644
 --- a/packages/gateway-protocol/src/schema/worker-gateway-tool.ts
 +++ b/packages/gateway-protocol/src/schema/worker-gateway-tool.ts
-@@ -22,6 +22,7 @@ export const AgentToolSurfacePresentationSchema = closedObject({
+@@ -30,6 +30,7 @@ export const AgentToolSurfacePresentationSchema = closedObject({
    codeMode: closedObject({
      enabled: Type.Boolean(),
      executor: Type.Enum(["node", "quickjs"]),
@@ -11,10 +11,10 @@ index 6de98ba1..a0749b00 100644
      timeoutMs: Type.Integer({ minimum: 1 }),
      memoryLimitBytes: Type.Integer({ minimum: 1 }),
 diff --git a/src/agents/agent-tools.before-tool-call.wrapper.ts b/src/agents/agent-tools.before-tool-call.wrapper.ts
-index df4ac09e..c163f60b 100644
+index dc058dfe6..58a40fdb9 100644
 --- a/src/agents/agent-tools.before-tool-call.wrapper.ts
 +++ b/src/agents/agent-tools.before-tool-call.wrapper.ts
-@@ -73,8 +73,7 @@ import {
+@@ -76,8 +76,7 @@ import {
  } from "./before-tool-call-metadata.js";
  import { getChannelAgentToolMeta } from "./channel-tool-metadata.js";
  import {
@@ -24,8 +24,8 @@ index df4ac09e..c163f60b 100644
    getCodeModeExecBeforeHookMetadata,
    normalizeCodeModeExecBeforeHookParams,
    reconcileCodeModeExecBeforeHookParams,
-@@ -258,10 +257,9 @@ export function wrapToolWithBeforeToolCallHook(
-   const execute = tool.execute;
+@@ -233,10 +232,9 @@ export function wrapToolWithBeforeToolCallHook(
+   const assertGatewayToolPolicy = createGatewayToolPolicyAssertion(tool, inputContext?.config);
    const refresh = captureAgentPluginRuntimeRefresh();
    // Only the exact host wait control may drain work admitted before a reload.
 -  const assertAgentPluginRuntimeCurrent =
@@ -39,7 +39,7 @@ index df4ac09e..c163f60b 100644
      return tool;
    }
 diff --git a/src/agents/code-mode-control-tools.ts b/src/agents/code-mode-control-tools.ts
-index 73240bab..ce4be93f 100644
+index 73240bab8..ce4be93fc 100644
 --- a/src/agents/code-mode-control-tools.ts
 +++ b/src/agents/code-mode-control-tools.ts
 @@ -1,6 +1,5 @@
@@ -110,10 +110,10 @@ index 73240bab..ce4be93f 100644
  
  function resolveCodeModeExecToolInputKind(params: unknown): CodeModeExecToolInputKind | undefined {
 diff --git a/src/agents/code-mode-execution.ts b/src/agents/code-mode-execution.ts
-index e2f8a038..c7787906 100644
+index 503eee2d0..7d7bfcb86 100644
 --- a/src/agents/code-mode-execution.ts
 +++ b/src/agents/code-mode-execution.ts
-@@ -184,6 +184,7 @@ export async function runCodeModeExec(params: {
+@@ -176,6 +176,7 @@ export async function runCodeModeExec(params: {
          {
            timeoutMs: remainingMs + CODE_MODE_WORKER_WATCHDOG_GRACE_MS,
            executor: config.executor,
@@ -121,16 +121,16 @@ index e2f8a038..c7787906 100644
            runtimeConfig: params.ctx.runtimeConfig ?? params.ctx.config,
            signal,
            inlineHost,
-@@ -211,7 +212,7 @@ export async function runCodeModeExec(params: {
-             : ("host" as const),
+@@ -199,7 +200,7 @@ export async function runCodeModeExec(params: {
+         code,
+         failurePhase,
          bridgeDispatchStarted: bridgeDispatch.started,
-         replaySafe: params.restartSafe,
 -        telemetry: telemetry(runtime),
 +        telemetry: telemetry(runtime, config),
        },
        { error: signal.aborted ? "code mode execution aborted" : codeModeFailureMessage(error) },
        runtime.hasNetworkContent(),
-@@ -379,6 +380,7 @@ async function resumeCodeModeExecution(
+@@ -384,6 +385,7 @@ async function resumeCodeModeExecution(
          {
            timeoutMs: timeoutMs + CODE_MODE_WORKER_WATCHDOG_GRACE_MS,
            executor: params.config.executor,
@@ -138,38 +138,29 @@ index e2f8a038..c7787906 100644
            signal: params.signal,
            inlineHost: createInlineHost(params, pending, () => {}, delivery.release),
          },
-@@ -555,7 +557,7 @@ async function settleCodeModeResult(params: CodeModeSettlementContext) {
-           failurePhase: params.bridgeDispatch.started ? ("bridge" as const) : ("input" as const),
+@@ -568,7 +570,7 @@ async function settleCodeModeResult(params: CodeModeSettlementContext) {
            bridgeDispatchStarted: params.bridgeDispatch.started,
-           replaySafe: true,
--          telemetry: telemetry(params.runtime),
-+          telemetry: telemetry(params.runtime, params.config),
-         },
-         {
-           error: result.pendingRequests.some(isCodeModeSessionStoreRequest)
-@@ -604,7 +606,7 @@ async function settleCodeModeResult(params: CodeModeSettlementContext) {
          }
        : { status: result.status }),
-     replaySafe: params.replaySafe,
 -    telemetry: telemetry(params.runtime),
 +    telemetry: telemetry(params.runtime, params.config),
      ...(storeWarning ? { warnings: [storeWarning] } : {}),
    };
    const networkContent = params.runtime.hasNetworkContent();
-@@ -736,7 +738,7 @@ export async function runWait(params: {
-         failurePhase: "bridge" as const,
+@@ -680,7 +682,7 @@ export async function runWait(params: {
+         code,
+         failurePhase,
          bridgeDispatchStarted: state.bridgeDispatch.started,
-         replaySafe: state.replaySafe,
 -        telemetry: telemetry(state.runtime),
 +        telemetry: telemetry(state.runtime, state.config),
        },
        { error: aborted ? "code mode execution aborted" : codeModeFailureMessage(error) },
        state.runtime.hasNetworkContent(),
 diff --git a/src/agents/code-mode-executor.test.ts b/src/agents/code-mode-executor.test.ts
-index 2021978c..08af762d 100644
+index ccaa767ec..1c2571e1f 100644
 --- a/src/agents/code-mode-executor.test.ts
 +++ b/src/agents/code-mode-executor.test.ts
-@@ -90,4 +90,34 @@ describe("Code Mode executor admission", () => {
+@@ -85,4 +85,34 @@ describe("Code Mode executor admission", () => {
      expect(mocks.resolve).not.toHaveBeenCalled();
      expect(mocks.execute).not.toHaveBeenCalled();
    });
@@ -205,10 +196,10 @@ index 2021978c..08af762d 100644
 +  });
  });
 diff --git a/src/agents/code-mode-executor.ts b/src/agents/code-mode-executor.ts
-index ea09541a..02b4652b 100644
+index fda8c4a5e..8faf43d94 100644
 --- a/src/agents/code-mode-executor.ts
 +++ b/src/agents/code-mode-executor.ts
-@@ -19,6 +19,7 @@ export async function runCodeModeExecutor(
+@@ -33,6 +33,7 @@ export async function runCodeModeExecutor(
    options: CodeModeExecutorRunOptions & {
      executor: CodeModeExecutorId;
      runtimeConfig?: OpenClawConfig;
@@ -216,21 +207,17 @@ index ea09541a..02b4652b 100644
    },
  ): Promise<CodeModeWorkerResult> {
    const startedAt = performance.now();
-@@ -29,6 +30,13 @@ export async function runCodeModeExecutor(
-   };
-   try {
-     options.signal?.throwIfAborted();
-+    if (
-+      options.requireBundledQuickJs &&
-+      (options.executor !== "quickjs" ||
-+        (input.kind === "resume" && input.continuation.executor !== "quickjs"))
-+    ) {
-+      throw new Error("The additive Code Mode surface requires the bundled QuickJS executor.");
-+    }
+@@ -48,6 +49,9 @@ export async function runCodeModeExecutor(
+       noteRuntimeDynamicExecution("code-mode");
+     }
      if (input.kind === "resume") {
++      if (options.requireBundledQuickJs && input.continuation.executor !== "quickjs") {
++        throw new Error("Additive Code Mode continuation is not owned by bundled QuickJS.");
++      }
        const { continuation, ...resumeInput } = input;
-       return normalizeCodeModeTimeoutResult(
-@@ -41,6 +49,7 @@ export async function runCodeModeExecutor(
+       return normalizeCodeModeRuntimeResult(
+         await continuation.resume(resumeInput, executionOptions),
+@@ -59,6 +63,7 @@ export async function runCodeModeExecutor(
          : (await import("../plugins/code-mode-executor.js")).resolvePluginCodeModeExecutor(
              options.executor,
              options.runtimeConfig,
@@ -239,10 +226,10 @@ index ea09541a..02b4652b 100644
      options.signal?.throwIfAborted();
      const preparationMs = performance.now() - startedAt;
 diff --git a/src/agents/code-mode-headless.ts b/src/agents/code-mode-headless.ts
-index 0623c35d..7d161313 100644
+index bca1ca333..6310d221d 100644
 --- a/src/agents/code-mode-headless.ts
 +++ b/src/agents/code-mode-headless.ts
-@@ -343,6 +343,7 @@ export async function runCodeModeScriptHeadless(params: {
+@@ -325,6 +325,7 @@ export async function runCodeModeScriptHeadless(params: {
            {
              timeoutMs: timeoutMs + CODE_MODE_WORKER_WATCHDOG_GRACE_MS,
              executor: config.executor,
@@ -251,10 +238,10 @@ index 0623c35d..7d161313 100644
              signal: abortScope.signal,
              inlineHost: onInputConsumed ? { ...inlineHost, onInputConsumed } : inlineHost,
 diff --git a/src/agents/code-mode-runtime.ts b/src/agents/code-mode-runtime.ts
-index 7356be5f..e96f4882 100644
+index a6ca1c1bb..22ccd1558 100644
 --- a/src/agents/code-mode-runtime.ts
 +++ b/src/agents/code-mode-runtime.ts
-@@ -28,6 +28,7 @@ export const MAX_HEADLESS_TOOL_CALLS = 200;
+@@ -29,6 +29,7 @@ export const MAX_HEADLESS_TOOL_CALLS = 200;
  export type CodeModeConfig = Omit<AgentToolSurfacePresentation["codeMode"], "enabled"> & {
    /** Effective activation policy; "auto" follows the model catalog flag. */
    enabled: boolean | "auto";
@@ -262,9 +249,26 @@ index 7356be5f..e96f4882 100644
  };
  
  export type {
-@@ -114,9 +115,18 @@ export function resolveCodeModeConfig(
-   const limit = (key: string, fallback: number, min: number, max: number) =>
-     clampNumber(readPositiveInteger(raw[key], fallback), min, max);
+@@ -58,6 +59,16 @@ export type CodeModeHeadlessResult =
+ type CodeModeOptions = Exclude<AuthoredCodeModeConfig, boolean | "auto">;
+ type CodeModeLimit = Exclude<keyof CodeModeOptions, "enabled" | "executor" | "mode">;
+ 
++function readExecutor(value: unknown): CodeModeConfig["executor"] {
++  if (value === undefined) {
++    return "node";
++  }
++  if (value === "node" || value === "quickjs") {
++    return value;
++  }
++  throw new ToolInputError('Code Mode executor must be "node" or "quickjs".');
++}
++
+ function normalizeCodeModeRawConfig(
+   value: AuthoredCodeModeConfig | undefined,
+ ): CodeModeOptions | undefined {
+@@ -102,10 +113,19 @@ export function resolveCodeModeConfig(
+   const limit = (key: CodeModeLimit, fallback: number, min: number, max: number) =>
+     clampNumber(asPositiveInteger(raw[key]) ?? fallback, min, max);
    const maxSearchLimit = limit("maxSearchLimit", 50, 1, 50);
 +  const surface = raw.surface ?? "compact";
 +  if (surface !== "compact" && surface !== "additive") {
@@ -275,18 +279,19 @@ index 7356be5f..e96f4882 100644
 +    throw new ToolInputError("The additive Code Mode surface requires the QuickJS executor.");
 +  }
    return {
-     enabled: readEnabled(raw.enabled),
--    executor: readExecutor(raw.executor),
+     // Authored option-bearing objects keep their historical opt-in behavior.
+     enabled: raw.enabled ?? false,
+-    executor: raw.executor ?? "node",
 +    executor,
 +    surface,
      mode: "only",
      timeoutMs: limit("timeoutMs", 10_000, 100, 60_000),
      memoryLimitBytes: limit("memoryLimitBytes", 64 * 1024 * 1024, 1024 * 1024, 1024 * 1024 * 1024),
 diff --git a/src/agents/code-mode-state.ts b/src/agents/code-mode-state.ts
-index 5b4ce515..90940162 100644
+index f043084ba..f6f0cc96d 100644
 --- a/src/agents/code-mode-state.ts
 +++ b/src/agents/code-mode-state.ts
-@@ -12,7 +12,7 @@ import { observeAgentRunApprovalWait } from "./agent-run-approval-wait.js";
+@@ -14,7 +14,7 @@ import { observeAgentRunApprovalWait } from "./agent-run-approval-wait.js";
  import { raceWithAbortSignal } from "./agent-tools.abort.js";
  import { runBridgeRequest } from "./code-mode-bridge.js";
  import type { CodeModeCatalogProjection } from "./code-mode-catalog.js";
@@ -295,33 +300,33 @@ index 5b4ce515..90940162 100644
  import type {
    CodeModeExecutorContinuation,
    CodeModeWorkerResult,
-@@ -651,7 +651,7 @@ export function storeSuspendedRun(
+@@ -595,7 +595,7 @@ export function storeSuspendedRun(
+       runId,
        reason: codeModeWaitingReason(params.pending),
        pendingToolCalls: pendingToolCalls(params.pending),
-       replaySafe: params.replaySafe,
 -      telemetry: telemetry(params.runtime),
 +      telemetry: telemetry(params.runtime, params.config),
      },
      {},
      params.runtime.hasNetworkContent(),
-@@ -663,6 +663,7 @@ export function storeSuspendedRun(
+@@ -611,6 +611,7 @@ export function storeSuspendedRun(
  }
  
  export function codeModeAbortedResult(params: {
 +  config: CodeModeConfig;
    bridgeDispatch: CodeModeBridgeDispatchState;
    output: CodeModeOutputState;
-   replaySafe: boolean;
-@@ -675,7 +676,7 @@ export function codeModeAbortedResult(params: {
+   runtime: ToolSearchRuntime;
+@@ -621,7 +622,7 @@ export function codeModeAbortedResult(params: {
+       code: "aborted" as const,
        failurePhase: params.bridgeDispatch.started ? ("bridge" as const) : ("host" as const),
        bridgeDispatchStarted: params.bridgeDispatch.started,
-       replaySafe: params.replaySafe,
 -      telemetry: telemetry(params.runtime),
 +      telemetry: telemetry(params.runtime, params.config),
      },
      { error: "code mode execution aborted" },
      params.runtime.hasNetworkContent(),
-@@ -696,9 +697,9 @@ function pendingToolCalls(pending: readonly PendingBridgeState[]) {
+@@ -642,9 +643,9 @@ function pendingToolCalls(pending: readonly PendingBridgeState[]) {
      .map((entry) => ({ id: entry.id, method: entry.method }));
  }
  
@@ -334,7 +339,7 @@ index 5b4ce515..90940162 100644
    };
  }
 diff --git a/src/agents/code-mode.config.test.ts b/src/agents/code-mode.config.test.ts
-index a5e970b4..4215c8c0 100644
+index a6d9ca63d..1a2f64c35 100644
 --- a/src/agents/code-mode.config.test.ts
 +++ b/src/agents/code-mode.config.test.ts
 @@ -5,6 +5,18 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -358,7 +363,7 @@ index a5e970b4..4215c8c0 100644
        tools: { codeMode: { enabled: false, timeoutMs: 1234, maxOutputBytes: 4096 } },
 diff --git a/src/agents/code-mode.scheduling.test.ts b/src/agents/code-mode.scheduling.test.ts
 new file mode 100644
-index 00000000..398ec5fa
+index 000000000..398ec5fa6
 --- /dev/null
 +++ b/src/agents/code-mode.scheduling.test.ts
 @@ -0,0 +1,109 @@
@@ -472,7 +477,7 @@ index 00000000..398ec5fa
 +  );
 +});
 diff --git a/src/agents/code-mode.test.ts b/src/agents/code-mode.test.ts
-index e013df35..7a33c602 100644
+index 5b7390ef5..9bc0c7cfc 100644
 --- a/src/agents/code-mode.test.ts
 +++ b/src/agents/code-mode.test.ts
 @@ -1,5 +1,6 @@
@@ -482,7 +487,7 @@ index e013df35..7a33c602 100644
  import { Type } from "typebox";
  import { Compile } from "typebox/compile";
  import { afterEach, describe, expect, it, vi } from "vitest";
-@@ -83,6 +84,57 @@ function catalog(targets: AnyAgentTool[], directToolNames?: string[]) {
+@@ -115,6 +116,57 @@ function expectFragments(value: unknown, included: string[], excluded: string[]
  }
  
  describe("Code Mode catalog and model-visible surface", () => {
@@ -541,10 +546,10 @@ index e013df35..7a33c602 100644
      const compile = vi.mocked(Compile);
      const validate = (tools: AnyAgentTool[]) => {
 diff --git a/src/agents/code-mode.ts b/src/agents/code-mode.ts
-index 151109e9..3acf0fbd 100644
+index a95329c59..164150c03 100644
 --- a/src/agents/code-mode.ts
 +++ b/src/agents/code-mode.ts
-@@ -9,7 +9,9 @@ import {
+@@ -10,7 +10,9 @@ import {
    CODE_MODE_EXEC_TOOL_NAME,
    CODE_MODE_WAIT_TOOL_NAME,
    isCodeModeControlTool,
@@ -556,8 +561,8 @@ index 151109e9..3acf0fbd 100644
    normalizeCodeModeTimeoutResult,
 @@ -32,6 +34,7 @@ import { captureAgentPluginRuntimeRefresh } from "./plugin-runtime-refresh.js";
  import type { AgentToolUpdateCallback } from "./runtime/index.js";
- import { copyInternalToolResultState } from "./runtime/internal-hooks.js";
  import { executionTitleSchema } from "./schema/typebox.js";
+ import { isCoreCodingSurfaceToolName } from "./tool-catalog.js";
 +import { normalizeToolPolicyName } from "./tool-policy.js";
  import { resolveToolResultBudget } from "./tool-result-limits.js";
  import {
@@ -574,166 +579,41 @@ index 151109e9..3acf0fbd 100644
    TOOL_SEARCH_RAW_TOOL_NAME,
    type ToolSearchCatalogEntry,
    type ToolSearchCatalogRef,
-@@ -212,9 +217,10 @@ export function buildCodeModeCatalogPrompt(
- 
- function createCodeModeExecDescription(config: ReturnType<typeof resolveCodeModeConfig>): string {
-   const { maxOutputBytes, timeoutMs } = config;
-+  const controlNames = resolveCodeModeControlNames(config.surface);
-   return (
--    `Run JavaScript in OpenClaw. Each \`exec\` runs in a fresh JavaScript context; variables, functions and imports never carry over between cells. Set \`title\` to a 3–7 word purpose. Guest work and inline tool waits share a ${timeoutMs} ms wall-clock budget per \`exec\`/\`wait\`; approvals pause it. Guest computation over this budget times out. awaitResults:true keeps needed results owned and pauses only off-VM tool waits; run/tool deadlines still apply. Other pending tools may return \`waiting\` for \`wait\`.` +
--    ` Enabled tools are async global functions. Await dependent calls in order; independent calls may run with Promise.all. Declared output fields may feed later calls in the same program; avoid extra inspection calls. Emit output with \`text(value)\` or \`json(value)\`. Return the final value, otherwise \`null\`. Oversized final objects/arrays may return \`value.reference\`. \`-> ?\` means unknown output: do not feed it into guessed field-dependent logic in the same program. Return it raw or \`await results.save(value)\`; use a later \`exec\` for dependent composition. Save returns \`{id,bytes,count,shape,preview,previewTruncated}\`: emit that descriptor directly; full JSON stays stored. Load/delete with \`results.load(id)\`/\`results.delete(id)\`. Saved results references expire when the current reply ends; never reuse reference ids from earlier turns; use \`store\` for data needed later. \`await store(key, value)\`/\`await load(key)\` keep small JSON values across cells and turns in this session (survive restarts); contract: \`API.read("results.d.ts")\`. For omitted tools, use \`catalog.search(query)\`; results are callable: \`const [tool] = await catalog.search("..."); return await tool({...});\`. Use handle \`describe()\` for schemas. \`setTimeout\` and \`clearTimeout\` work. \`TextEncoder\`/\`TextDecoder\` convert local text and bytes. Console log/info/warn/error/debug emit bounded text. Nested calls enforce normal tool policy and approvals. Thrown tool errors are catchable. Returned values may instead report failure. Follow the tool's result contract, and inspect possible effects before retrying. Nested results are intact or throw resource errors. Cell reply inbox: ${Math.min(config.memoryLimitBytes, config.maxSnapshotBytes)} bytes; consume replies or paginate if full. Output/value/errors share ${maxOutputBytes} bytes across waits. Other truncation reports original JSON prefixes/omitted bytes; rerun with narrower args. Output is incremental; changed cumulative summaries replace earlier ones. Node.js modules and \`require\`/\`import\` are NOT available; use tools for external actions.` +
-+    `Run JavaScript in OpenClaw. Each \`${controlNames.exec}\` runs in a fresh JavaScript context; variables, functions and imports never carry over between cells. Set \`title\` to a 3–7 word purpose. Guest work and inline tool waits share a ${timeoutMs} ms wall-clock budget per \`${controlNames.exec}\`/\`${controlNames.wait}\`; approvals pause it. Guest computation over this budget times out. awaitResults:true keeps needed results owned and pauses only off-VM tool waits; run/tool deadlines still apply. Other pending tools may return \`waiting\` for \`${controlNames.wait}\`.` +
-+    ` Enabled tools are async global functions. Await dependent calls in order; independent calls may run with Promise.all. Declared output fields may feed later calls in the same program; avoid extra inspection calls. Emit output with \`text(value)\` or \`json(value)\`. Return the final value, otherwise \`null\`. Oversized final objects/arrays may return \`value.reference\`. \`-> ?\` means unknown output: do not feed it into guessed field-dependent logic in the same program. Return it raw or \`await results.save(value)\`; use a later \`${controlNames.exec}\` for dependent composition. Save returns \`{id,bytes,count,shape,preview,previewTruncated}\`: emit that descriptor directly; full JSON stays stored. Load/delete with \`results.load(id)\`/\`results.delete(id)\`. Saved results references expire when the current reply ends; never reuse reference ids from earlier turns; use \`store\` for data needed later. \`await store(key, value)\`/\`await load(key)\` keep small JSON values across cells and turns in this session (survive restarts); contract: \`API.read("results.d.ts")\`. For omitted tools, use \`catalog.search(query)\`; results are callable: \`const [tool] = await catalog.search("..."); return await tool({...});\`. Use handle \`describe()\` for schemas. \`setTimeout\` and \`clearTimeout\` work. \`TextEncoder\`/\`TextDecoder\` convert local text and bytes. Console log/info/warn/error/debug emit bounded text. Nested calls enforce normal tool policy and approvals. Thrown tool errors are catchable. Returned values may instead report failure. Follow the tool's result contract, and inspect possible effects before retrying. Nested results are intact or throw resource errors. Cell reply inbox: ${Math.min(config.memoryLimitBytes, config.maxSnapshotBytes)} bytes; consume replies or paginate if full. Output/value/errors share ${maxOutputBytes} bytes across waits. Other truncation reports original JSON prefixes/omitted bytes; rerun with narrower args. Output is incremental; changed cumulative summaries replace earlier ones. Node.js modules and \`require\`/\`import\` are NOT available; use tools for external actions.` +
-     " `code` is JavaScript, never a shell command; do not retry failed shell source."
-   );
- }
-@@ -224,6 +230,7 @@ export function createCodeModeTools(ctx: CodeModeToolContext): AnyAgentTool[] {
+@@ -222,6 +227,7 @@ export function createCodeModeTools(ctx: CodeModeToolContext): AnyAgentTool[] {
    // The surface planner owns activation. Capture limits once so an admitted
-   // control remains executable during model overrides and restart recovery.
+   // control remains executable during model overrides.
    const config = resolveCodeModeConfig(ctx.runtimeConfig ?? ctx.config, ctx.agentId);
 +  const controlNames = resolveCodeModeControlNames(config.surface);
    const resultBudget = resolveToolResultBudget(ctx.modelContextWindowTokens);
    const formatResult = (
      rawResult: Awaited<ReturnType<typeof runCodeModeExec | typeof runWait>>,
-@@ -244,74 +251,81 @@ export function createCodeModeTools(ctx: CodeModeToolContext): AnyAgentTool[] {
-       result,
+@@ -244,7 +250,7 @@ export function createCodeModeTools(ctx: CodeModeToolContext): AnyAgentTool[] {
      );
    };
--  const execTool = markCodeModeControlTool({
+   const execTool = markCodeModeControlTool({
 -    name: CODE_MODE_EXEC_TOOL_NAME,
--    label: "exec",
--    description: createCodeModeExecDescription(config),
--    parameters: CODE_MODE_EXEC_PARAMETERS,
--    execute: async (
--      toolCallId: string,
--      args: unknown,
--      signal?: AbortSignal,
--      onUpdate?: AgentToolUpdateCallback,
--    ) => {
--      runtimeRefresh.assertCurrent();
--      // Context closure fences new calls; the supplied signal owns in-flight
--      // cancellation so sessions_yield can still finish its initiating handoff.
--      ctx.abortSignal?.throwIfAborted();
--      const input = readCode(args);
--      let runtime: ToolSearchRuntime | undefined;
--      const result = await runCodeModeExec({
--        toolCallId,
--        ctx,
--        config,
--        resultBudget,
--        code: input.code,
--        assistantTurnId: getAgentToolAssistantTurnId(),
--        restartSafe: ctx.forceRestartSafeTools === true || input.restartSafe,
--        awaitResults: input.awaitResults,
--        signal,
--        onUpdate,
--        onRuntime: (value) => {
--          runtime = value;
--        },
--      });
--      return formatResult(result, runtime, signal);
--    },
++    name: controlNames.exec,
+     label: "exec",
+     description: createCodeModeExecDescription(config),
+     parameters: CODE_MODE_EXEC_PARAMETERS,
+@@ -276,9 +282,9 @@ export function createCodeModeTools(ctx: CodeModeToolContext): AnyAgentTool[] {
+       });
+       return formatResult(result, runtime, signal);
+     },
 -  } as AnyAgentTool);
--  const waitTool = markCodeModeControlTool({
++  } as AnyAgentTool, "exec");
+   const waitTool = markCodeModeControlTool({
 -    name: CODE_MODE_WAIT_TOOL_NAME,
--    label: "wait",
--    hideFromChannelProgress: true,
--    description:
--      'Resume only when the outer exec result has status "waiting", using its top-level runId. A completed exec may return a still-running tool operation inside value; manage that operation through its enabled tool in a new exec. Never pass a nested sessionId or process ID to wait.',
--    parameters: CODE_MODE_WAIT_PARAMETERS,
--    execute: async (
--      toolCallId: string,
--      args: unknown,
--      signal?: AbortSignal,
--      onUpdate?: AgentToolUpdateCallback,
--    ) => {
--      runtimeRefresh.assertActive();
--      ctx.abortSignal?.throwIfAborted();
--      let runtime: ToolSearchRuntime | undefined;
--      const result = await runWait({
--        toolCallId,
--        ctx,
--        runId: readRunId(args),
--        signal,
--        onUpdate,
--        onRuntime: (value) => {
--          runtime = value;
--        },
--      });
--      return formatResult(result, runtime, signal);
--    },
++    name: controlNames.wait,
+     label: "wait",
+     hideFromChannelProgress: true,
+     description:
+@@ -305,11 +311,11 @@ export function createCodeModeTools(ctx: CodeModeToolContext): AnyAgentTool[] {
+       });
+       return formatResult(result, runtime, signal);
+     },
 -  } as AnyAgentTool);
-+  const execTool = markCodeModeControlTool(
-+    {
-+      name: controlNames.exec,
-+      label: controlNames.exec,
-+      description: createCodeModeExecDescription(config),
-+      parameters: CODE_MODE_EXEC_PARAMETERS,
-+      execute: async (
-+        toolCallId: string,
-+        args: unknown,
-+        signal?: AbortSignal,
-+        onUpdate?: AgentToolUpdateCallback,
-+      ) =>
-+        runtimeRefresh.run(async () => {
-+          runtimeRefresh.assertCurrent();
-+          // Context closure fences new calls; the supplied signal owns in-flight
-+          // cancellation so sessions_yield can still finish its initiating handoff.
-+          ctx.abortSignal?.throwIfAborted();
-+          const input = readCode(args);
-+          let runtime: ToolSearchRuntime | undefined;
-+          const result = await runCodeModeExec({
-+            toolCallId,
-+            ctx,
-+            config,
-+            resultBudget,
-+            code: input.code,
-+            assistantTurnId: getAgentToolAssistantTurnId(),
-+            restartSafe: ctx.forceRestartSafeTools === true || input.restartSafe,
-+            awaitResults: input.awaitResults,
-+            signal,
-+            onUpdate,
-+            onRuntime: (value) => {
-+              runtime = value;
-+            },
-+          });
-+          return formatResult(result, runtime, signal);
-+        }),
-+    } as AnyAgentTool,
-+    "exec",
-+  );
-+  const waitTool = markCodeModeControlTool(
-+    {
-+      name: controlNames.wait,
-+      label: controlNames.wait,
-+      hideFromChannelProgress: true,
-+      description: `Resume only when the outer ${controlNames.exec} result has status "waiting", using its top-level runId. A completed ${controlNames.exec} may return a still-running tool operation inside value; manage that operation through its enabled tool in a new ${controlNames.exec}. Never pass a nested sessionId or process ID to ${controlNames.wait}.`,
-+      parameters: CODE_MODE_WAIT_PARAMETERS,
-+      execute: async (
-+        toolCallId: string,
-+        args: unknown,
-+        signal?: AbortSignal,
-+        onUpdate?: AgentToolUpdateCallback,
-+      ) =>
-+        runtimeRefresh.run(async () => {
-+          runtimeRefresh.assertActive();
-+          ctx.abortSignal?.throwIfAborted();
-+          let runtime: ToolSearchRuntime | undefined;
-+          const result = await runWait({
-+            toolCallId,
-+            ctx,
-+            runId: readRunId(args),
-+            signal,
-+            onUpdate,
-+            onRuntime: (value) => {
-+              runtime = value;
-+            },
-+          });
-+          return formatResult(result, runtime, signal);
-+        }),
-+    } as AnyAgentTool,
-+    "wait",
-+  );
++  } as AnyAgentTool, "wait");
    return [execTool, waitTool];
  }
  
@@ -742,7 +622,7 @@ index 151109e9..3acf0fbd 100644
  export function applyCodeModeCatalog(params: {
    tools: AnyAgentTool[];
    config?: OpenClawConfig;
-@@ -322,10 +336,21 @@ export function applyCodeModeCatalog(params: {
+@@ -320,10 +326,21 @@ export function applyCodeModeCatalog(params: {
    directToolNames?: Iterable<string>;
    codeModeSkills?: CodeModeToolContext["codeModeSkills"];
  }) {
@@ -764,7 +644,7 @@ index 151109e9..3acf0fbd 100644
        isCodeModeControlTool(tool) ||
        (tool.name !== TOOL_SEARCH_RAW_TOOL_NAME &&
          tool.name !== TOOL_DESCRIBE_RAW_TOOL_NAME &&
-@@ -336,12 +361,24 @@ export function applyCodeModeCatalog(params: {
+@@ -334,12 +351,24 @@ export function applyCodeModeCatalog(params: {
      ...params,
      tools,
      enabled: true,
@@ -793,10 +673,10 @@ index 151109e9..3acf0fbd 100644
 +    : compacted;
  }
 diff --git a/src/agents/embedded-agent-runner/result.types.ts b/src/agents/embedded-agent-runner/result.types.ts
-index 96b72027..14f0bb45 100644
+index 55a5d2e70..61fd2a275 100644
 --- a/src/agents/embedded-agent-runner/result.types.ts
 +++ b/src/agents/embedded-agent-runner/result.types.ts
-@@ -128,7 +128,7 @@ type EmbeddedRunFailureSignal = {
+@@ -131,7 +131,7 @@ export type EmbeddedRunFailureSignal = {
  
  export type EmbeddedRunTerminalToolFailure = {
    source: "tool";
@@ -806,40 +686,10 @@ index 96b72027..14f0bb45 100644
  };
  
 diff --git a/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts b/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts
-index 8b2ebd21..88ae2f6d 100644
+index a32e36f24..501d2a21a 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-client-tools.test.ts
-@@ -93,6 +93,7 @@ function seedCatalog(mode: "code-mode" | "tool-search", config: OpenClawConfig)
- 
- function prepare(input: {
-   codeModeControlsEnabledForRun: boolean;
-+  codeModeSurface?: "additive" | "compact";
-   attemptConfig: OpenClawConfig;
-   toolSearchRuntimeConfig: OpenClawConfig;
-   catalogRef: ReturnType<typeof createToolSearchCatalogRef>;
-@@ -110,6 +111,7 @@ function prepare(input: {
-     },
-     catalogToolHookContext: undefined,
-     codeModeControlsEnabledForRun: input.codeModeControlsEnabledForRun,
-+    codeModeSurface: input.codeModeSurface,
-     deferredDirectoryToolsCallable: false,
-     effectiveTools: input.effectiveTools ?? [],
-     replaySafetyOptions: { declaredReplaySafe: () => undefined },
-@@ -441,11 +443,12 @@ describe("prepareEmbeddedAttemptClientTools", () => {
-     expect(await run("gateway")).toEqual({ generation: "gated" });
-   });
- 
--  it.each([CODE_MODE_CONFIG])("hides client tools when the attempt engages code mode", (config) => {
-+  it.each([CODE_MODE_CONFIG])("hides client tools when compact code mode is engaged", (config) => {
-     const catalogRef = seedCatalog("code-mode", config);
- 
-     const result = prepare({
-       codeModeControlsEnabledForRun: true,
-+      codeModeSurface: "compact",
-       attemptConfig: config,
-       // Deliberately catalog-disabled: the code-mode branch must not read this.
-       toolSearchRuntimeConfig: CATALOGS_DISABLED_CONFIG,
-@@ -456,6 +459,77 @@ describe("prepareEmbeddedAttemptClientTools", () => {
+@@ -387,6 +387,77 @@ describe("prepareEmbeddedAttemptClientTools", () => {
      expect(result.allCustomTools).toEqual([]);
    });
  
@@ -918,18 +768,18 @@ index 8b2ebd21..88ae2f6d 100644
      const catalogRef = createToolSearchCatalogRef();
      const codeModeSkills = [
 diff --git a/src/agents/embedded-agent-runner/run/attempt-client-tools.ts b/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
-index 62256910..0159b7bc 100644
+index a1856ea53..13ab148c4 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
-@@ -56,6 +56,7 @@ export function prepareEmbeddedAttemptClientTools(params: {
-   attempt: EmbeddedRunAttemptParams;
+@@ -41,6 +41,7 @@ export function prepareEmbeddedAttemptClientTools(params: {
+   >;
    catalogToolHookContext: Parameters<typeof toToolDefinitions>[1];
    codeModeControlsEnabledForRun: boolean;
 +  codeModeSurface?: "additive" | "compact";
    deferredDirectoryToolsCallable: boolean;
    effectiveTools: AgentTool[];
    /** Applies the session tool pin each time the surface is built, including permission refreshes. */
-@@ -191,10 +192,13 @@ export function prepareEmbeddedAttemptClientTools(params: {
+@@ -176,10 +177,13 @@ export function prepareEmbeddedAttemptClientTools(params: {
        },
      );
      const search = resolveToolSearchConfig(params.toolSearchRuntimeConfig);
@@ -941,13 +791,13 @@ index 62256910..0159b7bc 100644
          params.codeModeControlsEnabledForRun || (search.enabled && search.mode !== "directory"),
 +      directVisible: additiveCodeMode,
        catalogRef: params.toolSearchCatalogRef,
+       selection: params.codeModeControlsEnabledForRun ? undefined : search,
      });
-     clientToolDefs = clientToolSearch.tools;
 diff --git a/src/agents/embedded-agent-runner/run/attempt-prompt-support.ts b/src/agents/embedded-agent-runner/run/attempt-prompt-support.ts
-index 6db1968c..2af09f0a 100644
+index d48802701..faa778a44 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-prompt-support.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-prompt-support.ts
-@@ -153,6 +153,7 @@ export function applyPromptBuildToolsAllow<
+@@ -136,6 +136,7 @@ export function applyPromptBuildToolsAllow<
    tools: TTool[];
    catalogRef?: ToolSearchCatalogRef;
    codeModeControlsEnabled: boolean;
@@ -955,67 +805,19 @@ index 6db1968c..2af09f0a 100644
    forceToolNames?: readonly string[];
  }) {
    const policyInput = {
-@@ -164,6 +165,7 @@ export function applyPromptBuildToolsAllow<
+@@ -153,6 +154,7 @@ export function applyPromptBuildToolsAllow<
      catalogRef: params.catalogRef,
      catalogEntries: params.baseline.catalogEntries,
      codeModeControlsEnabled: params.codeModeControlsEnabled,
 +    codeModeControlNames: params.codeModeControlNames,
    }).apply(policyInput);
+   const callableNames = new Set(promptPolicy.callableToolNames.map(normalizeToolPolicyName));
    const filterTools = <T extends NamedTool>(tools: T[]) =>
-     createAgentHarnessPromptToolPolicy({ tools, codeModeControlsEnabled: false }).apply(policyInput)
-diff --git a/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts b/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts
-index 6b0ca058..35adf816 100644
---- a/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts
-+++ b/src/agents/embedded-agent-runner/run/attempt-prompt-tool-policy.test.ts
-@@ -42,6 +42,43 @@ function createBaseline(activeToolNames: string[], catalogRef?: ToolSearchCatalo
- }
- 
- describe("applyPromptBuildToolsAllow", () => {
-+  it("retains additive control names when a prompt hook narrows the direct catalog", () => {
-+    const controls = [{ name: "code_exec" }, { name: "code_wait" }];
-+    const read = { name: "read" };
-+    const write = { name: "write" };
-+    const catalogRef: ToolSearchCatalogRef = {
-+      current: {
-+        entries: [catalogEntry("read", read), catalogEntry("write", write)],
-+        counterScope: "additive-prompt-policy",
-+        searchCount: 0,
-+        describeCount: 0,
-+        callCount: 0,
-+      },
-+    };
-+    const fixture = createSession([...controls.map((tool) => tool.name), read.name, write.name]);
-+    const policy = createPromptBuildToolPolicy({
-+      session: fixture.session,
-+      effectiveTools: [...controls, read, write],
-+      uncompactedEffectiveTools: [read, write],
-+      tools: [read, write],
-+      catalogRef,
-+      codeModeControlsEnabled: true,
-+      codeModeControlNames: controls.map((tool) => tool.name),
-+    });
-+
-+    policy.apply(["read"]);
-+
-+    expect(policy.current.effectiveTools.map((tool) => tool.name)).toEqual([
-+      "code_exec",
-+      "code_wait",
-+      "read",
-+    ]);
-+    expect(policy.current.tools.map((tool) => tool.name)).toEqual(["read"]);
-+    expect(policy.current.activeToolNames).toEqual(["code_exec", "code_wait", "read"]);
-+    expect(policy.current.callableToolNames).toEqual(["code_exec", "code_wait", "read"]);
-+    expect(catalogRef.current?.entries.map((entry) => entry.name)).toEqual(["read"]);
-+  });
-+
-   it.each(["before", "after"] as const)(
-     "keeps hook-denied tools fenced when the hook resolves %s a permission change",
-     (hookTiming) => {
 diff --git a/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts b/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
-index 5bb32689..715477de 100644
+index c087f89e2..3febb2dbb 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
-@@ -130,6 +130,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
+@@ -108,6 +108,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
      toolSearchCatalogRef,
      toolSearchRuntimeConfig,
    } = toolBase;
@@ -1023,7 +825,7 @@ index 5bb32689..715477de 100644
    const { systemPromptReport, systemPromptText } = input.systemPrompt;
    const effectiveToolCount = effectiveTools.length;
    const sessionPreparation = {
-@@ -279,6 +280,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
+@@ -267,6 +268,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
                catalogToolHookContext,
                clientTools,
                codeModeControlsEnabledForRun,
@@ -1032,217 +834,22 @@ index 5bb32689..715477de 100644
                effectiveTools,
                pinTools,
 diff --git a/src/agents/embedded-agent-runner/run/attempt-tool-catalog.ts b/src/agents/embedded-agent-runner/run/attempt-tool-catalog.ts
-index 94208a4a..1caeca7b 100644
+index ef78846a0..9116cf715 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-tool-catalog.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-tool-catalog.ts
-@@ -72,6 +72,7 @@ export async function prepareEmbeddedAttemptToolCatalog(input: {
+@@ -94,6 +94,7 @@ export async function prepareEmbeddedAttemptToolCatalog(input: {
      const catalogToolHookContext = preparedToolBase.toolHookContext;
      const compacted = preparedToolBase.toolSurfaceRuntime.compactTools(effectiveTools, {
        hookContext: catalogToolHookContext,
 +      clientToolsCallable: toolsEnabled && (clientTools?.length ?? 0) > 0,
        prepared: {
          abortSignal,
-         forceRestartSafeTools: attempt.forceRestartSafeTools,
-@@ -154,7 +155,9 @@ export async function prepareEmbeddedAttemptToolCatalog(input: {
-       clientTools,
-       clientToolsCataloged:
-         toolSearch.catalogRegistered &&
--        (codeModeControlsEnabledForRun || toolSearchConfig.mode !== "directory"),
-+        (codeModeControlsEnabledForRun
-+          ? preparedToolBase.toolSurfaceRuntime.plan.codeModeSurface !== "additive"
-+          : toolSearchConfig.mode !== "directory"),
-       catalogToolCount: toolSearch.catalogToolCount,
-       controlsEnabled: toolSearchControlsEnabledForRun || codeModeControlsEnabledForRun,
-       deferredToolsCallable: deferredDirectoryToolsCallable,
-diff --git a/src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts b/src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts
-index 2ff22e3f..3e40f9ee 100644
---- a/src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts
-+++ b/src/agents/embedded-agent-runner/run/attempt.tool-search-run-plan.test.ts
-@@ -1,7 +1,12 @@
- import { Type } from "typebox";
- import { describe, expect, it } from "vitest";
- import { setPluginToolMeta } from "../../../plugins/tool-metadata.js";
-+import { createAgentHarnessToolSurfaceRuntimeCore } from "../../harness/tool-surface-bridge.js";
- import type { AnyAgentTool } from "../../tools/common.js";
-+import { createFakeStream } from "./attempt-stream.test-helpers.js";
-+import { prepareEmbeddedAttemptClientTools } from "./attempt-client-tools.js";
-+import { wrapStreamFnTrimToolCallNames } from "./attempt-tool-call-stream-normalization.js";
-+import { prepareEmbeddedAttemptToolCatalog } from "./attempt-tool-catalog.js";
- import { buildToolSearchRunPlan } from "./attempt-tool-search-run-plan.js";
- 
- const tool = (name: string): AnyAgentTool => ({
-@@ -34,6 +39,166 @@ function plan(overrides: Partial<Parameters<typeof buildToolSearchRunPlan>[0]> =
- }
- 
- describe("buildToolSearchRunPlan", () => {
-+  it("keeps compact controls off when the run has no client or native tools", async () => {
-+    const config = {
-+      tools: {
-+        codeMode: { enabled: true as const, surface: "compact" as const },
-+        toolSearch: false,
-+      },
-+    };
-+    const runtime = createAgentHarnessToolSurfaceRuntimeCore({
-+      config,
-+      executeTool: async () => ({ content: [], details: {} }),
-+      modelToolsEnabled: true,
-+      runId: "client-visibility-empty",
-+    });
-+    try {
-+      const catalog = await prepareEmbeddedAttemptToolCatalog({
-+        attempt: {
-+          config,
-+          runId: "client-visibility-empty",
-+          model: { api: "openai-completions" },
-+          runtimePlan: { tools: { logDiagnostics: () => {} } },
-+        },
-+        setup: {
-+          sessionAgentId: "main",
-+          effectiveWorkspace: "/tmp/client-visibility-empty",
-+          getProviderRuntimeHandle: () => undefined,
-+        },
-+        preparedToolBase: {
-+          toolSurfaceRuntime: runtime,
-+          codeModeControlsEnabledForRun: true,
-+          codeModeSkills: [],
-+          runtimeCapabilityProfile: { policy: {} },
-+          toolSearchConfig: runtime.plan.toolSearchConfig,
-+          toolSearchControlsEnabledForRun: false,
-+          toolsEnabled: true,
-+        },
-+        bundleTools: { uncompactedEffectiveTools: [], clientTools: undefined },
-+        abortSignal: new AbortController().signal,
-+        executeCodeModeTool: async () => ({ content: [], details: {} }),
-+      } as never);
-+      expect(catalog.effectiveTools).toEqual([]);
-+      expect(catalog.toolSearch.catalogRegistered).toBe(false);
-+    } finally {
-+      runtime.cleanup();
-+    }
-+  });
-+
-+  it.each(["additive", "compact"] as const)(
-+    "derives direct client visibility from the configured %s surface",
-+    async (surface) => {
-+      const config = {
-+        tools: { codeMode: { enabled: true as const, surface }, toolSearch: false as const },
-+      };
-+      const runtime = createAgentHarnessToolSurfaceRuntimeCore({
-+        config,
-+        executeTool: async () => ({ content: [], details: {} }),
-+        modelToolsEnabled: true,
-+        runId: `client-visibility-${surface}`,
-+      });
-+      try {
-+        const catalog = await prepareEmbeddedAttemptToolCatalog({
-+          attempt: {
-+            config,
-+            runId: `client-visibility-${surface}`,
-+            model: { api: "openai-completions" },
-+            runtimePlan: { tools: { logDiagnostics: () => {} } },
-+          },
-+          setup: {
-+            sessionAgentId: "main",
-+            effectiveWorkspace: "/tmp/client-visibility",
-+            getProviderRuntimeHandle: () => undefined,
-+          },
-+          preparedToolBase: {
-+            toolSurfaceRuntime: runtime,
-+            codeModeControlsEnabledForRun: true,
-+            codeModeSkills: [],
-+            runtimeCapabilityProfile: { policy: {} },
-+            toolSearchConfig: runtime.plan.toolSearchConfig,
-+            toolSearchControlsEnabledForRun: false,
-+            toolsEnabled: true,
-+          },
-+          bundleTools: {
-+            uncompactedEffectiveTools: [],
-+            clientTools,
-+          },
-+          abortSignal: new AbortController().signal,
-+          executeCodeModeTool: async () => ({ content: [], details: {} }),
-+        } as never);
-+        const clients = prepareEmbeddedAttemptClientTools({
-+          attempt: {
-+            config,
-+            runId: `client-visibility-${surface}`,
-+          },
-+          catalogToolHookContext: undefined,
-+          codeModeControlsEnabledForRun: true,
-+          codeModeSurface: surface,
-+          deferredDirectoryToolsCallable: false,
-+          effectiveTools: [],
-+          replaySafetyOptions: { declaredReplaySafe: () => undefined },
-+          sessionAgentId: "main",
-+          toolSearchCatalogRef: runtime.toolSearchCatalogRef,
-+          toolSearchRuntimeConfig: runtime.plan.toolSearchRuntimeConfig,
-+          uncompactedEffectiveTools: [],
-+          clientTools,
-+        } as never);
-+        expect(clients.clientToolDefs.map((tool) => tool.name)).toEqual(
-+          surface === "additive" ? ["client_pick_file"] : [],
-+        );
-+        expect(
-+          runtime.toolSearchCatalogRef?.current?.entries.find(
-+            (entry) => entry.name === "client_pick_file",
-+          )?.directVisible,
-+        ).toBe(surface === "additive");
-+        expect(catalog.toolSearchRunPlan.visibleAllowedToolNames.has("client_pick_file")).toBe(
-+          surface === "additive",
-+        );
-+        expect(catalog.toolSearchRunPlan.liveAllowedToolNames.has("client_pick_file")).toBe(
-+          surface === "additive",
-+        );
-+        expect(catalog.toolSearchRunPlan.replayAllowedToolNames.has("client_pick_file")).toBe(true);
-+        const stream = wrapStreamFnTrimToolCallNames(
-+          (() =>
-+            createFakeStream({
-+              events: [],
-+              resultMessage: {
-+                role: "assistant",
-+                content: [{ type: "toolCall", name: "client_pick_file", arguments: {} }],
-+              },
-+            })) as never,
-+          catalog.toolSearchRunPlan.liveAllowedToolNames,
-+          { unknownToolThreshold: 1 },
-+        );
-+        for (let index = 0; index < 3; index += 1) {
-+          const result = await (await stream({} as never, {} as never, {} as never)).result();
-+          if (surface === "additive") {
-+            expect(result.content).toEqual([
-+              expect.objectContaining({ type: "toolCall", name: "client_pick_file" }),
-+            ]);
-+          } else if (index > 0) {
-+            expect(result.content[0]?.type).toBe("text");
-+          }
-+        }
-+      } finally {
-+        runtime.cleanup();
-+      }
-+    },
-+  );
-+
-+  it.each(["additive", "compact"] as const)(
-+    "preserves direct client calls only on the %s surface",
-+    (surface) => {
-+      const result = plan({
-+        clientToolsCataloged: surface === "compact",
-+        deferredToolsCallable: surface === "additive",
-+        explicitAllowlistSources: [],
-+      });
-+      expect(result.visibleAllowedToolNames.has("client_pick_file")).toBe(surface === "additive");
-+      expect(result.replayAllowedToolNames.has("client_pick_file")).toBe(true);
-+    },
-+  );
-+
-   it("carries native catalog capabilities without widening direct execution authority", () => {
-     const foreignTool = tool("sessions_yield");
-     setPluginToolMeta(foreignTool, { pluginId: "bundle-mcp", optional: false });
+         toolExecutionAllow: attempt.toolExecutionAllow,
 diff --git a/src/agents/embedded-agent-runner/run/attempt.ts b/src/agents/embedded-agent-runner/run/attempt.ts
-index ba68cc8a..71796305 100644
+index 7d8c1b4ca..4b1586e28 100644
 --- a/src/agents/embedded-agent-runner/run/attempt.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt.ts
-@@ -385,6 +385,9 @@ async function runEmbeddedAttemptOwned(
+@@ -434,6 +434,9 @@ async function runEmbeddedAttemptOwned(
          tools: preparedBundleTools.tools,
          catalogRef: preparedToolBase.toolSearchCatalogRef,
          codeModeControlsEnabled: preparedToolBase.codeModeControlsEnabledForRun,
@@ -1251,9 +858,9 @@ index ba68cc8a..71796305 100644
 +          : [],
          onApplied: (surface) => {
            const allowedNames = new Set([
-             ...surface.activeToolNames,
+             ...surface.callableToolNames,
 diff --git a/src/agents/embedded-agent-runner/terminal-tool-failure.ts b/src/agents/embedded-agent-runner/terminal-tool-failure.ts
-index d175fa17..34c77003 100644
+index 3d25904c4..fd9b31dc2 100644
 --- a/src/agents/embedded-agent-runner/terminal-tool-failure.ts
 +++ b/src/agents/embedded-agent-runner/terminal-tool-failure.ts
 @@ -1,6 +1,6 @@
@@ -1285,26 +892,13 @@ index d175fa17..34c77003 100644
    ) {
      return undefined;
    }
-diff --git a/src/agents/embedded-agent-runner/types.ts b/src/agents/embedded-agent-runner/types.ts
-index 466d09e6..345666dd 100644
---- a/src/agents/embedded-agent-runner/types.ts
-+++ b/src/agents/embedded-agent-runner/types.ts
-@@ -154,7 +154,7 @@ export type EmbeddedRunFailureSignal = {
- 
- type EmbeddedRunTerminalToolFailure = {
-   source: "tool";
--  toolName: "exec" | "wait";
-+  toolName: "exec" | "wait" | "code_exec" | "code_wait";
-   code: "UNKNOWN_TOOL_ID";
- };
- 
 diff --git a/src/agents/harness/host-capability-types.ts b/src/agents/harness/host-capability-types.ts
-index 5cc57f9e..ab9e6918 100644
+index d545aec6f..474a7986d 100644
 --- a/src/agents/harness/host-capability-types.ts
 +++ b/src/agents/harness/host-capability-types.ts
-@@ -151,6 +151,10 @@ export type AgentHarnessHostCapabilities = Readonly<{
+@@ -182,6 +182,10 @@ export type AgentHarnessHostCapabilities = Readonly<{
      options: AgentHarnessToolSurfaceOptions,
-     bindingOptions?: Readonly<{ cwd?: string }>,
+     bindingOptions?: AgentHarnessToolSurfaceBindingOptions,
    ) => Promise<AnyAgentTool[]>;
 +  /** Projects the same admitted installed-skill catalog used by native tool construction. */
 +  prepareInstalledSkills?: (
@@ -1314,10 +908,10 @@ index 5cc57f9e..ab9e6918 100644
    prepareMutableFileApproval?: (request: { command: string; cwd?: string }) => Promise<
      | {
 diff --git a/src/agents/harness/host-capability.ts b/src/agents/harness/host-capability.ts
-index 5aef0ede..b5b45887 100644
+index 1ba3f5da9..b7e24d4f6 100644
 --- a/src/agents/harness/host-capability.ts
 +++ b/src/agents/harness/host-capability.ts
-@@ -560,6 +560,8 @@ export function createAgentHarnessHostCapabilities(params: {
+@@ -547,6 +547,8 @@ export function createAgentHarnessHostCapabilities(params: {
        );
        return bindCreatedTools(sourceTools, bindingOptions);
      },
@@ -1326,88 +920,11 @@ index 5aef0ede..b5b45887 100644
      prepareMutableFileApproval: async (request) => {
        assertActive();
        const prepared = await prepareSystemRunMutableFileApproval(request);
-diff --git a/src/agents/harness/host-skills.test.ts b/src/agents/harness/host-skills.test.ts
-index 30d58377..a7f9dfe5 100644
---- a/src/agents/harness/host-skills.test.ts
-+++ b/src/agents/harness/host-skills.test.ts
-@@ -68,6 +68,17 @@ it("binds skill reads to a late sandbox and refuses reads after host closure", a
-     },
-   });
-   try {
-+    const prepareInstalledSkills = expectDefined(
-+      host.hostCapabilities.prepareInstalledSkills,
-+      "admitted host installed skills",
-+    );
-+    const preparedSkills = prepareInstalledSkills({
-+      workspaceDir: "/host",
-+      config: { plugins: { enabled: false } },
-+      sandbox,
-+    });
-+    expect(preparedSkills.map((entry) => entry.name)).toEqual(["guide"]);
-+    const preparedGuide = expectDefined(preparedSkills[0], "prepared sandbox guide");
-     const createToolSurface = expectDefined(
-       host.hostCapabilities.createToolSurface,
-       "admitted host tool surface",
-@@ -106,10 +117,14 @@ it("binds skill reads to a late sandbox and refuses reads after host closure", a
-     expect(readFile).toHaveBeenCalledWith(
-       expect.objectContaining({ filePath: runtimePath, maxBytes: 256 * 1024 }),
-     );
-+    await expect(readCodeModeSkill(preparedGuide)).resolves.toBe(
-+      "Complete sandbox instructions",
-+    );
-     host.closeHost();
-     await expect(read.execute("closed", { name: "guide" })).rejects.toThrow();
-     await expect(search.execute("closed-search", { query: "sandbox" })).rejects.toThrow();
--    expect(readFile).toHaveBeenCalledTimes(2);
-+    await expect(readCodeModeSkill(preparedGuide)).rejects.toThrow();
-+    expect(readFile).toHaveBeenCalledTimes(3);
-   } finally {
-     host.closeHost();
-     host.closeAdmission();
-@@ -226,6 +241,29 @@ it("keeps the host-owned skill root when plugin options widen placement or repla
-     },
-   });
-   try {
-+    const prepareInstalledSkills = expectDefined(
-+      host.hostCapabilities.prepareInstalledSkills,
-+      "host installed skills",
-+    );
-+    const preparedSkills = prepareInstalledSkills({
-+      workspaceDir: parent,
-+      cwd: parent,
-+      requireWorkspaceOnly: undefined,
-+      sandbox: null,
-+      installedSkills: [
-+        {
-+          name: "outside",
-+          description: "Plugin replacement",
-+          location: outside,
-+          source: { filePath: outside, readContent: "Plugin outside instructions" },
-+        },
-+      ],
-+    });
-+    expect(preparedSkills.map((skill) => skill.name)).toEqual(["inside"]);
-+    const preparedInside = expectDefined(preparedSkills[0], "prepared inside skill");
-+    expect(() =>
-+      prepareInstalledSkills({ sessionPermissionPolicy: { root: parent, mode: "full" } }),
-+    ).toThrow("escapes the captured required workspace");
-     const createTools = expectDefined(host.hostCapabilities.createToolSurface, "host tools");
-     const tools = createTools({
-       workspaceDir: parent,
-@@ -260,6 +298,8 @@ it("keeps the host-owned skill root when plugin options widen placement or repla
-     expect(() => createTools({ sessionPermissionPolicy: { root: parent, mode: "full" } })).toThrow(
-       "escapes the captured required workspace",
-     );
-+    host.closeHost();
-+    await expect(readCodeModeSkill(preparedInside)).rejects.toThrow();
-   } finally {
-     host.closeHost();
-     host.closeAdmission();
 diff --git a/src/agents/harness/prompt-tool-policy.ts b/src/agents/harness/prompt-tool-policy.ts
-index 512ea2af..9bb9cd08 100644
+index 5b3b6c915..fe5dd0869 100644
 --- a/src/agents/harness/prompt-tool-policy.ts
 +++ b/src/agents/harness/prompt-tool-policy.ts
-@@ -39,7 +39,8 @@ export function createAgentHarnessPromptToolPolicy<T extends NamedTool>(params:
+@@ -40,7 +40,8 @@ export function createAgentHarnessPromptToolPolicy<T extends NamedTool>(params:
    tools: readonly T[];
    catalogRef?: ToolSearchCatalogRef;
    catalogEntries?: readonly ToolSearchCatalogEntry[];
@@ -1417,7 +934,7 @@ index 512ea2af..9bb9cd08 100644
    catalogPrompt?: {
      config?: OpenClawConfig;
      agentId?: string;
-@@ -49,6 +50,11 @@ export function createAgentHarnessPromptToolPolicy<T extends NamedTool>(params:
+@@ -50,6 +51,11 @@ export function createAgentHarnessPromptToolPolicy<T extends NamedTool>(params:
    };
  }) {
    const baselineTools = [...params.tools];
@@ -1429,7 +946,7 @@ index 512ea2af..9bb9cd08 100644
    const currentCatalog = params.catalogRef?.current;
    const catalog =
      currentCatalog && params.catalogRef
-@@ -56,9 +62,10 @@ export function createAgentHarnessPromptToolPolicy<T extends NamedTool>(params:
+@@ -57,9 +63,10 @@ export function createAgentHarnessPromptToolPolicy<T extends NamedTool>(params:
            ref: params.catalogRef,
            entries: [...(params.catalogEntries ?? currentCatalog.entries)],
            directOnlyToolNames: params.catalogRef.baselineDirectOnlyToolNames,
@@ -1443,7 +960,7 @@ index 512ea2af..9bb9cd08 100644
          }
        : undefined;
    return {
-@@ -100,7 +107,7 @@ export function createAgentHarnessPromptToolPolicy<T extends NamedTool>(params:
+@@ -106,7 +113,7 @@ export function createAgentHarnessPromptToolPolicy<T extends NamedTool>(params:
          tools,
          toolSchemaDirectoryPrompt:
            catalogReachable && params.catalogPrompt
@@ -1452,84 +969,8 @@ index 512ea2af..9bb9cd08 100644
                ? buildCodeModeCatalogPrompt(
                    { ...params.catalogPrompt, catalogRef: catalog.ref },
                    catalog.ref.current?.entries ?? [],
-diff --git a/src/agents/harness/tool-surface-bridge.test.ts b/src/agents/harness/tool-surface-bridge.test.ts
-index f3979935..5120ae69 100644
---- a/src/agents/harness/tool-surface-bridge.test.ts
-+++ b/src/agents/harness/tool-surface-bridge.test.ts
-@@ -51,6 +51,71 @@ afterEach(() => {
- });
- 
- describe("createAgentHarnessToolSurfaceRuntime", () => {
-+  it("keeps direct tools and discovery alongside scoped additive scripting", () => {
-+    const runtime = createRuntime({
-+      agents: { defaults: { experimental: { localModelLean: false } } },
-+      tools: {
-+        codeMode: { enabled: true, surface: "additive" },
-+        toolSearch: { enabled: true, mode: "tools" },
-+      },
-+    });
-+    try {
-+      const source = tools(["exec", "read", "fixture_allowed", "fixture_denied"]);
-+      const discovery = createToolSearchTools({
-+        config: runtime.config,
-+        catalogRef: runtime.toolSearchCatalogRef,
-+      });
-+      const surface = runtime.compactTools([...source, ...discovery]);
-+      expect(runtime.codeModeControlNames).toEqual({ exec: "code_exec", wait: "code_wait" });
-+      expect(surface.tools.map((tool) => tool.name)).toEqual(
-+        expect.arrayContaining(["code_exec", "code_wait", "exec", "read"]),
-+      );
-+      expect(runtime.toolSearchCatalogRef?.current?.entries.map((entry) => entry.name)).toEqual(
-+        source.map((tool) => tool.name).toSorted(),
-+      );
-+      const restricted = surface.promptToolPolicy.apply({ toolsAllow: ["fixture_allowed"] });
-+      expect(restricted.tools.map((tool) => tool.name)).toEqual(
-+        expect.arrayContaining(["fixture_allowed", "code_exec", "code_wait"]),
-+      );
-+      expect(restricted.tools.some((tool) => tool.name === "fixture_denied")).toBe(false);
-+      expect(runtime.toolSearchCatalogRef?.current?.entries.map((entry) => entry.name)).toEqual([
-+        "fixture_allowed",
-+      ]);
-+      expect(surface.promptToolPolicy.apply({ toolsAllow: [] }).tools).toEqual([]);
-+    } finally {
-+      runtime.cleanup();
-+    }
-+  });
-+
-+  it.each(["code_exec", "code_wait"])("rejects an additive control collision with %s", (name) => {
-+    const runtime = createRuntime({
-+      tools: { codeMode: { enabled: true, surface: "additive" } },
-+    });
-+    try {
-+      expect(() => runtime.compactTools(tools([name]))).toThrow("control name conflicts");
-+    } finally {
-+      runtime.cleanup();
-+    }
-+  });
-+
-+  it.each([true, false])(
-+    "does not add scripting to an empty surface with tools enabled %s",
-+    (modelToolsEnabled) => {
-+      const runtime = createAgentHarnessToolSurfaceRuntime({
-+        config: {
-+          tools: { codeMode: { enabled: true, surface: "additive" }, toolSearch: false },
-+        },
-+        modelToolsEnabled,
-+        executeTool: async () => ({ content: [], details: {} }),
-+      });
-+      try {
-+        expect(runtime.compactTools([]).tools).toEqual([]);
-+      } finally {
-+        runtime.cleanup();
-+      }
-+    },
-+  );
-+
-   it.each([
-     {
-       mode: "automatic Code Mode",
 diff --git a/src/agents/harness/tool-surface-bridge.ts b/src/agents/harness/tool-surface-bridge.ts
-index 163f0638..12d5bf9f 100644
+index 68e65e547..63080a5ef 100644
 --- a/src/agents/harness/tool-surface-bridge.ts
 +++ b/src/agents/harness/tool-surface-bridge.ts
 @@ -2,11 +2,8 @@ import type { AgentToolSurfacePresentation } from "../../../packages/gateway-pro
@@ -1554,7 +995,7 @@ index 163f0638..12d5bf9f 100644
 -
  type PreparedToolSurface = Pick<
    Parameters<typeof createCodeModeTools>[0],
-   "abortSignal" | "executeTool" | "forceRestartSafeTools" | "toolExecutionAllow" | "codeModeSkills"
+   "abortSignal" | "executeTool" | "toolExecutionAllow" | "codeModeSkills"
 @@ -75,6 +70,9 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
    const plan =
      presentation && params.trigger !== "memory"
@@ -1609,7 +1050,7 @@ index 163f0638..12d5bf9f 100644
        ? createCodeModeTools
        : toolSearchControlsEnabled &&
            !effectiveTools.some((tool) => TOOL_SEARCH_CONTROL_TOOL_NAMES.has(tool.name))
-@@ -178,7 +186,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+@@ -177,7 +185,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
        ...params,
        tools: [...controls, ...effectiveTools],
        toolSearchRuntimeConfig,
@@ -1618,7 +1059,7 @@ index 163f0638..12d5bf9f 100644
        toolSearchConfig,
        catalogRef: toolSearchCatalogRef,
        toolHookContext: options.hookContext,
-@@ -209,11 +217,13 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+@@ -208,11 +216,13 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
        promptToolPolicy: createAgentHarnessPromptToolPolicy({
          tools: effectiveTools,
          catalogRef: toolSearchCatalogRef,
@@ -1635,7 +1076,7 @@ index 163f0638..12d5bf9f 100644
                  toolSearchDirectoryLean: presentation?.toolSearchDirectoryLean,
                  agentId: params.agentId,
                  sessionKey: params.sessionKey,
-@@ -225,6 +235,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+@@ -224,6 +234,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
    };
    return {
      plan,
@@ -1643,76 +1084,11 @@ index 163f0638..12d5bf9f 100644
      codeModeControlsEnabled,
      compactTools,
      config: toolSearchControlsEnabled ? toolSearchRuntimeConfig : params.config,
-diff --git a/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts b/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts
-index 3352876c..72d7adbe 100644
---- a/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts
-+++ b/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts
-@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from "vitest";
- import { resolveMainSessionResumePolicy } from "./main-session-restart-recovery-resume-policy.js";
- 
- vi.mock("../code-mode-control-tools.js", () => ({
--  CODE_MODE_EXEC_TOOL_NAME: "exec",
--  CODE_MODE_WAIT_TOOL_NAME: "wait",
-+  isCodeModeControlToolName: (name: string) =>
-+    name === "exec" || name === "wait" || name === "code_exec" || name === "code_wait",
-+  isCodeModeWaitToolName: (name: string) => name === "wait" || name === "code_wait",
- }));
- 
- vi.mock("../tool-replay-safety.js", () => ({
-diff --git a/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.ts b/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.ts
-index e9c87951..b9fb4f9e 100644
---- a/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.ts
-+++ b/src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.ts
-@@ -5,7 +5,7 @@ import {
- import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
- import type { InternalSessionEntry as SessionEntry } from "../../config/sessions/types.js";
- import { isMainSessionRestartRecoveryInputProvenance } from "../../sessions/input-provenance.js";
--import { CODE_MODE_EXEC_TOOL_NAME, CODE_MODE_WAIT_TOOL_NAME } from "../code-mode-control-tools.js";
-+import { isCodeModeControlToolName, isCodeModeWaitToolName } from "../code-mode-control-tools.js";
- import {
-   getTranscriptMessageRole as getMessageRole,
-   isIntermediateAssistantTranscriptMessage,
-@@ -69,7 +69,7 @@ function readCodeModeWaitCall(
-     return undefined;
-   }
-   const block = toolCalls[0] as Record<string, unknown>;
--  if (normalizeOptionalString(block.name) !== CODE_MODE_WAIT_TOOL_NAME) {
-+  if (!isCodeModeWaitToolName(normalizeOptionalString(block.name))) {
-     return undefined;
-   }
-   const args = asOptionalObjectRecord(block.arguments ?? block.input);
-@@ -146,7 +146,7 @@ function classifyDanglingToolCalls(content: unknown): DanglingToolCallClassifica
-       continue;
-     }
-     const name = normalizeOptionalString((block as { name?: unknown }).name);
--    if (name === CODE_MODE_EXEC_TOOL_NAME || name === CODE_MODE_WAIT_TOOL_NAME) {
-+    if (isCodeModeControlToolName(name)) {
-       return { kind: "code-mode" };
-     }
-     if (!isAgentToolReplaySafe({ name })) {
-@@ -168,7 +168,7 @@ function readCodeModeCheckpoint(
-     return undefined;
-   }
-   const toolName = normalizeOptionalString(record.toolName);
--  if (toolName !== CODE_MODE_EXEC_TOOL_NAME && toolName !== CODE_MODE_WAIT_TOOL_NAME) {
-+  if (!isCodeModeControlToolName(toolName)) {
-     return undefined;
-   }
-   const content = record.content;
-@@ -273,7 +273,7 @@ function isRestartAbortedWaitFailure(message: unknown): boolean {
-     return false;
-   }
-   if (
--    normalizeOptionalString(record.toolName) !== CODE_MODE_WAIT_TOOL_NAME ||
-+    !isCodeModeWaitToolName(normalizeOptionalString(record.toolName)) ||
-     record.isError !== true
-   ) {
-     return false;
 diff --git a/src/agents/plugin-runtime-refresh.ts b/src/agents/plugin-runtime-refresh.ts
-index 2b5de24b..6b4d25c8 100644
+index e2e2808d3..b54470e55 100644
 --- a/src/agents/plugin-runtime-refresh.ts
 +++ b/src/agents/plugin-runtime-refresh.ts
-@@ -17,6 +17,7 @@ const refreshScope = resolveGlobalSingleton(
+@@ -21,6 +21,7 @@ const refreshScope = new AsyncContext<Refresh>(Symbol.for("openclaw.agentPluginR
  export function captureAgentPluginRuntimeRefresh() {
    const owner = refreshScope.getStore();
    return {
@@ -1721,7 +1097,7 @@ index 2b5de24b..6b4d25c8 100644
        if (owner?.active) {
          owner.consumer = isCurrent;
 diff --git a/src/agents/sessions/tools/tool-definition-wrapper.test.ts b/src/agents/sessions/tools/tool-definition-wrapper.test.ts
-index 7b652e88..eca54261 100644
+index 7b652e881..eca54261d 100644
 --- a/src/agents/sessions/tools/tool-definition-wrapper.test.ts
 +++ b/src/agents/sessions/tools/tool-definition-wrapper.test.ts
 @@ -1,6 +1,11 @@
@@ -1775,72 +1151,11 @@ index 7b652e88..eca54261 100644
 +    expect(isCodeModeWaitTool(wrapped)).toBe(role === "wait");
    });
  });
-diff --git a/src/agents/system-prompt-skills.ts b/src/agents/system-prompt-skills.ts
-index 07af0ba0..cad56c0b 100644
---- a/src/agents/system-prompt-skills.ts
-+++ b/src/agents/system-prompt-skills.ts
-@@ -4,6 +4,7 @@ export function buildSkillsSection(params: {
-   skillsPrompt?: string;
-   readToolName: string;
-   codeModeActive?: boolean;
-+  codeModeExecToolName?: string;
-   installedSkillSearch?: boolean;
-   installedSkillRead?: boolean;
- }) {
-@@ -17,14 +18,14 @@ export function buildSkillsSection(params: {
-     ...(hasListedSkills
-       ? ["Scan <available_skills> for a matching workflow."]
-       : ["No skill entries are listed in this prompt."]),
--    params.codeModeActive && params.installedSkillRead
--      ? 'Known name or clear match: use `skills.read("<name>")` inside `exec`; read the complete instructions before task actions and follow them.'
-+    params.codeModeExecToolName && params.installedSkillRead
-+      ? `Known name or clear match: use \`skills.read("<name>")\` inside \`${params.codeModeExecToolName}\`; read the complete instructions before task actions and follow them.`
-       : params.installedSkillRead
-         ? "Known name or clear match: use `skills_read` with its exact name; read the complete instructions before task actions and follow them."
-         : `Clear match: read exact <location> with \`${params.readToolName}\`; obey.`,
-     ...(params.installedSkillSearch
-       ? [
--          `Before work involving files, specialized tools, or a reusable workflow, ${hasListedSkills ? "use a listed match or search" : "search"} with ${params.codeModeActive ? "`skills.search(query)` inside `exec`" : "`skills_search`"} for an applicable skill. Read the best match before implementing the workflow yourself.`,
-+          `Before work involving files, specialized tools, or a reusable workflow, ${hasListedSkills ? "use a listed match or search" : "search"} with ${params.codeModeExecToolName ? `\`skills.search(query)\` inside \`${params.codeModeExecToolName}\`` : "`skills_search`"} for an applicable skill. Read the best match before implementing the workflow yourself.`,
-           "Search by the task goal and distinctive terms. Simple conversation or a self-contained answer does not need a search. Search covers installed skills; it does not install skills.",
-         ]
-       : []),
-diff --git a/src/agents/system-prompt.test.ts b/src/agents/system-prompt.test.ts
-index 2104a846..d2ab9699 100644
---- a/src/agents/system-prompt.test.ts
-+++ b/src/agents/system-prompt.test.ts
-@@ -204,26 +204,6 @@ describe("buildAgentSystemPrompt", () => {
-     }
-   });
- 
--  it.each(["full", "minimal"] as const)(
--    "uses the native heartbeat notification contract in %s prompts",
--    (promptMode) => {
--      for (const toolNames of [["heartbeat_respond"], ["heartbeat_respond", "message"]]) {
--        const prompt = buildAgentSystemPrompt({
--          workspaceDir: "/tmp/openclaw",
--          promptMode,
--          toolNames,
--          sourceReplyDeliveryMode: "message_tool_only",
--        });
--        expect(prompt).toContain("Complete this heartbeat with `heartbeat_respond`");
--        expect(prompt).toContain("`notify=true` delivers `notificationText`");
--        expect(prompt).toContain("`notify=false` stays silent");
--        expect(prompt).not.toContain("visible reply MUST use `message(action=send)`");
--        expect(prompt).not.toContain("Visible source output: `message(action=send)`");
--        expect(prompt).not.toContain("visible reply unavailable");
--      }
--    },
--  );
--
-   it("preserves required visible-source message-tool guidance in minimal prompts", () => {
-     const restricted = (toolNames: string[], promptMode: PromptParams["promptMode"] = "minimal") =>
-       renderPrompt({
 diff --git a/src/agents/system-prompt.ts b/src/agents/system-prompt.ts
-index ab5f6bc1..9696e614 100644
+index 915970f2c..1a587d3d6 100644
 --- a/src/agents/system-prompt.ts
 +++ b/src/agents/system-prompt.ts
-@@ -401,7 +401,8 @@ export function buildAgentSystemPrompt(params: {
+@@ -413,7 +413,8 @@ export function buildAgentSystemPrompt(params: {
    });
    const toolSchemaDirectoryPrompt = params.toolSchemaDirectoryPrompt?.trim();
    const renderOpenClawToolWorkflowHints =
@@ -1850,79 +1165,47 @@ index ab5f6bc1..9696e614 100644
  
    const hasExec = availableTools.has("exec");
    const hasProcess = availableTools.has("process");
-@@ -510,8 +511,9 @@ export function buildAgentSystemPrompt(params: {
-   ];
-   // CLI backends own native file tools outside OpenClaw's projected tool list.
-   // Keep their skill catalog visible while embedded runs require a real read tool.
-+  const codeModeExecToolName = visibleTools.has("code_exec") ? "code_exec" : "exec";
-   const canAccessSkills = params.codeModeActive
--    ? visibleTools.has("exec")
-+    ? visibleTools.has(codeModeExecToolName)
-     : visibleTools.has("read") ||
-       availableTools.has("skills_read") ||
-       promptSurface === "cli_backend";
-@@ -520,6 +522,7 @@ export function buildAgentSystemPrompt(params: {
-         skillsPrompt,
-         readToolName,
-         codeModeActive: params.codeModeActive,
-+        codeModeExecToolName: params.codeModeActive ? codeModeExecToolName : undefined,
-         installedSkillSearch: availableTools.has("skills_search"),
-         installedSkillRead: availableTools.has("skills_read"),
-       })
-@@ -815,8 +818,7 @@ export function buildAgentSystemPrompt(params: {
-           : "Current elevated level: off (elevated exec unavailable)."
-       : "",
-     // TRANSITIONAL(marker-retirement): bracket directives remain for automatic replies.
--    !(sourceMessageToolOnly && availableTools.has("heartbeat_respond")) &&
--      !isMinimal &&
-+    !isMinimal &&
-       (!sourceMessageToolOnly || messageToolAvailable) && [
-         "## Assistant Output Directives",
-         ...(sourceMessageToolOnly
 diff --git a/src/agents/tool-search-catalog.ts b/src/agents/tool-search-catalog.ts
-index f1561fec..08491618 100644
+index b3bf53bf1..c267e1faf 100644
 --- a/src/agents/tool-search-catalog.ts
 +++ b/src/agents/tool-search-catalog.ts
-@@ -501,6 +501,7 @@ export function applyToolCatalogCompaction(
+@@ -625,6 +625,7 @@ export function applyToolCatalogCompaction(
  export function addClientToolsToToolCatalog(params: {
    tools: ToolDefinition[];
    enabled: boolean;
 +  directVisible?: boolean;
    catalogRef?: ToolSearchCatalogRef;
+   selection?: ToolSearchSelection;
  }): { tools: ToolDefinition[]; compacted: boolean; catalogToolCount: number } {
-   const catalogRef = params.catalogRef;
-@@ -509,8 +510,15 @@ export function addClientToolsToToolCatalog(params: {
-   }
-   registerToolSearchCatalog({
-     catalogRef,
--    entries: params.tools.map((tool) => toCatalogEntry(tool, "client")),
-+    entries: params.tools.map((tool) => ({
-+      ...toCatalogEntry(tool, "client"),
-+      directVisible: params.directVisible === true,
-+    })),
-     append: true,
-   });
--  return { tools: [], compacted: params.tools.length > 0, catalogToolCount: params.tools.length };
-+  return {
-+    tools: params.directVisible ? params.tools : [],
-+    compacted: params.directVisible !== true && params.tools.length > 0,
-+    catalogToolCount: params.tools.length,
-+  };
- }
+@@ -637,7 +638,13 @@ export function addClientToolsToToolCatalog(params: {
+   const visible: ToolDefinition[] = [];
+   for (const tool of params.tools) {
+     if (params.enabled && selected({ source: "client", name: tool.name })) {
+-      entries.push(toCatalogEntry(tool, "client"));
++      entries.push({
++        ...toCatalogEntry(tool, "client"),
++        directVisible: params.directVisible === true,
++      });
++      if (params.directVisible === true) {
++        visible.push(tool);
++      }
+     } else {
+       visible.push(tool);
+     }
 diff --git a/src/agents/tool-search-scheduling.ts b/src/agents/tool-search-scheduling.ts
-index 78f4067b..17d73f75 100644
+index f3b8df3c3..63950aa2c 100644
 --- a/src/agents/tool-search-scheduling.ts
 +++ b/src/agents/tool-search-scheduling.ts
 @@ -1,12 +1,20 @@
- import { AsyncLocalStorage } from "node:async_hooks";
  import { createAbortError, racePromiseWithAbortSignal } from "../infra/abort-signal.js";
+ import { AsyncContext } from "../shared/async-context.js";
  import { createDeferredCore, type Deferred } from "../shared/deferred.js";
 +import { copyAgentToolMetadata } from "./agent-tool-metadata.js";
 +import { isCodeModeControlTool } from "./code-mode-control-tools.js";
 +import {
 +  attachInternalToolExecutionPreparer,
 +  getInternalToolExecutionPreparer,
-+} from "./runtime/internal-hooks.js";
++} from "../../packages/agent-core/src/internal-hooks.js";
  import { ToolInputError } from "./tool-input-error.js";
 +import { TOOL_SEARCH_CONTROL_TOOL_NAMES, type CatalogTool } from "./tool-search-types.js";
  import type {
@@ -2092,20 +1375,20 @@ index 78f4067b..17d73f75 100644
 +  return wrapped;
 +}
 diff --git a/src/agents/tool-surface-plan.ts b/src/agents/tool-surface-plan.ts
-index 6f31e3a6..028c3dff 100644
+index 2e1ca1f88..08a135356 100644
 --- a/src/agents/tool-surface-plan.ts
 +++ b/src/agents/tool-surface-plan.ts
-@@ -1,6 +1,7 @@
- import type { AgentToolSurfacePresentation } from "../../packages/gateway-protocol/src/schema/worker-gateway-tool.js";
+@@ -2,6 +2,7 @@ import type { AgentToolSurfacePresentation } from "../../packages/gateway-protoc
+ import { selectLiveRuntimeConfig } from "../config/runtime-snapshot.js";
  import type { OpenClawConfig } from "../config/types.openclaw.js";
  import { getActiveAgentRingZeroTools } from "./agent-tools.ring-zero-context.js";
 +import { resolveCodeModeControlNames } from "./code-mode-control-tools.js";
  import {
    applyCodeModeCatalog,
    isCodeModeEngagedForModel,
-@@ -87,9 +88,13 @@ export function resolveAgentToolSurfacePlan(params: AgentToolSurfacePlanParams)
-     (params.forceCodeModeControls === true ||
-       isCodeModeEngagedForModel(codeModeConfig, params.model));
+@@ -91,9 +92,13 @@ export function resolveAgentToolSurfacePlan(params: AgentToolSurfacePlanParams)
+   const codeModeControlsEnabled =
+     toolsAvailable && isCodeModeEngagedForModel(codeModeConfig, params.model);
    const toolSearchControlsEnabled =
 -    toolsAvailable && !codeModeControlsEnabled && toolSearchConfig.enabled;
 +    toolsAvailable &&
@@ -2119,10 +1402,10 @@ index 6f31e3a6..028c3dff 100644
      toolSearchControlsEnabled,
      toolSearchConfig,
 diff --git a/src/config/schema.help.runtime.ts b/src/config/schema.help.runtime.ts
-index aa9b5504..cb469496 100644
+index 7415b5ad7..e7d1830b3 100644
 --- a/src/config/schema.help.runtime.ts
 +++ b/src/config/schema.help.runtime.ts
-@@ -149,13 +149,15 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
+@@ -159,13 +159,15 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
    "tools.toolSearch.maxSearchLimit":
      "Maximum number of Tool Search results a model can request. Runtime clamps values to the supported 1..50 range.",
    "tools.codeMode":
@@ -2141,10 +1424,10 @@ index aa9b5504..cb469496 100644
    "tools.codeMode.memoryLimitBytes":
      "QuickJS guest heap limit or best-effort Node worker V8 heap budget in bytes. Node runtime overhead and minimum engine allocations affect the effective budget; external buffers and process RSS are excluded. This is not a security guarantee.",
 diff --git a/src/config/schema.labels.ts b/src/config/schema.labels.ts
-index 7385438a..13c9d5d9 100644
+index 6a30070f2..d1f56adf6 100644
 --- a/src/config/schema.labels.ts
 +++ b/src/config/schema.labels.ts
-@@ -189,7 +189,8 @@ export const FIELD_LABELS: Record<string, string> = {
+@@ -196,7 +196,8 @@ export const FIELD_LABELS: Record<string, string> = {
    "tools.codeMode": "Code Mode",
    "tools.codeMode.enabled": "Enable Code Mode",
    "tools.codeMode.executor": "Code Mode Executor",
@@ -2155,10 +1438,10 @@ index 7385438a..13c9d5d9 100644
    "tools.codeMode.memoryLimitBytes": "Code Mode Memory Limit",
    "tools.codeMode.maxOutputBytes": "Code Mode Output Limit",
 diff --git a/src/config/zod-schema.agent-runtime.ts b/src/config/zod-schema.agent-runtime.ts
-index ec404390..c2aa6d66 100644
+index 3c5c3c72b..7f39bab9d 100644
 --- a/src/config/zod-schema.agent-runtime.ts
 +++ b/src/config/zod-schema.agent-runtime.ts
-@@ -455,6 +455,8 @@ const CodeModeSchema = z
+@@ -405,6 +405,8 @@ const CodeModeSchema = z
        enabled: z.union([z.boolean(), z.literal("auto")]).optional(),
        /** Executor. Node is the default; QuickJS provides a separate WASM guest. */
        executor: z.enum(["node", "quickjs"]).optional(),
@@ -2169,7 +1452,7 @@ index ec404390..c2aa6d66 100644
        /** Wall-clock limit in milliseconds for one exec or wait call. */
 diff --git a/src/config/zod-schema.code-mode.test.ts b/src/config/zod-schema.code-mode.test.ts
 new file mode 100644
-index 00000000..1af75d03
+index 000000000..1af75d035
 --- /dev/null
 +++ b/src/config/zod-schema.code-mode.test.ts
 @@ -0,0 +1,23 @@
@@ -2197,7 +1480,7 @@ index 00000000..1af75d03
 +  });
 +});
 diff --git a/src/plugin-sdk/agent-harness-tool-runtime.ts b/src/plugin-sdk/agent-harness-tool-runtime.ts
-index a62cf1bc..68808dc5 100644
+index e51c153ab..5335c710e 100644
 --- a/src/plugin-sdk/agent-harness-tool-runtime.ts
 +++ b/src/plugin-sdk/agent-harness-tool-runtime.ts
 @@ -23,6 +23,8 @@ export {
@@ -2209,7 +1492,7 @@ index a62cf1bc..68808dc5 100644
  export {
    recordAgentHarnessMessagingDelivery,
    recordAgentHarnessToolResultTelemetry,
-@@ -118,15 +120,17 @@ function projectToolSurfaceRuntime(
+@@ -122,15 +124,17 @@ function projectToolSurfaceRuntime(
        {
          hookContext,
          localModelLeanApplied,
@@ -2228,40 +1511,11 @@ index a62cf1bc..68808dc5 100644
          }),
        );
        return { tools: compacted, promptToolPolicy };
-diff --git a/src/plugins/code-mode-executor.test.ts b/src/plugins/code-mode-executor.test.ts
-index 6c02f246..7a995b5c 100644
---- a/src/plugins/code-mode-executor.test.ts
-+++ b/src/plugins/code-mode-executor.test.ts
-@@ -84,6 +84,24 @@ describe("Code Mode executor plugin selection", () => {
-     },
-   );
- 
-+  it("rejects an external QuickJS owner when the additive surface requires the bundled executor", () => {
-+    const snapshot = loadManifestMetadataSnapshot();
-+    snapshot.plugins[0].origin = "global";
-+    snapshot.index.plugins[0].origin = "global";
-+    expect(() =>
-+      resolvePluginCodeModeExecutor(
-+        "quickjs",
-+        {
-+          plugins: {
-+            allow: ["code-mode-quickjs"],
-+            entries: { "code-mode-quickjs": { enabled: true } },
-+          },
-+        },
-+        { bundledPluginId: "code-mode-quickjs" },
-+      ),
-+    ).toThrow('Code Mode executor "quickjs" is unavailable or disabled');
-+  });
-+
-   it.each([
-     { plugins: { enabled: false } },
-     { plugins: { deny: ["code-mode-quickjs"] } },
 diff --git a/src/plugins/code-mode-executor.ts b/src/plugins/code-mode-executor.ts
-index 39356b26..406059c9 100644
+index 2653797ff..8b4f205b5 100644
 --- a/src/plugins/code-mode-executor.ts
 +++ b/src/plugins/code-mode-executor.ts
-@@ -15,11 +15,14 @@ import { resolvePluginRootPublicSurfacePath } from "./public-surface-runtime.js"
+@@ -15,11 +15,14 @@ import { resolvePluginRootPublicSurfaceLocation } from "./public-surface-runtime
  export function resolvePluginCodeModeExecutor(
    executorId: CodeModeExecutor["id"],
    config?: OpenClawConfig,

@@ -9,7 +9,7 @@ persistent guard files from the earlier Puddles implementation as contention.
 
 ## Patch
 
-OpenClaw 2026.11.4 uses `@openclaw/fs-safe` 0.26.7. Upstream serializes stale
+OpenClaw 2026.11.5 uses `@openclaw/fs-safe` 0.26.13. Upstream serializes stale
 reclaimers with a sibling directory. That prevents overlapping writers, but a
 killed reclaimer leaves the directory behind. It also treats the persistent
 guard files from the earlier Puddles patch as permanent contention.
@@ -45,8 +45,8 @@ pipeline builds and rehearses the patched dependency before activation. The
 wrapper consumes the sealed artifact and retains rollback snapshots.
 
 
-## v2026.11.4 audit
+## v2026.11.5 audit
 
-Native fs-safe0.26.7 still uses mkdir/rmdir reclaim occupancy, with no Darwin kernel guard. Identical reviewed nested patch applies to0.26.7. Preserve its new filesystem containment implementation and update only patch dependency identity, never downgrade to0.26.5.
+Native fs-safe0.26.13 still uses mkdir/rmdir reclaim occupancy, with no Darwin kernel guard. Identical reviewed nested patch applies to0.26.13. Preserve its new filesystem containment implementation and update only patch dependency identity, never downgrade to0.26.5.
 
 Composition is qualified separately from installed runtime behavior. The registered regressions remain required.

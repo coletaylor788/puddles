@@ -27,10 +27,9 @@ patch inventory and application commands do not authorize a new or changed patch
 |---|---|
 | `file-lock-stale-reclaim-guard.patch` | Guard stale file-lock recovery |
 | `subagent-cross-agent-spawn-fix.patch` | Explicit targeting and inherited tools |
-| `skill-workshop-sandbox-fix.patch` | Preserve configured sandbox Workshop access while using native immediate saves, history, and undo |
+| `skill-workshop-sandbox-fix.patch` | Remove the obsolete sandbox Workshop diagnostic; native access, saves, history and undo remain unchanged |
 | `imessage-message-part-coalescing.patch` | Selective text, link, and image coalescing |
 | `browser-userdata-dir-fix.patch` | Browser data directory and singleton cleanup |
-| `native-heartbeat-response.patch` | Native structured completion and notification for built-in heartbeat turns |
 | `stopped-state-migration-sdk.patch` | Expose maintained stopped config repair, cron partition migration, and targeted writes |
 | `managed-local-service-lifecycle.patch` | Join gateway-owned service groups before stopped-state changes |
 | `gateway-memory-warmup.patch` | Prepare and retain managed local embeddings before readiness |

@@ -1,6 +1,6 @@
 # Harness tool work ownership
 
-This patch targets OpenClaw 2026.11.3. A reused harness connection can deliver
+This patch targets OpenClaw 2026.11.5. A reused harness connection can deliver
 later tool callbacks from the async context of its first attempt. When that
 attempt has ended, memory search and reader initialization fail with
 `Async work scope is closed` even though the current run is authorized.

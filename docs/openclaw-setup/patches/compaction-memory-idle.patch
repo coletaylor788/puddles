@@ -405,10 +405,18 @@ index 795602ad8..5cdf29ab7 100644
        assert.equal(response.hookSpecificOutput?.additionalContext, privateContext);
        ready("turn.ready");
 diff --git a/extensions/anthropic/cli-runtime.test.ts b/extensions/anthropic/cli-runtime.test.ts
-index c30b3c12e..481d5476f 100644
+index c30b3c12e..0bb28c4f7 100644
 --- a/extensions/anthropic/cli-runtime.test.ts
 +++ b/extensions/anthropic/cli-runtime.test.ts
-@@ -171,6 +171,35 @@ async function fixtureReadyBeforeSettlement(
+@@ -15,6 +15,7 @@ import {
+   type FixtureReceiptChannel,
+ } from "openclaw/plugin-sdk/test-fixtures";
+ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
++import { resolveClaudeCliExecutionArgs } from "./cli-shared.js";
+ import { CLAUDE_PROTOCOL_FIXTURE } from "./cli-runtime.protocol.test-support.js";
+ import {
+   collectClaudeCli,
+@@ -171,6 +172,35 @@ async function fixtureReadyBeforeSettlement(
  }
  
  describe("Claude native stdio boundary", () => {
@@ -444,7 +452,7 @@ index c30b3c12e..481d5476f 100644
    it.for([
      { scenario: "shutdown-ignore", name: "native parent and child ignore EOF and SIGTERM" },
      { scenario: "shutdown-eof", name: "native parent exits immediately on EOF" },
-@@ -971,3 +1000,54 @@ describe("Claude native stdio boundary", () => {
+@@ -971,3 +1001,54 @@ describe("Claude native stdio boundary", () => {
      expect(detail.privateContext).toBeUndefined();
    });
  });
@@ -6071,7 +6079,7 @@ index 22430756d..7543e4666 100644
            softThresholdTokens: z.number().int().nonnegative().optional(),
            /**
 diff --git a/src/gateway/mcp-grant-store.test.ts b/src/gateway/mcp-grant-store.test.ts
-index 00d5c0c52..1b62562ae 100644
+index 2abcde436..aa2eb7776 100644
 --- a/src/gateway/mcp-grant-store.test.ts
 +++ b/src/gateway/mcp-grant-store.test.ts
 @@ -76,6 +76,35 @@ describe("mcp-grant-store", () => {
@@ -6110,7 +6118,7 @@ index 00d5c0c52..1b62562ae 100644
    it("requires a non-empty sessionKey", () => {
      expect(() => attach("  ")).toThrow();
    });
-@@ -356,6 +385,8 @@ describe("mcp-grant-store", () => {
+@@ -357,6 +386,8 @@ describe("mcp-grant-store", () => {
        toolAuth,
      });
      expect(transferred?.skillLibraryAuthoring).toBe(skillLibraryAuthoring);
@@ -6165,11 +6173,11 @@ index e73498c45..99f5da099 100644
      isCurrent,
  
 diff --git a/src/gateway/mcp-http.code-mode.ts b/src/gateway/mcp-http.code-mode.ts
-index 20ed1b498..f8b8080f4 100644
+index af9f8c27c..c1361039b 100644
 --- a/src/gateway/mcp-http.code-mode.ts
 +++ b/src/gateway/mcp-http.code-mode.ts
-@@ -21,6 +21,7 @@ export function createMcpCodeModeToolSurface(params: {
-     agentId: context.runtimePolicyAgentId ?? context.agentId,
+@@ -27,6 +27,7 @@ export function createMcpCodeModeToolSurface(params: {
+     agentId: context.agentId,
      sessionId: context.sessionId,
      sessionKey: context.sessionKey,
 +    runtimePolicySessionKey: context.runtimePolicySessionKey,
@@ -6460,7 +6468,7 @@ index 000000000..35536ee39
 +  });
 +});
 diff --git a/src/gateway/mcp-http.runtime.ts b/src/gateway/mcp-http.runtime.ts
-index 3d5f0b3cc..fd8cc9464 100644
+index 64ac0b258..37a099450 100644
 --- a/src/gateway/mcp-http.runtime.ts
 +++ b/src/gateway/mcp-http.runtime.ts
 @@ -4,6 +4,7 @@ import {
@@ -6496,7 +6504,7 @@ index 3d5f0b3cc..fd8cc9464 100644
      bundledTools: params.bundledTools,
      nativeCronCreatorToolAllowlist: context.nativeCronCreatorToolAllowlist ?? undefined,
      agentDir: params.authProfileStoreAgentDir,
-@@ -379,10 +384,21 @@ async function constructMcpLoopbackTools(
+@@ -378,10 +383,21 @@ async function constructMcpLoopbackTools(
    };
    const scoped = await resolveGatewayScopedTools(scopeOptions, params.assertCurrent);
    params.assertCurrent();
@@ -6520,10 +6528,10 @@ index 3d5f0b3cc..fd8cc9464 100644
    scoped.captureFinalCronCreatorTools?.(new Set(toolSchema.map((tool) => tool.name)));
    return {
 diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
-index 16db84f49..df413d780 100644
+index f45c3181b..8941cb525 100644
 --- a/src/gateway/mcp-http.ts
 +++ b/src/gateway/mcp-http.ts
-@@ -333,6 +333,7 @@ async function startMcpLoopbackServer(work: GatewayConnectionWork): Promise<() =
+@@ -335,6 +335,7 @@ async function startMcpLoopbackServer(work: GatewayConnectionWork): Promise<() =
                    messageActionTurnCapability: boundClientGrant?.messageActionTurnCapability,
                    // Only a run-bound CLI grant carries a verified turn sender's audience.
                    memoryAudience: boundClientGrant?.memoryAudience,
@@ -6691,7 +6699,7 @@ index e42ac45f7..1de6e736c 100644
    /** Exact host-owned reusable process lifecycle and current-turn admission. */
    liveSession?: CliBackendLiveSessionCapability;
 diff --git a/test/vitest/vitest.database-worker-core-paths.mjs b/test/vitest/vitest.database-worker-core-paths.mjs
-index 67f1b81c3..bd3351c45 100644
+index c0b645b9d..cf7ab593c 100644
 --- a/test/vitest/vitest.database-worker-core-paths.mjs
 +++ b/test/vitest/vitest.database-worker-core-paths.mjs
 @@ -1,5 +1,10 @@
@@ -6702,6 +6710,6 @@ index 67f1b81c3..bd3351c45 100644
 +  "src/agents/session-maintenance/compaction-memory.test.ts",
 +  "src/agents/session-maintenance/compaction-memory.capture.test.ts",
 +  "src/agents/session-maintenance/run.native-idle.test.ts",
+   "src/gateway/test/talk-client-agent-consult.requester-final.test.ts",
    "src/infra/approval-session-audience.sqlite.test.ts",
    "src/gateway/server-methods.workshop-contract.test.ts",
-   "src/cli/skills-cli.workshop-contract.test.ts",

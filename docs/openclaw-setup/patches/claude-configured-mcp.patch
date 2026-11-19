@@ -1,5 +1,5 @@
 diff --git a/extensions/anthropic/cli-profile.test.ts b/extensions/anthropic/cli-profile.test.ts
-index 0637a40b..2833af3f 100644
+index 0637a40bf..2833af3f9 100644
 --- a/extensions/anthropic/cli-profile.test.ts
 +++ b/extensions/anthropic/cli-profile.test.ts
 @@ -80,6 +80,53 @@ describe("explicit Claude agent profiles", () => {
@@ -57,7 +57,7 @@ index 0637a40b..2833af3f 100644
      vi.stubEnv("NEUTRAL_CONFIG_VALUE", "synthetic-not-a-secret");
      try {
 diff --git a/extensions/anthropic/cli-profile.ts b/extensions/anthropic/cli-profile.ts
-index 9cc6b4ca..43899c75 100644
+index 9cc6b4ca9..43899c754 100644
 --- a/extensions/anthropic/cli-profile.ts
 +++ b/extensions/anthropic/cli-profile.ts
 @@ -10,6 +10,7 @@ import type {
@@ -91,10 +91,10 @@ index 9cc6b4ca..43899c75 100644
          `Read(/${entry})`,
          `Read(/${entry}/**)`,
 diff --git a/extensions/anthropic/openclaw.plugin.json b/extensions/anthropic/openclaw.plugin.json
-index 69b773fd..8114c0c9 100644
+index 49edf822f..b0fa794a3 100644
 --- a/extensions/anthropic/openclaw.plugin.json
 +++ b/extensions/anthropic/openclaw.plugin.json
-@@ -421,6 +421,14 @@
+@@ -425,6 +425,14 @@
                  "restricted"
                ]
              },
@@ -111,7 +111,7 @@ index 69b773fd..8114c0c9 100644
                "items": {
 diff --git a/src/agents/cli-runner/loopback-bundle-mcp.test.ts b/src/agents/cli-runner/loopback-bundle-mcp.test.ts
 new file mode 100644
-index 00000000..76fdf653
+index 000000000..76fdf653c
 --- /dev/null
 +++ b/src/agents/cli-runner/loopback-bundle-mcp.test.ts
 @@ -0,0 +1,102 @@
@@ -218,7 +218,7 @@ index 00000000..76fdf653
 +  );
 +});
 diff --git a/src/agents/cli-runner/loopback-bundle-mcp.ts b/src/agents/cli-runner/loopback-bundle-mcp.ts
-index 663364ba..08710548 100644
+index 2b78e3c55..357d957bc 100644
 --- a/src/agents/cli-runner/loopback-bundle-mcp.ts
 +++ b/src/agents/cli-runner/loopback-bundle-mcp.ts
 @@ -7,7 +7,6 @@ import {
@@ -292,12 +292,17 @@ index 663364ba..08710548 100644
    if (materialized.restrictAppTools) {
      // MCP app views outlive one call; bind them to this run's complete policy now.
 diff --git a/src/agents/cli-runner/prepare.configured-mcp.test.ts b/src/agents/cli-runner/prepare.configured-mcp.test.ts
-index 8d959483..b4bdccc9 100644
+index bcc1b6afa..c771fb779 100644
 --- a/src/agents/cli-runner/prepare.configured-mcp.test.ts
 +++ b/src/agents/cli-runner/prepare.configured-mcp.test.ts
-@@ -32,6 +32,26 @@ import {
-   setCliRunnerPrepareTestDeps,
- } from "./prepare.test-support.js";
+@@ -1,3 +1,4 @@
++import type { CliBackendPlugin } from "../../plugins/cli-backend.types.js";
+ import fs from "node:fs";
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import {
+@@ -41,7 +42,29 @@ const PROBE_SERVER_INSTRUCTIONS =
+   "x".repeat(2_500) +
+   "\nPROBE_TAIL: preserve the complete native guidance.";
  
 +type MaterializedBundleMcp = Awaited<
 +  ReturnType<typeof import("../agent-bundle-mcp-materialize.js").materializeBundleMcpToolsForRun>
@@ -319,19 +324,13 @@ index 8d959483..b4bdccc9 100644
 +  };
 +});
 +
- const claudeBackend: CliBackendPlugin & { pluginId: string } = {
-   id: "claude-cli",
-   pluginId: "anthropic",
-@@ -39,6 +59,8 @@ const claudeBackend: CliBackendPlugin & { pluginId: string } = {
-   bundleMcpMode: "claude-config-file",
-   nativeToolMode: "selectable",
-   toolAvailabilityEnforcement: "execution-args",
-+  // This synthetic backend has no stored account and its preparation hook only injects failures.
-+  autoSelectAuthProfile: false,
-   resolveExecutionArgs: ({ baseArgs }) => [...baseArgs],
-   config: {
-     command: "claude",
-@@ -127,6 +149,7 @@ describe("configured MCP servers on exclusive CLI turns", () => {
+ const claudeBackend = createClaudeMcpCliBackend();
++// The synthetic backend has no stored account; its hook injects preparation failures.
++claudeBackend.autoSelectAuthProfile = false;
+ 
+ async function startProbeServer() {
+   const state = { calls: 0 };
+@@ -100,6 +123,7 @@ describe("configured MCP servers on CLI turns", () => {
    const mintGrant = vi.fn<typeof MintMcpLoopbackClientGrant>();
  
    beforeEach(() => {
@@ -339,7 +338,7 @@ index 8d959483..b4bdccc9 100644
      mintGrant.mockReset().mockImplementation(createTestMcpLoopbackClientGrant);
      cliBackendsTesting.setDepsForTest({
        resolvePluginSetupCliBackend: () => undefined,
-@@ -299,4 +322,104 @@ describe("configured MCP servers on exclusive CLI turns", () => {
+@@ -316,4 +340,104 @@ describe("configured MCP servers on CLI turns", () => {
        expect(probeServer.calls).toBe(deny.length > 0 ? 0 : childAllow ? 2 : 3);
      },
    );
@@ -446,7 +445,7 @@ index 8d959483..b4bdccc9 100644
  });
 diff --git a/src/gateway/mcp-http.configured-tools.test.ts b/src/gateway/mcp-http.configured-tools.test.ts
 new file mode 100644
-index 00000000..c0314420
+index 000000000..c03144203
 --- /dev/null
 +++ b/src/gateway/mcp-http.configured-tools.test.ts
 @@ -0,0 +1,263 @@
@@ -714,14 +713,14 @@ index 00000000..c0314420
 +  });
 +});
 diff --git a/test/vitest/vitest.gateway-server-paths.mjs b/test/vitest/vitest.gateway-server-paths.mjs
-index fc94ce3d..063ab231 100644
+index 4e7d48d31..c0dbeebfa 100644
 --- a/test/vitest/vitest.gateway-server-paths.mjs
 +++ b/test/vitest/vitest.gateway-server-paths.mjs
-@@ -115,6 +115,7 @@ export const gatewayDatabaseWorkerTestFiles = [
+@@ -131,6 +131,7 @@ export const gatewayDatabaseWorkerTestFiles = [
    "src/gateway/managed-outgoing-gc-availability.test.ts",
    "src/gateway/mcp-http.completion-lineage.test.ts",
    "src/gateway/mcp-http.configured-mcp-authority.test.ts",
 +  "src/gateway/mcp-http.configured-tools.test.ts",
    "src/gateway/mcp-http.exec-completion.test.ts",
    "src/gateway/mcp-http.exec-egress.test.ts",
-   "src/gateway/mcp-http.loopback-real-recovery.test.ts",
+   "src/gateway/mcp-http.plugin-reload.test.ts",
