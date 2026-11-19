@@ -329,6 +329,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
         "--every", "60m",
         "--agent", "main",
         "--session", "isolated",
+        ...(provider?.heartbeatModel ? ["--model", provider.heartbeatModel] : []),
         "--message", "Read the current heartbeat scratch and act only on that saved work.",
         "--skip-if-scratch-empty",
         "--idle-only",
