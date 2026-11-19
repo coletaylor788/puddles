@@ -360,6 +360,9 @@ describe("recording fixture prerequisites", () => {
     const env = fixtureEnv(context);
     expect(env.HOME).toBe(context.home);
     expect(env.OPENCLAW_CONFIG_PATH).toBe(context.configPath);
+    expect(env.OPENCLAW_PROFILE).toMatch(/^puddles-fixture-[a-f0-9]{16}$/u);
+    expect(fixtureEnv(context).OPENCLAW_PROFILE).toBe(env.OPENCLAW_PROFILE);
+    expect(fixtureEnv(isolatedContext(root())).OPENCLAW_PROFILE).not.toBe(env.OPENCLAW_PROFILE);
     expect(env).not.toHaveProperty("GITHUB_TOKEN");
     expect(env).not.toHaveProperty("OPENAI_API_KEY");
     expect(env.NODE_ENV).toBe("production");
