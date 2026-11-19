@@ -236,7 +236,7 @@ export async function communicationFixture(installedDir, pluginDir, root, option
       gateway: { mode: 'local', port, bind: 'loopback', auth: { mode: 'token', token: 'synthetic-communication-token' }, controlUi: { enabled: false } },
       logging: { file: join(root, 'openclaw.log') }, update: { checkOnStart: false }, cron: { enabled: false }, browser: { enabled: false },
       ...(supportsDetachedReplies ? { tools: { toolSearch: false } } : {}),
-      agents: { ownership: 'explicit', defaults: { model: { primary: 'fixture/fixture-model' }, compaction: { mode: 'default' }, heartbeat: { every: '0m' } }, entries: { main: { workspace: mainWorkspace, tools: { allow: ['communication_memory_read', 'fixture_heartbeat'] } } } },
+      agents: { ownership: 'explicit', defaults: { model: { primary: 'fixture/fixture-model' }, compaction: { mode: 'default' } }, entries: { main: { workspace: mainWorkspace, tools: { allow: ['communication_memory_read', 'fixture_heartbeat'] } } } },
       models: { mode: 'replace', providers: { fixture: { api: 'openai-completions', baseUrl: `http://127.0.0.1:${server.address().port}/v1`, apiKey: 'synthetic', models: [{ id: 'fixture-model', name: 'Fixture', contextWindow: 128000, maxTokens: 4096, reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } },
       plugins: { allow: ['communication-watcher', 'communication-fixture'], slots: { memory: 'none' }, load: { paths: [driver] } },
     }, { mainWorkspace, readerWorkspace, pluginPath: plugin, enableHeartbeat: true,

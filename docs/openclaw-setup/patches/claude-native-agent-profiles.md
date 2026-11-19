@@ -2,7 +2,7 @@
 
 This opt-in patch keeps per-agent Claude profile policy while preserving
 OpenClaw's policy vetoes and human approval delivery. It targets the
-pinned OpenClaw 2026.11.4 source and requires Claude Code 2.1.301 or newer.
+pinned OpenClaw 2026.11.5 source and requires Claude Code 2.1.301 or newer.
 
 ## Permission flow
 

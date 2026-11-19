@@ -1,16 +1,15 @@
 diff --git a/extensions/llama-cpp/index.test.ts b/extensions/llama-cpp/index.test.ts
-index 71e59c14..efa5c6d6 100644
+index f38ad94cf..229f04e88 100644
 --- a/extensions/llama-cpp/index.test.ts
 +++ b/extensions/llama-cpp/index.test.ts
-@@ -343,6 +343,31 @@ describe("llama.cpp provider plugin", () => {
-     expect(mocks.prepareServer).not.toHaveBeenCalled();
-   });
+@@ -254,6 +254,26 @@ describe("llama.cpp provider plugin", () => {
+     },
+   );
  
-+  it("forwards one startup signal and selects embedding-only residency", async () => {
++  it("forwards one startup signal through managed preparation and fact refresh", async () => {
 +    const controller = new AbortController();
-+    const options = configuredOptions();
-+    const result = await llamaCppEmbeddingProviderAdapter.create({
-+      ...options,
++    const result = await createEmbedding({
++      ...fixture.options,
 +      local: { warmupOnGatewayStart: true },
 +      signal: controller.signal,
 +    });
@@ -20,25 +19,21 @@ index 71e59c14..efa5c6d6 100644
 +      expect.objectContaining({ signal: controller.signal }),
 +    );
 +    expect(mocks.prepareServer).toHaveBeenCalledWith(
-+      expect.objectContaining({
-+        signal: controller.signal,
-+        keepEmbeddingResident: true,
-+        chatModel: { mode: "preserve" },
-+      }),
++      expect.objectContaining({ signal: controller.signal, keepEmbeddingResident: true }),
 +    );
 +    expect(mocks.inspectRuntime).toHaveBeenCalledWith(
 +      expect.objectContaining({ signal: controller.signal }),
 +    );
 +  });
 +
-   it("routes embeddings through the managed server and reports endpoint facts", async () => {
-     const result = await llamaCppEmbeddingProviderAdapter.create(configuredOptions());
-     const provider = expectDefined(result.provider, "local embedding provider");
+   it.each([
+     { dimensions: undefined, expected: [3 / 13, 4 / 13, 12 / 13] },
+     { dimensions: 2, expected: [0.6, 0.8] },
 diff --git a/extensions/llama-cpp/src/embedding-provider.runtime.ts b/extensions/llama-cpp/src/embedding-provider.runtime.ts
-index a9d15946..004cd0c5 100644
+index 392309dd4..7da0db2d8 100644
 --- a/extensions/llama-cpp/src/embedding-provider.runtime.ts
 +++ b/extensions/llama-cpp/src/embedding-provider.runtime.ts
-@@ -51,15 +51,18 @@ async function prepareEmbeddingServer(
+@@ -50,15 +50,18 @@ async function prepareEmbeddingServer(
      source: embeddingSource,
      cacheDir,
      download: true,
@@ -57,14 +52,14 @@ index a9d15946..004cd0c5 100644
    });
  }
  
-@@ -69,20 +72,22 @@ function wrapProvider(params: {
-   baseUrl: string;
- }): EmbeddingProvider {
-   let runtimeFacts: LlamaServerRuntimeFacts | undefined;
+@@ -119,21 +122,23 @@ export async function createLlamaCppEmbeddingProvider(
+     );
+   };
+   let runtimeFacts: Awaited<ReturnType<typeof inspectLlamaServerRuntime>> | undefined;
 -  const refreshFacts = async (loadError?: string) => {
 +  const refreshFacts = async (signal?: AbortSignal, loadError?: string) => {
      runtimeFacts = await inspectLlamaServerRuntime({
-       baseUrl: params.baseUrl,
+       baseUrl,
        modelId: DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_ID,
        loadError,
 +      signal,
@@ -79,26 +74,29 @@ index a9d15946..004cd0c5 100644
 +      signal?.throwIfAborted();
        return value;
      } catch (error) {
--      await refreshFacts(error instanceof Error ? error.message : String(error));
-+      await refreshFacts(signal, error instanceof Error ? error.message : String(error));
-       throw error;
+       const failure = formatLlamaServerRuntimeError(error);
+-      await refreshFacts(failure.message);
++      await refreshFacts(signal, failure.message);
+       throw failure;
      }
    };
-@@ -92,9 +97,10 @@ function wrapProvider(params: {
-     dimensions: params.provider.dimensions,
+@@ -144,9 +149,12 @@ export async function createLlamaCppEmbeddingProvider(
      // Reserve BOS/EOS, a possible SentencePiece prefix, and the causal context boundary.
-     maxInputTokens: params.provider.maxInputTokens ?? DEFAULT_LLAMA_CPP_EMBEDDING_CONTEXT_SIZE - 4,
--    embed: (input, callOptions) => withFacts(() => params.provider.embed(input, callOptions)),
-+    embed: (input, callOptions) =>
-+      withFacts(() => params.provider.embed(input, callOptions), callOptions?.signal),
+     maxInputTokens: provider.maxInputTokens ?? DEFAULT_LLAMA_CPP_EMBEDDING_CONTEXT_SIZE - 4,
+     embed: (input, callOptions) =>
+-      withFacts(async () => normalize(await provider.embed(input, callOptions))),
++      withFacts(async () => normalize(await provider.embed(input, callOptions)), callOptions?.signal),
      embedBatch: (inputs, callOptions) =>
--      withFacts(() => params.provider.embedBatch(inputs, callOptions)),
-+      withFacts(() => params.provider.embedBatch(inputs, callOptions), callOptions?.signal),
-     close: params.provider.close,
+-      withFacts(async () => (await provider.embedBatch(inputs, callOptions)).map(normalize)),
++      withFacts(
++        async () => (await provider.embedBatch(inputs, callOptions)).map(normalize),
++        callOptions?.signal,
++      ),
+     close: provider.close,
    };
    Object.defineProperty(wrapped, LOCAL_EMBEDDING_RUNTIME_FACTS, {
 diff --git a/extensions/llama-cpp/src/llama-server-preset.ts b/extensions/llama-cpp/src/llama-server-preset.ts
-index 01205b16..43b2168e 100644
+index 5a2b9d6d0..b74e0df39 100644
 --- a/extensions/llama-cpp/src/llama-server-preset.ts
 +++ b/extensions/llama-cpp/src/llama-server-preset.ts
 @@ -23,6 +23,7 @@ export type LlamaServerPresetOptions = {
@@ -109,7 +107,7 @@ index 01205b16..43b2168e 100644
    defaultEmbeddingModelPath?: string;
    mediaModels?: readonly ManagedLlamaModel[];
    // Settings the router already passes to every model: its args and its effective environment.
-@@ -274,6 +275,14 @@ export function buildLlamaServerPreset(
+@@ -277,6 +278,14 @@ export function buildLlamaServerPreset(
        newline,
      );
    }
@@ -125,10 +123,10 @@ index 01205b16..43b2168e 100644
    if (!embeddingSection && params.mediaModels === undefined) {
      throw new Error("llama.cpp embedding model path is required for a new managed preset");
 diff --git a/extensions/llama-cpp/src/managed-server-inspection.ts b/extensions/llama-cpp/src/managed-server-inspection.ts
-index 1cedd1bf..d6fcece6 100644
+index 9f7d5724f..890da562a 100644
 --- a/extensions/llama-cpp/src/managed-server-inspection.ts
 +++ b/extensions/llama-cpp/src/managed-server-inspection.ts
-@@ -26,6 +26,7 @@ export type LlamaServerRuntimeFacts = {
+@@ -9,6 +9,7 @@ import { asOptionalRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
  async function fetchEndpoint(
    url: string,
    accept: "json" | "text",
@@ -136,7 +134,7 @@ index 1cedd1bf..d6fcece6 100644
  ): Promise<{ ok: boolean; value?: unknown }> {
    try {
      const configuredLocalOriginBaseUrl = new URL(url).origin;
-@@ -34,6 +35,7 @@ async function fetchEndpoint(
+@@ -17,6 +18,7 @@ async function fetchEndpoint(
        configuredLocalOriginBaseUrl,
        policy: ssrfPolicyFromHttpBaseUrlAllowedOrigin(configuredLocalOriginBaseUrl),
        timeoutMs: 2_500,
@@ -144,14 +142,12 @@ index 1cedd1bf..d6fcece6 100644
        auditContext: "llama-server-inspect",
      });
      try {
-@@ -56,16 +58,17 @@ async function fetchEndpoint(
- export async function inspectLlamaServerRuntime(params: {
+@@ -40,14 +42,15 @@ export async function inspectLlamaServerRuntime(params: {
    baseUrl: string;
    modelId: string;
-+  signal?: AbortSignal;
-   backend?: LlamaServerAsset["backend"];
    loadError?: string;
- }): Promise<LlamaServerRuntimeFacts> {
++  signal?: AbortSignal;
+ }) {
    const root = params.baseUrl.replace(/\/v1\/?$/u, "").replace(/\/+$/u, "");
    const query = `model=${encodeURIComponent(params.modelId)}&autoload=false`;
    const [health, models, props, metrics] = await Promise.all([
@@ -167,45 +163,47 @@ index 1cedd1bf..d6fcece6 100644
    const propsRecord = asOptionalRecord(props.value);
    const modalities = asOptionalRecord(propsRecord?.modalities);
 diff --git a/extensions/llama-cpp/src/managed-server.test.ts b/extensions/llama-cpp/src/managed-server.test.ts
-index 3d7587a7..f7b8449e 100644
+index 4ffd7d573..03b6bb300 100644
 --- a/extensions/llama-cpp/src/managed-server.test.ts
 +++ b/extensions/llama-cpp/src/managed-server.test.ts
-@@ -75,6 +75,30 @@ afterEach(async () => {
+@@ -175,6 +175,32 @@ it("prepares an isolated candidate without changing the active restart preset",
+   expect(contents).not.toContain("active-chat");
  });
  
- describe("managed llama-server", () => {
-+  it.each([false, true])(
-+    "changes only embedding idle sleep when residency is selected (%s)",
-+    async (resident) => {
-+      const root = tempDirs.make("llama-embedding-residency-");
-+      const presetPath = path.join(root, "models.ini");
-+      const shared =
-+        "version = 1\n\n[*]\nsleep-idle-seconds = 120\n\n[chat]\nmodel = /models/chat.gguf\nsleep-idle-seconds = 60\n\n";
-+      await fs.writeFile(
-+        presetPath,
-+        shared +
-+          "[embeddinggemma-300m-qat-q8_0]\nmodel = /models/embed.gguf\nsleep-idle-seconds = 30\n",
-+      );
-+      await prepareManagedLlamaServer({
-+        localService: { command: path.join(root, "server"), args: ["--models-preset", presetPath] },
-+        port: 19436,
-+        chatModel: { mode: "preserve" },
-+        keepEmbeddingResident: resident,
-+      });
-+      const updated = await fs.readFile(presetPath, "utf8");
-+      expect(updated.startsWith(shared)).toBe(true);
-+      expect(updated.slice(shared.length)).toContain(`sleep-idle-seconds = ${resident ? -1 : 30}`);
-+    },
-+  );
++it.each([false, true])(
++  "changes only embedding idle sleep when residency is selected (%s)",
++  async (resident) => {
++    const root = tempDirs.make("llama-embedding-residency-");
++    const presetPath = path.join(root, "models.ini");
++    const shared =
++      "version = 1\n\n[*]\nsleep-idle-seconds = 120\n\n[chat]\nmodel = /models/chat.gguf\nsleep-idle-seconds = 60\n\n";
++    await fs.writeFile(
++      presetPath,
++      shared +
++        "[embeddinggemma-300m-qat-q8_0]\nmodel = /models/embed.gguf\nsleep-idle-seconds = 30\n",
++    );
++    await prepareManagedLlamaServer({
++      localService: { command: path.join(root, "server"), args: ["--models-preset", presetPath] },
++      port: 19_436,
++      chatModel: { mode: "preserve" },
++      keepEmbeddingResident: resident,
++    });
++    const updated = await fs.readFile(presetPath, "utf8");
++    expect(updated.startsWith(shared)).toBe(true);
++    expect(updated.slice(shared.length)).toContain(
++      `sleep-idle-seconds = ${resident ? -1 : 30}`,
++    );
++  },
++);
 +
-   it.each([
-     [
-       "darwin",
+ it("does not reconcile a configured direct-model service without a router preset", async () => {
+   const root = tempDirs.make("llama-server-direct-model-");
+   const { state, port, baseUrl } = await createReloadServer();
 diff --git a/extensions/llama-cpp/src/managed-server.ts b/extensions/llama-cpp/src/managed-server.ts
-index bb82da91..103e1f09 100644
+index 0b887e0e7..b1ccf29e5 100644
 --- a/extensions/llama-cpp/src/managed-server.ts
 +++ b/extensions/llama-cpp/src/managed-server.ts
-@@ -448,6 +448,7 @@ export async function prepareManagedLlamaServer(params: {
+@@ -453,6 +453,7 @@ export async function prepareManagedLlamaServer(params: {
    chatModel: ManagedLlamaChatModel;
    configuredChatModelIds?: readonly string[];
    embeddingModelPath?: string;
@@ -213,7 +211,7 @@ index bb82da91..103e1f09 100644
    defaultEmbeddingModelPath?: string;
    port?: number;
    reconcileBaseUrl?: string;
-@@ -504,6 +505,9 @@ export async function prepareManagedLlamaServer(params: {
+@@ -542,6 +543,9 @@ export async function prepareManagedLlamaServer(params: {
    // Existing services may own a direct --model command instead of a router preset.
    // Keep that public localService contract; only setup creates a new router.
    if (params.localService && !configuredPreset && !params.isolated) {
@@ -223,7 +221,7 @@ index bb82da91..103e1f09 100644
      await runPresetTransition(async () => {
        presetState.desiredRevisions.delete(reconcileOrigin);
        presetState.appliedRevisions.delete(reconcileOrigin);
-@@ -534,6 +538,7 @@ export async function prepareManagedLlamaServer(params: {
+@@ -572,6 +576,7 @@ export async function prepareManagedLlamaServer(params: {
        chatModel: params.chatModel,
        configuredChatModelIds: params.configuredChatModelIds,
        embeddingModelPath: params.embeddingModelPath,
@@ -232,10 +230,10 @@ index bb82da91..103e1f09 100644
        reconcileOrigin: params.isolated ? undefined : reconcileOrigin,
        mediaModels: params.mediaModels,
 diff --git a/src/agents/memory-search.ts b/src/agents/memory-search.ts
-index 04a0b7d7..0a5d9f20 100644
+index c1283b8ec..683047f75 100644
 --- a/src/agents/memory-search.ts
 +++ b/src/agents/memory-search.ts
-@@ -40,6 +40,7 @@ export type ResolvedMemorySearchConfig = Omit<
+@@ -62,6 +62,7 @@ export type ResolvedMemorySearchConfig = Omit<
    cache: Omit<ProducedMemorySearchConfig["cache"], "maxEntries"> & { maxEntries?: number };
    local: Omit<ProducedMemorySearchConfig["local"], "modelPath"> & {
      modelPath?: string;
@@ -243,7 +241,7 @@ index 04a0b7d7..0a5d9f20 100644
      modelCacheDir?: string;
      contextSize?: number | "auto";
    };
-@@ -197,6 +198,16 @@ function produceMemorySearchConfig(cfg: OpenClawConfig, agentId: string) {
+@@ -225,6 +226,16 @@ function produceMemorySearchConfig(cfg: OpenClawConfig, agentId: string) {
    const documentInputType =
      overrides?.documentInputType?.trim() || defaults?.documentInputType?.trim() || undefined;
    const outputDimensionality = overrides?.outputDimensionality ?? defaults?.outputDimensionality;
@@ -260,8 +258,8 @@ index 04a0b7d7..0a5d9f20 100644
    const multimodal = normalizeMemoryMultimodalSettings({
      enabled: overrides?.multimodal?.enabled ?? defaults?.multimodal?.enabled,
      modalities: overrides?.multimodal?.modalities ?? defaults?.multimodal?.modalities,
-@@ -213,7 +224,7 @@ function produceMemorySearchConfig(cfg: OpenClawConfig, agentId: string) {
-     queryInputType,
+@@ -243,7 +254,7 @@ function produceMemorySearchConfig(cfg: OpenClawConfig, agentId: string) {
+     queryInstruction: (overrides?.queryInstruction ?? defaults?.queryInstruction) || undefined,
      documentInputType,
      outputDimensionality,
 -    local: { modelPath: overrides?.local?.modelPath ?? defaults?.local?.modelPath },
@@ -270,7 +268,7 @@ index 04a0b7d7..0a5d9f20 100644
        driver: "sqlite" as const,
        databasePath: resolveOpenClawAgentSqlitePath({ agentId, env: process.env }),
 diff --git a/src/agents/provider-local-service-target.ts b/src/agents/provider-local-service-target.ts
-index 70315ade..a4c2091b 100644
+index 70315aded..a4c2091b9 100644
 --- a/src/agents/provider-local-service-target.ts
 +++ b/src/agents/provider-local-service-target.ts
 @@ -18,7 +18,7 @@ export type ProviderLocalServiceTarget = {
@@ -283,10 +281,10 @@ index 70315ade..a4c2091b 100644
  /** Host-injected acquisition hook that cannot supply process configuration. */
  export type AcquireConfiguredProviderLocalService = (
 diff --git a/src/config/zod-schema.memory-search.ts b/src/config/zod-schema.memory-search.ts
-index 2bed2264..c01b0379 100644
+index 04ecaafee..9cf331f3a 100644
 --- a/src/config/zod-schema.memory-search.ts
 +++ b/src/config/zod-schema.memory-search.ts
-@@ -44,6 +44,7 @@ export const MemorySearchSchema = z
+@@ -53,6 +53,7 @@ export const MemorySearchSchema = z
      local: z
        .strictObject({
          modelPath: z.string().optional(),
@@ -296,7 +294,7 @@ index 2bed2264..c01b0379 100644
      store: z
 diff --git a/src/gateway/server-memory-warmup.test.ts b/src/gateway/server-memory-warmup.test.ts
 new file mode 100644
-index 00000000..df640f44
+index 000000000..df640f440
 --- /dev/null
 +++ b/src/gateway/server-memory-warmup.test.ts
 @@ -0,0 +1,230 @@
@@ -532,7 +530,7 @@ index 00000000..df640f44
 +});
 diff --git a/src/gateway/server-memory-warmup.ts b/src/gateway/server-memory-warmup.ts
 new file mode 100644
-index 00000000..bd85f52a
+index 000000000..bd85f52a2
 --- /dev/null
 +++ b/src/gateway/server-memory-warmup.ts
 @@ -0,0 +1,143 @@
@@ -680,23 +678,42 @@ index 00000000..bd85f52a
 +  };
 +}
 diff --git a/src/gateway/server-startup-post-attach.test.ts b/src/gateway/server-startup-post-attach.test.ts
-index bb4c375c..52c70ea2 100644
+index 3f76a337a..8ebcd67b8 100644
 --- a/src/gateway/server-startup-post-attach.test.ts
 +++ b/src/gateway/server-startup-post-attach.test.ts
-@@ -61,6 +61,11 @@ import { transcriptSidecarMocks } from "./server-startup-transcripts.test-suppor
- 
- type PluginHookGatewayStartEvent = Parameters<PluginHookHandlerMap["gateway_start"]>[0];
+@@ -62,6 +62,11 @@ import {
+ } from "./server-startup-readiness.test-support.js";
+ import { transcriptSidecarMocks } from "./server-startup-transcripts.test-support.js";
  
 +const memoryWarmup = vi.hoisted(() =>
 +  vi.fn<typeof import("./server-memory-warmup.js").createGatewayMemoryWarmup>(() => null),
 +);
 +vi.mock("./server-memory-warmup.js", () => ({ createGatewayMemoryWarmup: memoryWarmup }));
 +
- const hoisted = vi.hoisted(() => {
-   const startPluginServices = vi.fn<typeof import("../plugins/services.js").startPluginServices>(
-     async (params) => {
-@@ -2187,6 +2192,35 @@ describe("startGatewayPostAttachRuntime", () => {
-     expect(getPluginRuntimeGatewayRequestScope()).toBeUndefined();
+ const { postAttachMocks: hoisted } = await vi.hoisted(
+   () => import("./server-startup-post-attach.mocks.test-support.js"),
+ );
+@@ -125,6 +130,10 @@ function createSidecarParams(
+     logHooks: params.logHooks,
+     logChannels: params.logChannels,
+     ...overrides,
++    onGatewayLifetimeSidecars: composeTrackedPublisher(
++      publishedGatewayLifetimeSidecars,
++      overrides.onGatewayLifetimeSidecars,
++    ),
+     onPostReadySidecars: composeTrackedPublisher(
+       publishedPostReadySidecars,
+       overrides.onPostReadySidecars,
+@@ -337,6 +346,7 @@ describe("startGatewayPostAttachRuntime", () => {
+     hoisted.prewarmConfigDrivenReplyRuntime.mockReset();
+     hoisted.prewarmConfigDrivenReplyRuntime.mockResolvedValue(undefined);
+     hoisted.scheduleGatewayHandlerPrewarm.mockClear();
++    memoryWarmup.mockReset().mockReturnValue(null);
+   });
+ 
+   afterEach(async () => {
+@@ -402,6 +412,30 @@ describe("startGatewayPostAttachRuntime", () => {
+     },
    });
  
 +  it.each([false, true])(
@@ -706,14 +723,9 @@ index bb4c375c..52c70ea2 100644
 +      const warmup = { ready: deferred.promise, stop: vi.fn(async () => {}) };
 +      memoryWarmup.mockReturnValueOnce(warmup);
 +      const startChannels = vi.fn(async () => {});
-+      const publish = vi.fn();
-+      const params = createPostAttachParams({ startChannels });
-+      const starting = startGatewaySidecars({
-+        ...params,
-+        cfg: { hooks: { internal: { enabled: false } } },
-+        onGatewayLifetimeSidecars: publish,
-+      });
-+      await vi.waitFor(() => expect(publish).toHaveBeenCalledWith(warmup));
++      const starting = startGatewaySidecars({ startChannels });
++      await vi.waitFor(() => expect(publishedGatewayLifetimeSidecars).toContain(warmup));
++      expect(hoisted.startPluginServices).toHaveBeenCalledOnce();
 +      expect(startChannels).not.toHaveBeenCalled();
 +      if (fail) {
 +        const failed = expect(starting).rejects.toThrow("unavailable");
@@ -723,59 +735,111 @@ index bb4c375c..52c70ea2 100644
 +      } else {
 +        deferred.resolve();
 +        await starting;
-+        expect(startChannels).toHaveBeenCalledOnce();
++        await vi.waitFor(() => expect(startChannels).toHaveBeenCalledOnce());
 +      }
 +    },
 +  );
 +
-   it.each(["loaded", "failed"] as const)(
-     "starts services before orphan marking (%s), retaining channel and RPC admission",
-     async (pluginOutcome) => {
+   it("reports internal hook load failures without copying the error into the summary", async () => {
+     const log = { info: vi.fn<(message: string) => void>(), warn: vi.fn() };
+     const logHooks = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 diff --git a/src/gateway/server-startup-post-attach.ts b/src/gateway/server-startup-post-attach.ts
-index 93dda747..ff834c63 100644
+index 8bd05deda..1bc7bf1c1 100644
 --- a/src/gateway/server-startup-post-attach.ts
 +++ b/src/gateway/server-startup-post-attach.ts
-@@ -127,6 +127,7 @@ export async function startGatewaySidecars(
-     refreshChatMetadata?: () => Promise<void>;
-     onChannelsStarted?: () => Awaitable<void>;
-     onPostReadySidecars: (...sidecars: GatewayPostReadySidecarHandle[]) => void;
-+    onGatewayLifetimeSidecars?: (...sidecars: GatewayPostReadySidecarHandle[]) => void;
-     shouldCreatePostReadySidecars?: () => boolean;
-     logHooks: {
-       info: (msg: string) => void;
-@@ -256,6 +257,19 @@ export async function startGatewaySidecars(
-   // startup path, while channels and the existing RPC readiness gate still wait.
-   await startGatewayPluginServices(params);
-   await params.prepareMainSessionOrphans?.();
+@@ -323,6 +323,7 @@ export async function startGatewayPostAttachRuntime(params: {
+                   startupTrace: params.startupTrace,
+                   onPluginServices: params.onPluginServices,
+                   onPostReadySidecars: params.onPostReadySidecars,
++                  onGatewayLifetimeSidecars: params.onGatewayLifetimeSidecars,
+                   shouldCreatePostReadySidecars: () => params.isClosing?.() !== true,
+                   shouldStartPluginServices: () =>
+                     params.isClosing?.() !== true && params.shouldStartPluginServices?.() !== false,
+diff --git a/src/gateway/server-startup-sidecars.ts b/src/gateway/server-startup-sidecars.ts
+index 6bf62f5f3..12a91272b 100644
+--- a/src/gateway/server-startup-sidecars.ts
++++ b/src/gateway/server-startup-sidecars.ts
+@@ -65,6 +65,7 @@ export async function startGatewaySidecars(params: {
+   shouldStartChannels?: () => boolean;
+   refreshChatMetadata?: () => Promise<void>;
+   onPostReadySidecars: (...sidecars: GatewayPostReadySidecarHandle[]) => void;
++  onGatewayLifetimeSidecars: (...sidecars: GatewayPostReadySidecarHandle[]) => void;
+   shouldCreatePostReadySidecars?: () => boolean;
+   logHooks: {
+     info: (msg: string) => void;
+@@ -186,26 +187,6 @@ export async function startGatewaySidecars(params: {
+   await measureStartup(params.startupTrace, "sidecars.chat-metadata", async () => {
+     await params.refreshChatMetadata?.();
+   });
+-  // Accounts prepare independently; the startup owner releases their existing
+-  // start gate after retained inputs acquire ordinary queue custody.
+-  void params
+-    .trackStartupWork(() =>
+-      measureStartup(params.startupTrace, "sidecars.channels", async () => {
+-        const shouldStartChannels = params.shouldStartChannels?.() !== false;
+-        const channelStart = skipChannels
+-          ? measureStartup(params.startupTrace, "sidecars.channel-skip", () =>
+-              params.logChannels.info(
+-                "skipping channel start (OPENCLAW_SKIP_CHANNELS=1 or OPENCLAW_SKIP_PROVIDERS=1)",
+-              ),
+-            )
+-          : shouldStartChannels
+-            ? measureStartup(params.startupTrace, "sidecars.channel-start", params.startChannels)
+-            : Promise.resolve();
+-        await channelStart;
+-      }),
+-    )
+-    .catch((err: unknown) => params.logChannels.error(`channel startup failed: ${String(err)}`));
+-
+   // The startup producer is joined on shutdown; services publish their own cleanup handle.
+   await measureStartup(params.startupTrace, "sidecars.plugin-services", async () => {
+     try {
+@@ -227,6 +208,40 @@ export async function startGatewaySidecars(params: {
+       params.log.warn(`plugin services failed to start: ${String(err)}`);
+     }
+   });
 +  await measureStartup(params.startupTrace, "sidecars.local-memory", async () => {
 +    const { createGatewayMemoryWarmup } = await import("./server-memory-warmup.js");
 +    const warmup = withPluginRuntimeRegistryScope(params.pluginRegistry, () =>
 +      createGatewayMemoryWarmup(getModelRuntimeConfig()),
 +    );
-+    if (!warmup) return;
-+    if (!params.onGatewayLifetimeSidecars || params.shouldCreatePostReadySidecars?.() === false) {
++    if (!warmup) {
++      return;
++    }
++    if (params.shouldCreatePostReadySidecars?.() === false) {
 +      await warmup.stop();
 +      throw new Error("Gateway local memory warmup has no active lifetime owner");
 +    }
 +    params.onGatewayLifetimeSidecars(warmup);
 +    await warmup.ready;
 +  });
-   const shouldStartChannels = params.shouldStartChannels?.() !== false;
-   await measureStartup(params.startupTrace, "sidecars.channels", async () => {
-     const channelStart = skipChannels
-@@ -807,6 +821,7 @@ export async function startGatewayPostAttachRuntime(
-                   logChannels: params.logChannels,
-                   startupTrace: params.startupTrace,
-                   onChannelsStarted: params.onChannelsStarted,
-+                  onGatewayLifetimeSidecars: params.onGatewayLifetimeSidecars,
-                   onPluginServices: reportPluginServices,
-                   onPostReadySidecars: params.onPostReadySidecars,
-                   shouldCreatePostReadySidecars: () => params.isClosing?.() !== true,
++  // Accounts prepare independently; the startup owner releases their existing
++  // start gate after retained inputs acquire ordinary queue custody.
++  void params
++    .trackStartupWork(() =>
++      measureStartup(params.startupTrace, "sidecars.channels", async () => {
++        const shouldStartChannels = params.shouldStartChannels?.() !== false;
++        const channelStart = skipChannels
++          ? measureStartup(params.startupTrace, "sidecars.channel-skip", () =>
++              params.logChannels.info(
++                "skipping channel start (OPENCLAW_SKIP_CHANNELS=1 or OPENCLAW_SKIP_PROVIDERS=1)",
++              ),
++            )
++          : shouldStartChannels
++            ? measureStartup(params.startupTrace, "sidecars.channel-start", params.startChannels)
++            : Promise.resolve();
++        await channelStart;
++      }),
++    )
++    .catch((err: unknown) => params.logChannels.error(`channel startup failed: ${String(err)}`));
+   const shouldDispatchGatewayStartupInternalHook =
+     internalHooksConfigured || (await hasGatewayStartupInternalHookListeners());
+   if (params.shouldCreatePostReadySidecars?.() === false) {
 diff --git a/src/plugins/embedding-provider-types.ts b/src/plugins/embedding-provider-types.ts
-index 8ba5dd87..21be05e1 100644
+index 8529caf48..401e05bab 100644
 --- a/src/plugins/embedding-provider-types.ts
 +++ b/src/plugins/embedding-provider-types.ts
-@@ -70,6 +70,7 @@ export type EmbeddingProvider = {
+@@ -74,6 +74,7 @@ export type EmbeddingProvider = {
  /** Options passed to embedding provider adapters when creating providers. */
  export type EmbeddingProviderCreateOptions = {
    config: OpenClawConfig;
@@ -783,7 +847,7 @@ index 8ba5dd87..21be05e1 100644
    agentDir?: string;
    provider?: string;
    remote?: {
-@@ -84,6 +85,7 @@ export type EmbeddingProviderCreateOptions = {
+@@ -88,6 +89,7 @@ export type EmbeddingProviderCreateOptions = {
    local?: {
      modelPath?: string;
      modelCacheDir?: string;
@@ -792,132 +856,22 @@ index 8ba5dd87..21be05e1 100644
    dimensions?: number;
    taskType?: string;
 diff --git a/src/plugins/openai-compatible-embedding-provider.test.ts b/src/plugins/openai-compatible-embedding-provider.test.ts
-index 63705b8d..f647baac 100644
+index 1bc7af5e1..c5091e4ab 100644
 --- a/src/plugins/openai-compatible-embedding-provider.test.ts
 +++ b/src/plugins/openai-compatible-embedding-provider.test.ts
-@@ -10,7 +10,12 @@ import {
- } from "../../packages/memory-host-sdk/src/host/search-deadline-control.js";
- import { withTestTimeout } from "../../test/helpers/promise.js";
- import type { ConfiguredProviderLocalServiceTarget } from "../agents/provider-local-service-target.js";
--import type { EmbeddingProviderCreateOptions } from "./embedding-providers.js";
-+import { UnresolvedSecretInputError } from "../config/types.secrets.js";
-+import { withEnvAsync } from "../test-utils/env.js";
-+import {
-+  getRegisteredEmbeddingProvider,
-+  type EmbeddingProviderCreateOptions,
-+} from "./embedding-providers.js";
- import { openAICompatibleEmbeddingProviderAdapter } from "./openai-compatible-embedding-provider.js";
- 
- async function createOpenAICompatibleEmbeddingProvider(options: EmbeddingProviderCreateOptions) {
-@@ -85,6 +90,7 @@ async function startEmbeddingServer(params?: {
-   respond?: (request: CapturedRequest) => FixtureResponse | Record<string, unknown> | null;
-   status?: number;
-   redirectUrl?: string;
-+  headers?: Record<string, string>;
- }): Promise<{ baseUrl: string; requests: CapturedRequest[] }> {
-   const requests: CapturedRequest[] = [];
-   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-@@ -108,6 +114,7 @@ async function startEmbeddingServer(params?: {
+@@ -140,6 +140,7 @@ async function startEmbeddingServer(params?: {
          res.writeHead(params?.status ?? 200, {
            "content-type": "application/json",
            ...(params?.redirectUrl ? { location: params.redirectUrl } : {}),
 +          ...params?.headers,
          });
          res.end(
-           JSON.stringify(
-@@ -297,6 +304,87 @@ afterEach(async () => {
- });
- 
- describe("openai-compatible generic embedding provider", () => {
-+  it("keeps managed embedding text off ambient proxy routes", async () => {
-+    const selected = await startEmbeddingServer();
-+    const proxy = await startEmbeddingServer();
-+    const options = {
-+      ...createOptions({
-+        config: {
-+          models: {
-+            providers: {
-+              fixture: {
-+                baseUrl: selected.baseUrl,
-+                localService: { command: process.execPath },
-+                models: [],
-+              },
-+            },
-+          },
-+        },
-+        provider: "fixture",
-+      }),
-+      acquireLocalService: vi.fn(async () => ({ release: vi.fn() })),
-+    };
-+    await withEnvAsync(
-+      {
-+        HTTP_PROXY: proxy.baseUrl,
-+        http_proxy: proxy.baseUrl,
-+        HTTPS_PROXY: proxy.baseUrl,
-+        https_proxy: proxy.baseUrl,
-+        NO_PROXY: "",
-+        no_proxy: "",
-+      },
-+      async () => {
-+        const { provider } = await createOpenAICompatibleEmbeddingProvider(options);
-+        await expect(provider.embed("synthetic memory text")).resolves.toEqual([0.1, 0.2, 0.3]);
-+      },
-+    );
-+    expect(selected.requests).toHaveLength(1);
-+    expect(proxy.requests).toHaveLength(0);
-+  });
-+
-+  it("refuses a managed embedding redirect to any second endpoint", async () => {
-+    const destination = await startEmbeddingServer();
-+    const selected = await startEmbeddingServer({
-+      status: 307,
-+      headers: { location: `${destination.baseUrl}/embeddings` },
-+    });
-+    const release = vi.fn();
-+    const { provider } = await createOpenAICompatibleEmbeddingProvider({
-+      ...createOptions({
-+        config: {
-+          models: {
-+            providers: {
-+              fixture: {
-+                baseUrl: selected.baseUrl,
-+                localService: { command: process.execPath },
-+                models: [],
-+              },
-+            },
-+          },
-+        },
-+        provider: "fixture",
-+      }),
-+      ...{ acquireLocalService: vi.fn(async () => ({ release })) },
-+    });
-+    await expect(provider.embed("synthetic memory text")).rejects.toThrow("redirect");
-+    expect(selected.requests).toHaveLength(1);
-+    expect(destination.requests).toHaveLength(0);
-+    expect(release).toHaveBeenCalledOnce();
-+  });
-+
-+  it("is registered as a core generic embedding provider", () => {
-+    expect(getRegisteredEmbeddingProvider("openai-compatible")).toMatchObject({
-+      adapter: openAICompatibleEmbeddingProviderAdapter,
-+      ownerPluginId: "core",
-+    });
-+  });
-+
-+  it("registers as a generic embedding provider with no memory-specific policy", async () => {
-+    expect(openAICompatibleEmbeddingProviderAdapter.id).toBe("openai-compatible");
-+    expect(openAICompatibleEmbeddingProviderAdapter.transport).toBe("remote");
-+    expect(openAICompatibleEmbeddingProviderAdapter.authProviderId).toBeUndefined();
-+  });
-+
-   it("honors private-network denial for a configured provider and remote override", async () => {
-     const server = await startEmbeddingServer();
-     for (const remoteOverride of [false, true]) {
+           JSON.stringify(params?.respond ? params.respond(captured) : vectors([0.1, 0.2, 0.3])),
 diff --git a/src/plugins/openai-compatible-embedding-provider.ts b/src/plugins/openai-compatible-embedding-provider.ts
-index a93baf4e..a5616b41 100644
+index 749674e14..fc64973de 100644
 --- a/src/plugins/openai-compatible-embedding-provider.ts
 +++ b/src/plugins/openai-compatible-embedding-provider.ts
-@@ -24,6 +24,7 @@ import { redactProviderResponseErrorText } from "../agents/provider-request-head
+@@ -25,6 +25,7 @@ import { redactProviderResponseErrorText } from "../agents/provider-request-head
  import type { ModelProviderConfig } from "../config/types.models.js";
  import { normalizeResolvedSecretInputString } from "../config/types.secrets.js";
  import { readResponseTextPrefix } from "../infra/http-body.js";
@@ -925,7 +879,7 @@ index a93baf4e..a5616b41 100644
  import { fetchWithRuntimeDispatcher } from "../infra/net/runtime-fetch.js";
  import type { SsrFPolicy } from "../infra/net/ssrf.js";
  import { appendConfigPathSegment } from "../shared/dot-path.js";
-@@ -370,6 +371,17 @@ async function postEmbeddingRequest(params: {
+@@ -405,6 +406,17 @@ async function postEmbeddingRequest(params: {
        signal: callOptions?.signal,
        fetchImpl: callOptions?.signal ? fetchWithCallerDeadline : undefined,
        ssrfPolicy: client.ssrfPolicy,

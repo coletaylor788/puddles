@@ -1057,19 +1057,9 @@ index 000000000..0add308c0
 +  }
 +}
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index a0b678d0f..18784829b 100644
+index 2d3d506bd..18784829b 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
-@@ -38,8 +38,8 @@ import {
-   registerContextEngineInRegistry,
- } from "../../context-engine/registry.js";
- import type { ContextEngine } from "../../context-engine/types.js";
--import type { resolveMcpLoopbackScopedTools as resolveLoopbackTools } from "../../gateway/mcp-http.runtime.js";
- import type { mintMcpLoopbackClientGrant as mintClientGrant } from "../../gateway/mcp-grant-store.js";
-+import type { resolveMcpLoopbackScopedTools as resolveLoopbackTools } from "../../gateway/mcp-http.runtime.js";
- import { setActiveNodeContexts } from "../../infra/active-node-context.js";
- import { labelRuntimeContextText } from "../../llm/types.js";
- import { CliBackendAuthProfilePreparationError } from "../../plugins/cli-backend-errors.js";
 @@ -126,6 +126,7 @@ import { claimPendingAgentQuestionAnswerFromCaller } from "../harness/gateway-qu
  import { withQuestionGateway } from "../harness/gateway-question.test-support.js";
  import { buildMediaTaskRuntimeContext } from "../media-generation-task-status.js";
@@ -1187,17 +1177,10 @@ index a0b678d0f..18784829b 100644
      getFixture: () => fixture,
      setBackend: setCliBackendForPrepareTest,
 diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index 4559beb2a..de6592a3a 100644
+index 1c8ff5462..97a98e372 100644
 --- a/src/agents/cli-runner/prepare.ts
 +++ b/src/agents/cli-runner/prepare.ts
-@@ -1,5 +1,6 @@
- import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
- import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
-+import { intersectSessionEventToolsAllow } from "../../auto-reply/reply/session-event-target.js";
- import { messageToolOwnsVisibleReply } from "../../auto-reply/source-reply-delivery-mode.js";
- import { getRuntimeConfig } from "../../config/config.js";
- import { canonicalizeMainSessionAlias } from "../../config/sessions/main-session.js";
-@@ -141,6 +142,7 @@ import { buildCliMcpGrantContext } from "./mcp-grant-context.js";
+@@ -142,6 +142,7 @@ import { buildCliMcpGrantContext } from "./mcp-grant-context.js";
  import { resolveCliCatalogCapabilities } from "./model-capabilities.js";
  import { detectNodeClaudePlacement, resolveClaudeCliContextModelId } from "./prepare-claude.js";
  import * as mcp from "./prepare-mcp.js";
@@ -1205,7 +1188,7 @@ index 4559beb2a..de6592a3a 100644
  import { runWithCliPreparationSource } from "./prepare-source.js";
  import {
    capCliToolAvailability,
-@@ -815,6 +817,26 @@ async function prepareCliRunContextWithinReadFence(
+@@ -816,6 +817,26 @@ async function prepareCliRunContextWithinReadFence(
        }
      : undefined;
    params = await admitCliRunParams(params, workspaceResolution.agentId);
@@ -1232,7 +1215,7 @@ index 4559beb2a..de6592a3a 100644
    const skillPreparationParams = params;
    const assertSkillsCurrent = skillPreparationParams.admittedRunContext
      ? createCliRunCurrentAssertion({
-@@ -890,6 +912,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -891,6 +912,7 @@ async function prepareCliRunContextWithinReadFence(
          defaultMediatedToolNames: hostOwnedTools,
          scope: {
            cfg: runConfig,
@@ -1240,7 +1223,7 @@ index 4559beb2a..de6592a3a 100644
            ...(skillLibraryAuthoring ? { skillLibraryAuthoring } : {}),
            ...(bundledMcpTools.length > 0 ? { bundledTools: bundledMcpTools } : {}),
            ...(mcpToolAuth ? { authProfileStore: mcpToolAuth.store } : {}),
-@@ -1092,6 +1115,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1093,6 +1115,7 @@ async function prepareCliRunContextWithinReadFence(
          ? await mintCliMcpClientGrant({ ...params, config: runConfig }, sessionAgentId, {
              ...mcpGrant,
              codeModeSkills,
@@ -1248,7 +1231,7 @@ index 4559beb2a..de6592a3a 100644
              sessionEventSourcePolicy,
              runtimeOwnerToken: mcpLoopbackRuntime.ownerToken,
              bindQuestionAnswerAuthority: (assertActive) =>
-@@ -1731,7 +1755,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1732,7 +1755,7 @@ async function prepareCliRunContextWithinReadFence(
          analysis: bootstrapAnalysis,
          warning: bootstrapPromptWarning,
        }),
@@ -2101,7 +2084,7 @@ index d53f333ab..86a155c52 100644
        try {
          const stats = await fs.stat(hostPath(filePath, cwd));
 diff --git a/src/gateway/mcp-grant-store.test.ts b/src/gateway/mcp-grant-store.test.ts
-index 1b62562ae..ac2efd9aa 100644
+index aa2eb7776..f4c6cf564 100644
 --- a/src/gateway/mcp-grant-store.test.ts
 +++ b/src/gateway/mcp-grant-store.test.ts
 @@ -5,6 +5,8 @@ import {
@@ -2152,7 +2135,7 @@ index 1b62562ae..ac2efd9aa 100644
      expect(() => attach("  ")).toThrow();
    });
 diff --git a/src/gateway/mcp-grant-store.ts b/src/gateway/mcp-grant-store.ts
-index fae2c1a48..acf8cea20 100644
+index 99f5da099..9a0bc9800 100644
 --- a/src/gateway/mcp-grant-store.ts
 +++ b/src/gateway/mcp-grant-store.ts
 @@ -6,6 +6,7 @@ import {
@@ -2163,40 +2146,40 @@ index fae2c1a48..acf8cea20 100644
  import type { CodeModeSkill } from "../agents/code-mode-skills.js";
  import type { DelegationCapability } from "../agents/delegation-capability.js";
  import type { ExecPolicyOverrides, ExecSessionDefaults } from "../agents/exec-defaults.js";
-@@ -197,6 +198,7 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
-   /** Native memory capability retained on the host; never serialized to CLI context. */
-   memoryAudience?: import("../plugins/memory-provider-types.js").MemoryAudience;
+@@ -195,6 +196,7 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
+   /** Original CLI policy, rebound only to this stored row's exact lifetime. */
+   bindQuestionAnswerAuthority?: (assertActive: () => void) => PreparedQuestionAnswerAuthority;
    memoryFlushTools?: import("../agents/agent-tools.memory-flush.types.js").MemoryFlushToolRunContext;
 +  sandboxExecution?: PreparedCliSandboxExecution;
    skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
    /** Configured MCP tools owned by the minting CLI run; disposed with that run. */
    bundledTools?: readonly AnyAgentTool[];
-@@ -336,6 +338,7 @@ export function mintMcpLoopbackClientGrant(
+@@ -334,6 +336,7 @@ export function mintMcpLoopbackClientGrant(
      codeModeSkills: params.codeModeSkills,
      assertCurrent: params.assertCurrent,
      bindQuestionAnswerAuthority: params.bindQuestionAnswerAuthority,
 +    ...(params.sandboxExecution ? { sandboxExecution: params.sandboxExecution } : {}),
      skillLibraryAuthoring: params.skillLibraryAuthoring,
-     memoryAudience: params.memoryAudience,
      memoryFlushTools: params.memoryFlushTools,
-@@ -539,6 +542,7 @@ export function resolveMcpLoopbackClientGrant(params: {
+     ...(params.bundledTools?.length ? { bundledTools: params.bundledTools } : {}),
+@@ -536,6 +539,7 @@ export function resolveMcpLoopbackClientGrant(params: {
        cronAuthorityCheck?: () => boolean;
        withCronManagementToolConstruction?: <T>(run: () => T) => T;
        questionAnswerAuthority?: PreparedQuestionAnswerAuthority;
 +      sandboxExecution?: PreparedCliSandboxExecution;
        skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
-       memoryAudience?: import("../plugins/memory-provider-types.js").MemoryAudience;
        memoryFlushTools?: import("../agents/agent-tools.memory-flush.types.js").MemoryFlushToolRunContext;
-@@ -608,6 +612,7 @@ export function resolveMcpLoopbackClientGrant(params: {
+       bundledTools?: readonly AnyAgentTool[];
+@@ -604,6 +608,7 @@ export function resolveMcpLoopbackClientGrant(params: {
      questionAnswerAuthority,
      abortSignal: grant.abortSignal,
      codeModeSkills: grant.codeModeSkills,
 +    ...(grant.sandboxExecution ? { sandboxExecution: grant.sandboxExecution } : {}),
      skillLibraryAuthoring: grant.skillLibraryAuthoring,
-     memoryAudience: grant.memoryAudience,
      memoryFlushTools: grant.memoryFlushTools,
+     ...(grant.bundledTools ? { bundledTools: grant.bundledTools } : {}),
 diff --git a/src/gateway/mcp-http.runtime.ts b/src/gateway/mcp-http.runtime.ts
-index a8871b04e..46b152867 100644
+index 37a099450..adde8bf29 100644
 --- a/src/gateway/mcp-http.runtime.ts
 +++ b/src/gateway/mcp-http.runtime.ts
 @@ -6,6 +6,7 @@ import {
@@ -2207,15 +2190,15 @@ index a8871b04e..46b152867 100644
  import type { CodeModeSkill } from "../agents/code-mode-skills.js";
  import {
    loadPairedComputerUseAvailabilityForSurface,
-@@ -73,6 +74,7 @@ type McpLoopbackScopeParams = {
+@@ -74,6 +75,7 @@ type McpLoopbackScopeParams = {
    cfg: OpenClawConfig;
    authProfileStore?: AuthProfileStore;
    authProfileStoreAgentDir?: string;
 +  sandboxExecution?: PreparedCliSandboxExecution;
    skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
-   /** Native memory capability retained on the host; never serialized to CLI context. */
-   memoryAudience?: import("../plugins/memory-provider-types.js").MemoryAudience;
-@@ -184,6 +186,11 @@ function resolveMediatedNativeTools(
+   memoryFlushTools?: import("../agents/agent-tools.memory-flush.types.js").MemoryFlushToolRunContext;
+ 
+@@ -183,6 +185,11 @@ function resolveMediatedNativeTools(
    );
  }
  
@@ -2227,8 +2210,8 @@ index a8871b04e..46b152867 100644
  function resolveScopedMediatedNativeTools(
    params: McpLoopbackScopeParams,
    mode: LoopbackToolsAllowMode,
-@@ -370,6 +377,7 @@ async function constructMcpLoopbackTools(
-     memoryAudience: params.memoryAudience,
+@@ -368,6 +375,7 @@ async function constructMcpLoopbackTools(
+     skillWorkshop,
      memoryFlushTools: params.memoryFlushTools,
      bundledTools: params.bundledTools,
 +    sandboxExecution: params.sandboxExecution,
@@ -2236,17 +2219,17 @@ index a8871b04e..46b152867 100644
      agentDir: params.authProfileStoreAgentDir,
      conversationReadOrigin: "delegated",
 diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
-index 16db84f49..00b68a41b 100644
+index 8941cb525..d420bc273 100644
 --- a/src/gateway/mcp-http.ts
 +++ b/src/gateway/mcp-http.ts
-@@ -333,6 +333,7 @@ async function startMcpLoopbackServer(work: GatewayConnectionWork): Promise<() =
+@@ -335,6 +335,7 @@ async function startMcpLoopbackServer(work: GatewayConnectionWork): Promise<() =
                    messageActionTurnCapability: boundClientGrant?.messageActionTurnCapability,
                    // Only a run-bound CLI grant carries a verified turn sender's audience.
                    memoryAudience: boundClientGrant?.memoryAudience,
 +                  sandboxExecution: boundClientGrant?.sandboxExecution,
+                   memoryFlushTools: boundClientGrant?.memoryFlushTools,
                    cfg: boundClientGrant?.toolPolicyConfig ?? cfg,
                    signal: requestAbort.signal,
-                   authProfileStore: boundClientGrant?.toolAuth?.store,
 diff --git a/src/gateway/tool-resolution.test.ts b/src/gateway/tool-resolution.test.ts
 index eb07438f5..1355a96d9 100644
 --- a/src/gateway/tool-resolution.test.ts
@@ -2329,7 +2312,7 @@ index eb07438f5..1355a96d9 100644
 +  },
 +);
 diff --git a/src/gateway/tool-resolution.ts b/src/gateway/tool-resolution.ts
-index 9f4705825..79b027646 100644
+index 165f13c2d..54a750ce5 100644
 --- a/src/gateway/tool-resolution.ts
 +++ b/src/gateway/tool-resolution.ts
 @@ -15,6 +15,7 @@ import {
@@ -2348,7 +2331,7 @@ index 9f4705825..79b027646 100644
      /** Workspace from the invocation owner's exact session read. */
      preparedSessionWorkspaceDir?: string;
      messageActionTurnCapability?: string;
-@@ -512,16 +514,37 @@ export async function resolveGatewayScopedTools(
+@@ -510,16 +512,37 @@ export async function resolveGatewayScopedTools(
    const includeMediatedBaseCodingTools =
      providerMemoryFlush || mediatedToolFamilies.has("base-coding");
    const includeMediatedShellTools = !providerMemoryFlush && mediatedToolFamilies.has("shell");
@@ -2389,7 +2372,7 @@ index 9f4705825..79b027646 100644
            messageProvider: params.messageProvider,
            messageChannel: params.messageProvider,
            currentChannelId: params.currentChannelId,
-@@ -566,6 +589,11 @@ export async function resolveGatewayScopedTools(
+@@ -568,6 +591,11 @@ export async function resolveGatewayScopedTools(
          })
        : [];
    assertCurrent();

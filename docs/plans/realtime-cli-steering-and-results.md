@@ -134,8 +134,8 @@ upstream-based Talk repair and extension-only FaceTime adaptation through CI,
 source merge and eligible cleanup. No new FaceTime Gateway entrypoint is allowed.
 
 The extension-only FaceTime client is implemented and source-reviewed. Focused
-attachment and shutdown regressions pass. Compatibility work on the retained
-patches and combined qualification are in progress. No Phase 2 candidate has
+attachment and shutdown regressions pass. The retained patches compose cleanly on 11.5. Combined core and extension
+typechecks and focused fixture checks pass; runtime qualification is in progress. No Phase 2 candidate has
 been submitted to CI; production is unchanged.
 
 ## Agent section
@@ -171,10 +171,21 @@ not held PR #347. Resolve the open evidence gaps and additional integration
 items listed above. Port retained behavior to native interfaces;
 retain meaningful regressions independently of deleted patch registrations.
 
+### Upgrade compatibility
+
+Native 11.5 Cron replaces the retired heartbeat tool path. Remove the now-unused
+`native-heartbeat-response` patch and qualify quiet completion, one alert,
+isolated history and main-session continuation through native Cron. Existing
+schedule conversion stays owned by native Doctor. The Workshop patch also
+shrinks to removing an obsolete diagnostic because native tool construction now
+supports the configured sandboxed grant. Neither change adds custom routing.
+
 ### Validation
 
-Focused FaceTime attachment tests and extension typechecking have passed.
-The full compatibility and installed acceptance gates remain pending. Qualify the combined candidate,
+Focused FaceTime attachment tests, combined core and extension typechecks, and
+63 fixture and manifest tests pass. The complete patch stack applies in order
+from the pinned upstream tree and has independent source review. Final native
+runtime and installed acceptance gates remain pending. Qualify the combined candidate,
 including real CLI/voice, existing state and Doctor, ordinary chat, and the
 upstream review's steering, compaction/relay and partial-settlement findings.
 
