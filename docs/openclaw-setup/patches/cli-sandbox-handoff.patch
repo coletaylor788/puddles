@@ -1,8 +1,8 @@
 diff --git a/extensions/mxc/src/fs-bridge.ts b/extensions/mxc/src/fs-bridge.ts
-index 739eeeab..d07cf892 100644
+index 8565cdd8f..9b01b1722 100644
 --- a/extensions/mxc/src/fs-bridge.ts
 +++ b/extensions/mxc/src/fs-bridge.ts
-@@ -57,6 +57,8 @@ class MxcFsBridge implements SandboxFsBridge {
+@@ -53,6 +53,8 @@ export class MxcFsBridge implements SandboxFsBridge {
      this.workspaceMounts = resolveWorkspaceMounts(sandbox);
    }
  
@@ -11,23 +11,15 @@ index 739eeeab..d07cf892 100644
    resolvePath(params: { filePath: string; cwd?: string }): SandboxResolvedPath {
      const target = this.resolveTarget(params);
      return {
-@@ -99,6 +101,7 @@ class MxcFsBridge implements SandboxFsBridge {
-       await fsRoot(target.mount.hostRoot)
-     ).write(target.relativePath, buffer, {
-       mkdir: params.mkdir !== false,
-+      assertBeforeMutation: params.assertBeforeMutation,
-     });
-   }
- 
-@@ -115,6 +118,7 @@ class MxcFsBridge implements SandboxFsBridge {
+@@ -107,6 +109,7 @@ export class MxcFsBridge implements SandboxFsBridge {
          await fsRoot(target.mount.hostRoot)
-       ).create(target.relativePath, buffer, {
+       )[method](target.relativePath, buffer, {
          mkdir: params.mkdir !== false,
 +        assertBeforeMutation: params.assertBeforeMutation,
        });
        return "created";
      } catch (error) {
-@@ -125,13 +129,15 @@ class MxcFsBridge implements SandboxFsBridge {
+@@ -117,13 +120,15 @@ export class MxcFsBridge implements SandboxFsBridge {
      }
    }
  
@@ -45,7 +37,7 @@ index 739eeeab..d07cf892 100644
    }
  
    async remove(params: Parameters<SandboxFsBridge["remove"]>[0]): Promise<void> {
-@@ -142,10 +148,11 @@ class MxcFsBridge implements SandboxFsBridge {
+@@ -134,10 +139,11 @@ export class MxcFsBridge implements SandboxFsBridge {
        relativePath: target.relativePath,
        recursive: params.recursive,
        force: params.force ?? false,
@@ -58,7 +50,7 @@ index 739eeeab..d07cf892 100644
      const { from: source, to: target } = this.resolveRenameTargets(params);
      if (
        normalizeMxcPathForComparison(source.mount.hostRoot) !==
-@@ -159,9 +166,12 @@ class MxcFsBridge implements SandboxFsBridge {
+@@ -151,9 +157,12 @@ export class MxcFsBridge implements SandboxFsBridge {
      const root = await fsRoot(source.mount.hostRoot);
      const targetParent = path.dirname(target.relativePath);
      if (targetParent !== "." && targetParent !== "") {
@@ -74,19 +66,19 @@ index 739eeeab..d07cf892 100644
  
    async stat(params: { filePath: string; cwd?: string }): Promise<SandboxFsStat | null> {
 diff --git a/extensions/mxc/src/mxc-backend.ts b/extensions/mxc/src/mxc-backend.ts
-index b2f2fb97..bc433c3b 100644
+index 92d710f73..e9be8893e 100644
 --- a/extensions/mxc/src/mxc-backend.ts
 +++ b/extensions/mxc/src/mxc-backend.ts
 @@ -4,7 +4,7 @@ import path from "node:path";
  import type { ContainerConfig } from "@microsoft/mxc-sdk";
- import { extractErrorCode } from "openclaw/plugin-sdk/error-runtime";
  import { isPathInside, resolvePathPrefixSync } from "openclaw/plugin-sdk/file-access-runtime";
+ import { isNotFoundPathError as isMissingPathError } from "openclaw/plugin-sdk/path-existence-runtime";
 -import { runCommandBuffered } from "openclaw/plugin-sdk/process-runtime";
 +import { runCommandBuffered, runWithSpawnBroker } from "openclaw/plugin-sdk/process-runtime";
- import { resolvePreferredOpenClawTmpDir } from "openclaw/plugin-sdk/sandbox";
- import type {
-   SandboxBackendHandle,
-@@ -160,6 +160,7 @@ export function createMxcSandboxBackendHandle(params: {
+ import {
+   resolvePreferredOpenClawTmpDir,
+   type SandboxBackendHandle,
+@@ -456,6 +456,7 @@ export function createMxcSandboxBackendHandle(params: {
        }
      },
      capabilities: {},
@@ -94,7 +86,7 @@ index b2f2fb97..bc433c3b 100644
  
      async buildExecSpec({ command, workdir, env, usePty }): Promise<SandboxBackendExecSpec> {
        const effectiveWorkdir = resolveWorkdirInsideWorkspace(
-@@ -272,12 +273,15 @@ export function createMxcSandboxBackendHandle(params: {
+@@ -568,12 +569,15 @@ export function createMxcSandboxBackendHandle(params: {
            payloadFile.payloadFile,
          ];
          try {
@@ -117,12 +109,21 @@ index b2f2fb97..bc433c3b 100644
            if (cmdParams.signal?.aborted) {
              throw cmdParams.signal.reason instanceof Error
 diff --git a/extensions/mxc/test/fs-bridge.test.ts b/extensions/mxc/test/fs-bridge.test.ts
-index f43785a7..c8724afd 100644
+index 8e11686bd..e13e947e2 100644
 --- a/extensions/mxc/test/fs-bridge.test.ts
 +++ b/extensions/mxc/test/fs-bridge.test.ts
-@@ -316,3 +316,78 @@ describe("MXC public coding-tool composition", () => {
-     },
-   );
+@@ -4,7 +4,7 @@ import { expectDefined } from "@openclaw/normalization-core";
+ import { createOpenClawCodingTools, type AnyAgentTool } from "openclaw/plugin-sdk/agent-harness";
+ import { resolvePreferredOpenClawTmpDir, tempWorkspace } from "openclaw/plugin-sdk/temp-path";
+ import { createSandboxTestContext } from "openclaw/plugin-sdk/test-fixtures";
+-import { expect, test } from "vitest";
++import { describe, expect, test } from "vitest";
+ import { MxcFsBridge } from "../src/fs-bridge.js";
+ 
+ async function writeFile(root: string, relative: string, content: string) {
+@@ -151,3 +151,76 @@ test.each([true, false])("native tool paths (workspaceOnly=%s)", async (workspac
+   expect(await readText(agentWorkspaceDir, "agent.txt")).toBe("agent-data");
+   expect(await readText(skillsWorkspaceDir, materializedSkill)).toBe("skill-data");
  });
 +
 +describe("MXC filesystem mutation fence", () => {
@@ -133,15 +134,13 @@ index f43785a7..c8724afd 100644
 +    });
 +    const workspaceDir = await fs.realpath(workspace.dir);
 +    await fs.writeFile(path.join(workspaceDir, "victim.txt"), "original");
-+    const bridge = createMxcFsBridge({
-+      sandbox: {
-+        workspaceDir,
-+        agentWorkspaceDir: workspaceDir,
-+        workspaceAccess: "rw",
-+        containerName: "mxc-fence-test",
-+        containerWorkdir: workspaceDir,
-+        docker: {},
-+      },
++    const bridge = new MxcFsBridge({
++      workspaceDir,
++      agentWorkspaceDir: workspaceDir,
++      workspaceAccess: "rw",
++      containerName: "mxc-fence-test",
++      containerWorkdir: workspaceDir,
++      docker: {},
 +    });
 +    return { workspace, workspaceDir, bridge };
 +  }
@@ -200,67 +199,62 @@ index f43785a7..c8724afd 100644
 +  );
 +});
 diff --git a/extensions/openshell/src/backend.exec-workdir.test.ts b/extensions/openshell/src/backend.exec-workdir.test.ts
-index 71bf275a..7f9b451d 100644
+index dc23f64d3..495f9b6a2 100644
 --- a/extensions/openshell/src/backend.exec-workdir.test.ts
 +++ b/extensions/openshell/src/backend.exec-workdir.test.ts
-@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
- import path from "node:path";
+@@ -4,11 +4,13 @@ import path from "node:path";
+ import { setImmediate } from "node:timers/promises";
  import { expectDefined } from "@openclaw/normalization-core";
  import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 +import { runWithSpawnBroker } from "openclaw/plugin-sdk/process-runtime";
  import type { SandboxBackendHandle } from "openclaw/plugin-sdk/sandbox";
- import {
-   resolvePreferredOpenClawTmpDir,
-@@ -11,6 +12,7 @@ import {
- } from "openclaw/plugin-sdk/temp-path";
+ import * as securityRuntime from "openclaw/plugin-sdk/security-runtime";
+ import type { TempWorkspace } from "openclaw/plugin-sdk/temp-path";
  import { createSandboxTestContext } from "openclaw/plugin-sdk/test-fixtures";
- import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 +import { getSpawnBroker } from "../../../src/process/spawn-broker/context.js";
- import { createOpenShellSandboxBackendFactory } from "./backend.js";
  import { resolveOpenShellPluginConfig } from "./config.js";
- import { createOpenShellBackendSandboxConfig } from "./openshell.test-support.js";
-@@ -723,6 +725,28 @@ describe("openshell backend exec workdir validation", () => {
-   });
- 
-   describe("remote-mode seed across gateway restart", () => {
-+    it("dispatches fenced remote mutations outside an inherited spawn broker", async () => {
-+      const backend = await createAdoptedRemoteBackend({ probeStdout: "1\n" });
-+      const marker = "echo mutation-fence-marker";
-+      sdkMocks.runSshSandboxCommand.mockImplementation(async ({ remoteCommand }) => {
-+        if (String(remoteCommand).includes(marker)) {
-+          expect(getSpawnBroker()).toBeUndefined();
-+        }
-+        return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), code: 0 };
-+      });
-+      await runWithSpawnBroker({} as never, () =>
-+        backend.runShellCommand!({
-+          script: marker,
-+          assertBeforeMutation: () => {},
-+        }),
-+      );
-+      expect(
-+        sdkMocks.runSshSandboxCommand.mock.calls.some(([params]) =>
-+          String(params.remoteCommand).includes(marker),
-+        ),
-+      ).toBe(true);
-+    });
+ import {
+   cliMocks,
+@@ -658,3 +660,25 @@ it("serializes initial seed publication across handles without serializing later
+     }
+   }
+ });
 +
-     it.each(["same handle", "another handle"])(
-       "starts remote operations on %s while an earlier command is still running",
-       async (handleKind) => {
++it("dispatches fenced remote mutations outside an inherited spawn broker", async () => {
++  const backend = await createAdoptedRemoteBackend("1\n");
++  const marker = "echo mutation-fence-marker";
++  sdkMocks.runSshSandboxCommand.mockImplementation(async ({ remoteCommand }) => {
++    if (String(remoteCommand).includes(marker)) {
++      expect(getSpawnBroker()).toBeUndefined();
++    }
++    return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), code: 0 };
++  });
++  await runWithSpawnBroker({} as never, () =>
++    backend.runShellCommand!({
++      script: marker,
++      assertBeforeMutation: () => {},
++    }),
++  );
++  expect(
++    sdkMocks.runSshSandboxCommand.mock.calls.some(([params]) =>
++      String(params.remoteCommand).includes(marker),
++    ),
++  ).toBe(true);
++});
 diff --git a/extensions/openshell/src/backend.ts b/extensions/openshell/src/backend.ts
-index 2427ddf0..8adb7d0a 100644
+index c5f0b48ee..0d32856a1 100644
 --- a/extensions/openshell/src/backend.ts
 +++ b/extensions/openshell/src/backend.ts
-@@ -9,6 +9,7 @@ import {
- import { GUEST_FILESYSTEM_PYTHON } from "@openclaw/fs-safe/guest";
+@@ -10,6 +10,7 @@ import { GUEST_FILESYSTEM_PYTHON } from "@openclaw/fs-safe/guest";
  import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
- import { KeyedAsyncQueue } from "openclaw/plugin-sdk/keyed-async-queue";
+ import { enqueueKeyedTask } from "openclaw/plugin-sdk/keyed-async-queue";
+ import { lstatIfExists } from "openclaw/plugin-sdk/path-existence-runtime";
 +import { runWithSpawnBroker } from "openclaw/plugin-sdk/process-runtime";
  import type {
    CreateSandboxBackendParams,
    OpenClawConfig,
-@@ -255,6 +256,7 @@ class OpenShellSandboxBackendImpl {
+@@ -256,6 +257,7 @@ class OpenShellSandboxBackendImpl {
        finalizeExec: async ({ token }) => {
          await this.finalizeExec(token as PendingExec | undefined);
        },
@@ -268,22 +262,21 @@ index 2427ddf0..8adb7d0a 100644
        runShellCommand: runRemoteShellScript,
        createFsBridge: ({ sandbox }) =>
          this.params.execContext.config.mode === "remote"
-@@ -274,16 +276,19 @@ class OpenShellSandboxBackendImpl {
-       sandbox,
-       backend: {
-         remoteAgentWorkspaceDir: this.params.remoteAgentWorkspaceDir,
--        mkdirpRemotePath: (remotePath, signal) => this.mkdirpRemotePath(remotePath, signal),
-+        mkdirpRemotePath: (remotePath, signal, assertBeforeMutation) =>
-+          this.mkdirpRemotePath(remotePath, signal, assertBeforeMutation),
-         removeRemotePath: (remotePath, params) => this.removeRemotePath(remotePath, params),
--        renameRemotePath: (from, to, signal) => this.renameRemotePath(from, to, signal),
--        syncLocalPathToRemote: (localPath, remotePath) =>
--          this.syncLocalPathToRemote(localPath, remotePath),
-+        renameRemotePath: (from, to, signal, assertBeforeMutation) =>
-+          this.renameRemotePath(from, to, signal, assertBeforeMutation),
-+        syncLocalPathToRemote: (localPath, remotePath, assertBeforeMutation) =>
-+          this.syncLocalPathToRemote(localPath, remotePath, assertBeforeMutation),
-       },
+@@ -273,15 +275,18 @@ class OpenShellSandboxBackendImpl {
+   private createMirrorFsBridge(sandbox: OpenShellFsBridgeContext): SandboxFsBridge {
+     const bridge = new OpenShellFsBridge(sandbox, {
+       remoteAgentWorkspaceDir: this.params.remoteAgentWorkspaceDir,
+-      mkdirpRemotePath: (remotePath, signal) => this.mkdirpRemotePath(remotePath, signal),
++      mkdirpRemotePath: (remotePath, signal, assertBeforeMutation) =>
++        this.mkdirpRemotePath(remotePath, signal, assertBeforeMutation),
+       removeRemotePath: (remotePath, params) => this.removeRemotePath(remotePath, params),
+-      renameRemotePath: (from, to, signal) => this.renameRemotePath(from, to, signal),
+-      syncLocalPathToRemote: (localPath, remotePath) =>
+-        this.syncLocalPathToRemote(localPath, remotePath),
++      renameRemotePath: (from, to, signal, assertBeforeMutation) =>
++        this.renameRemotePath(from, to, signal, assertBeforeMutation),
++      syncLocalPathToRemote: (localPath, remotePath, assertBeforeMutation) =>
++        this.syncLocalPathToRemote(localPath, remotePath, assertBeforeMutation),
      });
      // Hold one lease across validation and both commits, not just the remote step.
      // Otherwise exec publication can erase a successful file-tool write or expose partial reads.
@@ -292,7 +285,7 @@ index 2427ddf0..8adb7d0a 100644
        get pathMappings() {
          return bridge.pathMappings;
        },
-@@ -509,11 +514,16 @@ class OpenShellSandboxBackendImpl {
+@@ -495,11 +500,16 @@ class OpenShellSandboxBackendImpl {
      return await this.runRemoteShellScriptInternal(params);
    }
  
@@ -310,7 +303,7 @@ index 2427ddf0..8adb7d0a 100644
      });
    }
  
-@@ -523,6 +533,7 @@ class OpenShellSandboxBackendImpl {
+@@ -509,6 +519,7 @@ class OpenShellSandboxBackendImpl {
        recursive?: boolean;
        signal?: AbortSignal;
        ignoreMissing?: boolean;
@@ -318,7 +311,7 @@ index 2427ddf0..8adb7d0a 100644
      },
    ): Promise<void> {
      const target = this.resolveRemoteTarget(remotePath);
-@@ -539,6 +550,7 @@ class OpenShellSandboxBackendImpl {
+@@ -525,6 +536,7 @@ class OpenShellSandboxBackendImpl {
        ],
        ignoreMissingParent: params?.ignoreMissing,
        signal: params?.signal,
@@ -326,7 +319,7 @@ index 2427ddf0..8adb7d0a 100644
      });
    }
  
-@@ -546,6 +558,7 @@ class OpenShellSandboxBackendImpl {
+@@ -532,6 +544,7 @@ class OpenShellSandboxBackendImpl {
      fromRemotePath: string,
      toRemotePath: string,
      signal?: AbortSignal,
@@ -334,7 +327,7 @@ index 2427ddf0..8adb7d0a 100644
    ): Promise<void> {
      const from = this.resolveRemoteTarget(fromRemotePath);
      const to = this.resolveRemoteTarget(toRemotePath);
-@@ -561,6 +574,7 @@ class OpenShellSandboxBackendImpl {
+@@ -547,6 +560,7 @@ class OpenShellSandboxBackendImpl {
          "1",
        ],
        signal,
@@ -342,7 +335,7 @@ index 2427ddf0..8adb7d0a 100644
      });
    }
  
-@@ -571,35 +585,46 @@ class OpenShellSandboxBackendImpl {
+@@ -557,35 +571,46 @@ class OpenShellSandboxBackendImpl {
        context: this.params.execContext,
      });
      try {
@@ -388,7 +381,7 @@ index 2427ddf0..8adb7d0a 100644
      await this.ensureSandboxExists();
      await this.maybeSeedRemoteWorkspace();
      const target = this.resolveRemoteTarget(remotePath);
-     const stats = await lstatIfExists(localPath);
+     const stats = await lstatIfExists(localPath, "ENOENT");
      if (!stats || stats.isSymbolicLink()) {
 -      await this.removeRemotePath(remotePath, { recursive: true, ignoreMissing: true });
 +      await this.removeRemotePath(remotePath, {
@@ -404,7 +397,7 @@ index 2427ddf0..8adb7d0a 100644
        return;
      }
      await this.runPinnedRemotePathMutation({
-@@ -610,8 +635,12 @@ class OpenShellSandboxBackendImpl {
+@@ -596,8 +621,12 @@ class OpenShellSandboxBackendImpl {
            ? ""
            : path.posix.dirname(target.relativePath),
        ],
@@ -418,7 +411,7 @@ index 2427ddf0..8adb7d0a 100644
    }
  
    private async uploadFileToRemote(localPath: string, remotePath: string): Promise<void> {
-@@ -645,6 +674,7 @@ class OpenShellSandboxBackendImpl {
+@@ -631,6 +660,7 @@ class OpenShellSandboxBackendImpl {
      args: string[];
      ignoreMissingParent?: boolean;
      signal?: AbortSignal;
@@ -426,7 +419,7 @@ index 2427ddf0..8adb7d0a 100644
    }): Promise<SandboxBackendCommandResult> {
      return await this.runRemoteShellScript({
        script: 'python_script="$1"; shift; python3 -c "$python_script" "$@"',
-@@ -655,6 +685,7 @@ class OpenShellSandboxBackendImpl {
+@@ -641,6 +671,7 @@ class OpenShellSandboxBackendImpl {
          ...params.args,
        ],
        signal: params.signal,
@@ -435,7 +428,7 @@ index 2427ddf0..8adb7d0a 100644
    }
  
 diff --git a/extensions/openshell/src/backend.types.ts b/extensions/openshell/src/backend.types.ts
-index 82df60db..697bbb56 100644
+index 82df60dbc..697bbb561 100644
 --- a/extensions/openshell/src/backend.types.ts
 +++ b/extensions/openshell/src/backend.types.ts
 @@ -11,19 +11,29 @@ export type OpenShellSandboxBackend = SandboxBackendHandle &
@@ -471,10 +464,10 @@ index 82df60db..697bbb56 100644
 -  syncLocalPathToRemote(localPath: string, remotePath: string): Promise<void>;
  };
 diff --git a/extensions/openshell/src/fs-bridge.ts b/extensions/openshell/src/fs-bridge.ts
-index 4dcde15c..77a21889 100644
+index 9f8836861..c14891779 100644
 --- a/extensions/openshell/src/fs-bridge.ts
 +++ b/extensions/openshell/src/fs-bridge.ts
-@@ -48,6 +48,8 @@ class OpenShellFsBridge implements SandboxFsBridge {
+@@ -41,6 +41,8 @@ export class OpenShellFsBridge implements SandboxFsBridge {
      private readonly backend: OpenShellMirrorBackend,
    ) {}
  
@@ -483,7 +476,7 @@ index 4dcde15c..77a21889 100644
    resolvePath(params: { filePath: string; cwd?: string }): SandboxResolvedPath {
      const target = this.resolveTarget(params);
      return {
-@@ -116,6 +118,7 @@ class OpenShellFsBridge implements SandboxFsBridge {
+@@ -109,6 +111,7 @@ export class OpenShellFsBridge implements SandboxFsBridge {
        await root[method](relativeToRoot(target, hostPath), buffer, {
          mkdir: method === "create" ? params.mkdir !== false : params.mkdir,
          mutationSymlinks: "reject",
@@ -491,7 +484,7 @@ index 4dcde15c..77a21889 100644
        });
      } catch (error) {
        if (method === "create" && error instanceof FsSafeError && error.code === "already-exists") {
-@@ -125,21 +128,33 @@ class OpenShellFsBridge implements SandboxFsBridge {
+@@ -118,21 +121,33 @@ export class OpenShellFsBridge implements SandboxFsBridge {
      }
      // Mirror mode treats local state as canonical. Syncing may fail, but must
      // never downgrade the exclusive local create to an overwriting write.
@@ -529,7 +522,7 @@ index 4dcde15c..77a21889 100644
      }
    }
  
-@@ -150,15 +165,18 @@ class OpenShellFsBridge implements SandboxFsBridge {
+@@ -143,15 +158,18 @@ export class OpenShellFsBridge implements SandboxFsBridge {
        target,
        allowFinalSymlinkForUnlink: true,
      });
@@ -548,10 +541,10 @@ index 4dcde15c..77a21889 100644
      });
    }
  
-@@ -181,15 +199,24 @@ class OpenShellFsBridge implements SandboxFsBridge {
-       root: from.mountHostRoot,
-       toHostPath: to.hostPath,
+@@ -166,15 +184,24 @@ export class OpenShellFsBridge implements SandboxFsBridge {
+       allowFinalSymlinkForUnlink: false,
      });
+     await assertRenameSupported(from, to);
 -    await this.backend.renameRemotePath(from.containerPath, to.containerPath, params.signal);
 +    params.assertBeforeMutation?.();
 +    await this.backend.renameRemotePath(
@@ -576,7 +569,7 @@ index 4dcde15c..77a21889 100644
    }
  
    async stat(params: Parameters<SandboxFsBridge["stat"]>[0]): Promise<SandboxFsStat | null> {
-@@ -385,6 +412,7 @@ async function removeLocalRootPath(params: {
+@@ -359,6 +386,7 @@ async function removeLocalRootPath(params: {
    target: ResolvedMountPath;
    recursive?: boolean;
    force?: boolean;
@@ -584,7 +577,7 @@ index 4dcde15c..77a21889 100644
  }): Promise<void> {
    const root = await fsRoot(params.target.mountHostRoot);
    const relativePath = relativeToRoot(params.target, params.target.hostPath);
-@@ -402,6 +430,7 @@ async function removeLocalRootPath(params: {
+@@ -376,6 +404,7 @@ async function removeLocalRootPath(params: {
      for (const target of targets) {
        await root.remove(target, {
          force: params.force !== false,
@@ -593,148 +586,139 @@ index 4dcde15c..77a21889 100644
            ? { recursive: true, order: "sorted" as const, maxEntries: Infinity, maxDepth: Infinity }
            : {}),
 diff --git a/extensions/openshell/src/openshell-mirror-fs-bridge.test.ts b/extensions/openshell/src/openshell-mirror-fs-bridge.test.ts
-index 4a3e15a4..06d0199b 100644
+index 8f4acf2ae..67da87a34 100644
 --- a/extensions/openshell/src/openshell-mirror-fs-bridge.test.ts
 +++ b/extensions/openshell/src/openshell-mirror-fs-bridge.test.ts
-@@ -54,6 +54,62 @@ describe("openshell mirror fs bridges", () => {
-     return () => workspace[Symbol.asyncDispose]();
-   });
+@@ -1,7 +1,7 @@
+ import fs from "node:fs/promises";
+ import path from "node:path";
+ import { createSandboxTestContext } from "openclaw/plugin-sdk/test-fixtures";
+-import { beforeEach, expect, it } from "vitest";
++import { beforeEach, expect, it, vi } from "vitest";
+ import { OpenShellFsBridge } from "./fs-bridge.js";
+ import {
+   createMirrorBackendMock,
+@@ -10,7 +10,12 @@ import {
+ } from "./openshell-fs.test-support.js";
  
-+  it("declares the mutation fence and runs it before the local write and the remote sync", async () => {
-+    expect(bridge.enforcesMutationFence).toBe(true);
-+    const fence = vi.fn();
-+    await bridge.writeFile({ filePath: "fenced.txt", data: "ok", assertBeforeMutation: fence });
-+    expect(fence).toHaveBeenCalled();
-+    expect(backend.syncLocalPathToRemote).toHaveBeenCalledTimes(1);
-+    await expect(readLocal("fenced.txt")).resolves.toBe("ok");
-+  });
-+
-+  it("hands the fence to every mirror backend operation so it can re-check after its own awaits", async () => {
-+    await seedLocal("a.txt", "a");
-+    const fence = vi.fn();
-+    await bridge.writeFile({ filePath: "w.txt", data: "w", assertBeforeMutation: fence });
-+    await bridge.mkdirp({ filePath: "dir", assertBeforeMutation: fence });
-+    await bridge.rename({ from: "a.txt", to: "b.txt", assertBeforeMutation: fence });
-+    await bridge.remove({ filePath: "b.txt", assertBeforeMutation: fence });
-+    expect(backend.syncLocalPathToRemote).toHaveBeenCalledWith(
-+      expect.any(String),
-+      expect.any(String),
-+      fence,
-+    );
-+    expect(backend.mkdirpRemotePath).toHaveBeenCalledWith(expect.any(String), undefined, fence);
-+    expect(backend.renameRemotePath).toHaveBeenCalledWith(
-+      expect.any(String),
-+      expect.any(String),
-+      undefined,
-+      fence,
-+    );
-+    expect(backend.removeRemotePath).toHaveBeenCalledWith(
-+      expect.any(String),
-+      expect.objectContaining({ assertBeforeMutation: fence }),
-+    );
-+  });
-+
-+  it.each(["writeFile", "mkdirp", "remove"] as const)(
-+    "does not mutate locally or remotely when the fence throws for %s",
-+    async (method) => {
-+      await seedLocal("victim.txt", "original");
-+      const fence = () => {
-+        throw new Error("tool invocation authority is no longer active");
-+      };
-+      const call =
-+        method === "writeFile"
-+          ? bridge.writeFile({ filePath: "victim.txt", data: "late", assertBeforeMutation: fence })
-+          : method === "mkdirp"
-+            ? bridge.mkdirp({ filePath: "newdir", assertBeforeMutation: fence })
-+            : bridge.remove({ filePath: "victim.txt", assertBeforeMutation: fence });
-+      await expect(call).rejects.toThrow("no longer active");
-+      await expect(readLocal("victim.txt")).resolves.toBe("original");
-+      await expectPathMissing(local("newdir"));
-+      expect(backend.syncLocalPathToRemote).not.toHaveBeenCalled();
-+      expect(backend.mkdirpRemotePath).not.toHaveBeenCalled();
-+      expect(backend.removeRemotePath).not.toHaveBeenCalled();
-+    },
-+  );
-+
-   it.each([
-     { workspaceAccess: "none", mutation: "write" },
-     { workspaceAccess: "ro", mutation: "write" },
-@@ -75,6 +131,7 @@ describe("openshell mirror fs bridges", () => {
-       expect(backend.syncLocalPathToRemote).toHaveBeenCalledWith(
-         local("nested/file.txt"),
-         "/sandbox/nested/file.txt",
-+        undefined,
-       );
-       const skill = mutation === "write" ? "skills/demo/SKILL.md" : ".agents/skills/demo/SKILL.md";
-       await seedLocal(skill, "managed instructions");
-@@ -169,6 +226,7 @@ describe("openshell mirror fs bridges", () => {
-         recursive: false,
-         signal: undefined,
-         ignoreMissing: false,
-+        assertBeforeMutation: undefined,
-       });
-     },
+ const mutationMethods = ["mkdirpRemotePath", "removeRemotePath", "renameRemotePath"] as const;
+-const strictRemove = { recursive: false, signal: undefined, ignoreMissing: false };
++const strictRemove = {
++  recursive: false,
++  signal: undefined,
++  ignoreMissing: false,
++  assertBeforeMutation: undefined,
++};
+ const boundaryError = "Sandbox boundary checks failed";
+ 
+ let workspaceDir: string;
+@@ -110,6 +115,7 @@ it.each([
+   expect(backend.syncLocalPathToRemote).toHaveBeenCalledWith(
+     local("nested/file.txt"),
+     "/sandbox/nested/file.txt",
++    undefined,
    );
-@@ -322,12 +380,17 @@ describe("openshell mirror fs bridges", () => {
-     ).resolves.toBe("created");
-     await bridge.mkdirp({ filePath: "./~/nested" });
-     expect((await fs.stat(local("~/nested"))).isDirectory()).toBe(true);
--    expect(backend.mkdirpRemotePath).toHaveBeenCalledWith("/sandbox/~/nested", undefined);
-+    expect(backend.mkdirpRemotePath).toHaveBeenCalledWith(
-+      "/sandbox/~/nested",
-+      undefined,
-+      undefined,
-+    );
-     await bridge.rename({ from: "./~/created.txt", to: "./~/nested/target/moved.txt" });
-     expect(backend.renameRemotePath).toHaveBeenCalledWith(
-       "/sandbox/~/created.txt",
-       "/sandbox/~/nested/target/moved.txt",
-       undefined,
-+      undefined,
-     );
-     await expect(readLocal("~/nested/target/moved.txt")).resolves.toBe("created");
-     await bridge.remove({ filePath: "./~/file.txt", force: false });
-@@ -335,6 +398,7 @@ describe("openshell mirror fs bridges", () => {
-       recursive: false,
-       signal: undefined,
-       ignoreMissing: false,
-+      assertBeforeMutation: undefined,
-     });
-     await expectPathMissing(local("~/file.txt"));
-     await bridge.remove({ filePath: ".", recursive: true });
+   const skill = mutation === "write" ? "skills/demo/SKILL.md" : ".agents/skills/demo/SKILL.md";
+   await seedLocal(skill, "managed instructions");
+@@ -255,12 +261,13 @@ it("keeps literal tilde directories inside the mirror workspace", async () => {
+   await expect(create("./~/created.txt", "created")).resolves.toBe("created");
+   await bridge.mkdirp({ filePath: "./~/nested" });
+   expect((await fs.stat(local("~/nested"))).isDirectory()).toBe(true);
+-  expect(backend.mkdirpRemotePath).toHaveBeenCalledWith("/sandbox/~/nested", undefined);
++  expect(backend.mkdirpRemotePath).toHaveBeenCalledWith("/sandbox/~/nested", undefined, undefined);
+   await rename("./~/created.txt", "./~/nested/target/moved.txt");
+   expect(backend.renameRemotePath).toHaveBeenCalledWith(
+     "/sandbox/~/created.txt",
+     "/sandbox/~/nested/target/moved.txt",
+     undefined,
++    undefined,
+   );
+   expect(await readLocal("~/nested/target/moved.txt")).toBe("created");
+   await bridge.remove({ filePath: "./~/file.txt", force: false });
+@@ -316,3 +323,59 @@ it.each([
+     await expectDirectory(agent, { "note.txt": false });
+   }
+ });
++
++it("declares the mutation fence and runs it before the local write and the remote sync", async () => {
++  expect(bridge.enforcesMutationFence).toBe(true);
++  const fence = vi.fn();
++  await bridge.writeFile({ filePath: "fenced.txt", data: "ok", assertBeforeMutation: fence });
++  expect(fence).toHaveBeenCalled();
++  expect(backend.syncLocalPathToRemote).toHaveBeenCalledTimes(1);
++  await expect(readLocal("fenced.txt")).resolves.toBe("ok");
++});
++
++it("hands the fence to every mirror backend operation so it can re-check after its own awaits", async () => {
++  await seedLocal("a.txt", "a");
++  const fence = vi.fn();
++  await bridge.writeFile({ filePath: "w.txt", data: "w", assertBeforeMutation: fence });
++  await bridge.mkdirp({ filePath: "dir", assertBeforeMutation: fence });
++  await bridge.rename({ from: "a.txt", to: "b.txt", assertBeforeMutation: fence });
++  await bridge.remove({ filePath: "b.txt", assertBeforeMutation: fence });
++  expect(backend.syncLocalPathToRemote).toHaveBeenCalledWith(
++    expect.any(String),
++    expect.any(String),
++    fence,
++  );
++  expect(backend.mkdirpRemotePath).toHaveBeenCalledWith(expect.any(String), undefined, fence);
++  expect(backend.renameRemotePath).toHaveBeenCalledWith(
++    expect.any(String),
++    expect.any(String),
++    undefined,
++    fence,
++  );
++  expect(backend.removeRemotePath).toHaveBeenCalledWith(
++    expect.any(String),
++    expect.objectContaining({ assertBeforeMutation: fence }),
++  );
++});
++
++it.each(["writeFile", "mkdirp", "remove"] as const)(
++  "does not mutate locally or remotely when the fence throws for %s",
++  async (method) => {
++    await seedLocal("victim.txt", "original");
++    const fence = () => {
++      throw new Error("tool invocation authority is no longer active");
++    };
++    const call =
++      method === "writeFile"
++        ? bridge.writeFile({ filePath: "victim.txt", data: "late", assertBeforeMutation: fence })
++        : method === "mkdirp"
++          ? bridge.mkdirp({ filePath: "newdir", assertBeforeMutation: fence })
++          : bridge.remove({ filePath: "victim.txt", assertBeforeMutation: fence });
++    await expect(call).rejects.toThrow("no longer active");
++    await expect(readLocal("victim.txt")).resolves.toBe("original");
++    await expectPathMissing(local("newdir"));
++    expect(backend.syncLocalPathToRemote).not.toHaveBeenCalled();
++    expect(backend.mkdirpRemotePath).not.toHaveBeenCalled();
++    expect(backend.removeRemotePath).not.toHaveBeenCalled();
++  },
++);
 diff --git a/src/agents/agent-tools.read.ts b/src/agents/agent-tools.read.ts
-index 5b8fb20c..bf47689c 100644
+index 767f53cc9..5dc2b41ba 100644
 --- a/src/agents/agent-tools.read.ts
 +++ b/src/agents/agent-tools.read.ts
-@@ -1254,14 +1254,22 @@ function createSandboxMutationOperations(params: SandboxToolParams) {
+@@ -1153,12 +1153,14 @@ function createSandboxMutationOperations(params: SandboxToolParams) {
        resolveQueueKey: (absolutePath: string, signal?: AbortSignal) =>
          resolveSandboxFileQueueKey(params, absolutePath, signal),
-       mkdir: async (dir: string) => {
--        await params.bridge.mkdirp({ filePath: dir, cwd: params.root, signal: params.abortSignal });
-+        const assertBeforeMutation = captureAgentToolSourceExecutionGuard(params.abortSignal);
-+        await params.bridge.mkdirp({
-+          filePath: dir,
-+          cwd: params.root,
-+          signal: params.abortSignal,
-+          assertBeforeMutation,
-+        });
-       },
        writeFile: async (absolutePath: string, content: string) => {
 +        const assertBeforeMutation = captureAgentToolSourceExecutionGuard(params.abortSignal);
          await params.bridge.writeFile({
            filePath: absolutePath,
            cwd: params.root,
            data: content,
+           mkdir: true,
            signal: params.abortSignal,
 +          assertBeforeMutation,
          });
        },
        readFile: (absolutePath: string) =>
 diff --git a/src/agents/apply-patch-file-ops.ts b/src/agents/apply-patch-file-ops.ts
-index eb7b3beb..bf583e55 100644
+index c3d901ae0..811249723 100644
 --- a/src/agents/apply-patch-file-ops.ts
 +++ b/src/agents/apply-patch-file-ops.ts
-@@ -74,7 +74,13 @@ export async function resolvePatchFileOps(options: ApplyPatchFileOptions): Promi
+@@ -79,7 +79,13 @@ export async function resolvePatchFileOps(options: ApplyPatchFileOptions): Promi
        writeFile: (filePath, content) =>
          runWithAgentToolSourceExecutionScope(assertCurrent, async () => {
            assertCurrent();
@@ -749,9 +733,9 @@ index eb7b3beb..bf583e55 100644
          }),
        createFileExclusive: (filePath, content) =>
          runWithAgentToolSourceExecutionScope(assertCurrent, async () => {
-@@ -89,17 +95,29 @@ export async function resolvePatchFileOps(options: ApplyPatchFileOptions): Promi
-             cwd: root,
+@@ -95,12 +101,19 @@ export async function resolvePatchFileOps(options: ApplyPatchFileOptions): Promi
              data: content,
+             mkdir: true,
              signal: options.signal,
 +            assertBeforeMutation: assertCurrent,
            });
@@ -768,24 +752,13 @@ index eb7b3beb..bf583e55 100644
 +            assertBeforeMutation: assertCurrent,
 +          });
          }),
-       mkdirp: (dir) =>
-         runWithAgentToolSourceExecutionScope(assertCurrent, async () => {
-           assertCurrent();
--          await bridge.mkdirp({ filePath: dir, cwd: root, signal: options.signal });
-+          await bridge.mkdirp({
-+            filePath: dir,
-+            cwd: root,
-+            signal: options.signal,
-+            assertBeforeMutation: assertCurrent,
-+          });
-         }),
      });
    }
 diff --git a/src/agents/apply-patch.test.ts b/src/agents/apply-patch.test.ts
-index 080788c2..d8f0f4f5 100644
+index 63d3e78e9..ce9d79268 100644
 --- a/src/agents/apply-patch.test.ts
 +++ b/src/agents/apply-patch.test.ts
-@@ -946,4 +946,72 @@ describe("apply_patch mutation authority", () => {
+@@ -710,4 +710,72 @@ describe("apply_patch mutation authority", () => {
        await expect(fs.readdir(root)).resolves.toEqual(["existing.txt"]);
      },
    );
@@ -818,15 +791,15 @@ index 080788c2..d8f0f4f5 100644
 +        ([params]) =>
 +          typeof (params as { assertBeforeMutation?: unknown }).assertBeforeMutation === "function",
 +      );
-+    for (const mock of [
-+      memory.createFileExclusive,
-+      memory.remove,
-+      memory.writeFile,
-+      memory.mkdirp,
-+    ]) {
++    for (const mock of [memory.createFileExclusive, memory.remove, memory.writeFile]) {
 +      expect(mock).toHaveBeenCalled();
 +      expect(allFenced(mock.mock.calls)).toBe(true);
 +    }
++    // Native .5 creates parents inside the fenced write/create operation.
++    expect(memory.mkdirp).not.toHaveBeenCalled();
++    expect(memory.createFileExclusive).toHaveBeenCalledWith(
++      expect.objectContaining({ mkdir: true }),
++    );
 +  });
 +
 +  it("stops a sandbox patch write when the bridge revokes during preparation", async () => {
@@ -859,7 +832,7 @@ index 080788c2..d8f0f4f5 100644
 +  });
  });
 diff --git a/src/agents/cli-runner/prepare-mcp.ts b/src/agents/cli-runner/prepare-mcp.ts
-index 94928bbd..7292d92b 100644
+index ef6089a20..ab1fef6bf 100644
 --- a/src/agents/cli-runner/prepare-mcp.ts
 +++ b/src/agents/cli-runner/prepare-mcp.ts
 @@ -68,6 +68,7 @@ export async function prepareCliMcpToolProjection(
@@ -872,7 +845,7 @@ index 94928bbd..7292d92b 100644
        | "authProfileStore"
 diff --git a/src/agents/cli-runner/prepare-sandbox.test.ts b/src/agents/cli-runner/prepare-sandbox.test.ts
 new file mode 100644
-index 00000000..90f83737
+index 000000000..90f83737a
 --- /dev/null
 +++ b/src/agents/cli-runner/prepare-sandbox.test.ts
 @@ -0,0 +1,106 @@
@@ -984,7 +957,7 @@ index 00000000..90f83737
 +});
 diff --git a/src/agents/cli-runner/prepare-sandbox.ts b/src/agents/cli-runner/prepare-sandbox.ts
 new file mode 100644
-index 00000000..0add308c
+index 000000000..0add308c0
 --- /dev/null
 +++ b/src/agents/cli-runner/prepare-sandbox.ts
 @@ -0,0 +1,95 @@
@@ -1084,10 +1057,10 @@ index 00000000..0add308c
 +  }
 +}
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 11d99f38..7284efcb 100644
+index a0b678d0f..18784829b 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
-@@ -43,8 +43,8 @@ import {
+@@ -38,8 +38,8 @@ import {
    registerContextEngineInRegistry,
  } from "../../context-engine/registry.js";
  import type { ContextEngine } from "../../context-engine/types.js";
@@ -1095,17 +1068,17 @@ index 11d99f38..7284efcb 100644
  import type { mintMcpLoopbackClientGrant as mintClientGrant } from "../../gateway/mcp-grant-store.js";
 +import type { resolveMcpLoopbackScopedTools as resolveLoopbackTools } from "../../gateway/mcp-http.runtime.js";
  import { setActiveNodeContexts } from "../../infra/active-node-context.js";
- import {
-   claimHeartbeatOutcomeForRun,
-@@ -131,6 +131,7 @@ import { claimPendingAgentQuestionAnswerFromCaller } from "../harness/gateway-qu
+ import { labelRuntimeContextText } from "../../llm/types.js";
+ import { CliBackendAuthProfilePreparationError } from "../../plugins/cli-backend-errors.js";
+@@ -126,6 +126,7 @@ import { claimPendingAgentQuestionAnswerFromCaller } from "../harness/gateway-qu
  import { withQuestionGateway } from "../harness/gateway-question.test-support.js";
  import { buildMediaTaskRuntimeContext } from "../media-generation-task-status.js";
  import { createAgentCleanupScope } from "../run-cleanup-timeout.js";
 +import { createSandboxTestContext } from "../sandbox/test-fixtures.js";
  import type { SandboxWorkspaceInfo } from "../sandbox/types.js";
- import { beginForegroundSessionMaintenance } from "../session-maintenance/coordinator.js";
- import { SessionManager } from "../sessions/session-manager.js";
-@@ -140,6 +141,7 @@ import {
+ import {
+   beginForegroundSessionMaintenance,
+@@ -138,6 +139,7 @@ import {
  } from "../test-helpers/model-routing-decision-e2e-fixtures.js";
  import { attachToolAllowlistIntersection } from "../tool-policy.js";
  import type { SystemAgentToolOptions } from "../tools/system-agent-tool.js";
@@ -1113,7 +1086,7 @@ index 11d99f38..7284efcb 100644
  import { prepareCliBundleMcpCaptureAttempt, prepareCliBundleMcpConfig } from "./bundle-mcp.js";
  import { prepareClaudeCliSkillsPlugin } from "./claude-skills-plugin.js";
  import { finalizeCliContextEngineTurn } from "./cli-run-transcript.js";
-@@ -474,6 +476,99 @@ describe("prepareCliRunContext", () => {
+@@ -478,6 +480,99 @@ describe("prepareCliRunContext", () => {
      });
    });
  
@@ -1214,31 +1187,25 @@ index 11d99f38..7284efcb 100644
      getFixture: () => fixture,
      setBackend: setCliBackendForPrepareTest,
 diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index 3a03dafa..7bc747e3 100644
+index 4559beb2a..de6592a3a 100644
 --- a/src/agents/cli-runner/prepare.ts
 +++ b/src/agents/cli-runner/prepare.ts
-@@ -1,11 +1,11 @@
- import { ensureSystemPromptCacheBoundary } from "@openclaw/ai/internal/shared";
+@@ -1,5 +1,6 @@
  import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
  import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
 +import { intersectSessionEventToolsAllow } from "../../auto-reply/reply/session-event-target.js";
- import {
-   buildHarnessVisibleReplyGuidance,
-   messageToolOwnsVisibleReply,
- } from "../../auto-reply/source-reply-delivery-mode.js";
--import { intersectSessionEventToolsAllow } from "../../auto-reply/reply/session-event-target.js";
+ import { messageToolOwnsVisibleReply } from "../../auto-reply/source-reply-delivery-mode.js";
  import { getRuntimeConfig } from "../../config/config.js";
  import { canonicalizeMainSessionAlias } from "../../config/sessions/main-session.js";
- import type { OpenClawConfig } from "../../config/types.openclaw.js";
-@@ -143,6 +143,7 @@ import { buildCliMcpGrantContext } from "./mcp-grant-context.js";
- import { detectNodeClaudePlacement } from "./prepare-claude.js";
+@@ -141,6 +142,7 @@ import { buildCliMcpGrantContext } from "./mcp-grant-context.js";
+ import { resolveCliCatalogCapabilities } from "./model-capabilities.js";
+ import { detectNodeClaudePlacement, resolveClaudeCliContextModelId } from "./prepare-claude.js";
  import * as mcp from "./prepare-mcp.js";
- import { prepareCliModelContext } from "./prepare-model-context.js";
 +import { prepareCliSandboxExecution } from "./prepare-sandbox.js";
  import { runWithCliPreparationSource } from "./prepare-source.js";
  import {
    capCliToolAvailability,
-@@ -747,6 +748,26 @@ async function prepareCliRunContextWithinReadFence(
+@@ -815,6 +817,26 @@ async function prepareCliRunContextWithinReadFence(
        }
      : undefined;
    params = await admitCliRunParams(params, workspaceResolution.agentId);
@@ -1265,7 +1232,7 @@ index 3a03dafa..7bc747e3 100644
    const skillPreparationParams = params;
    const assertSkillsCurrent = skillPreparationParams.admittedRunContext
      ? createCliRunCurrentAssertion({
-@@ -820,6 +841,7 @@ async function prepareCliRunContextWithinReadFence(
+@@ -890,6 +912,7 @@ async function prepareCliRunContextWithinReadFence(
          defaultMediatedToolNames: hostOwnedTools,
          scope: {
            cfg: runConfig,
@@ -1273,16 +1240,16 @@ index 3a03dafa..7bc747e3 100644
            ...(skillLibraryAuthoring ? { skillLibraryAuthoring } : {}),
            ...(bundledMcpTools.length > 0 ? { bundledTools: bundledMcpTools } : {}),
            ...(mcpToolAuth ? { authProfileStore: mcpToolAuth.store } : {}),
-@@ -1040,6 +1062,7 @@ async function prepareCliRunContextWithinReadFence(
-         ? mintMcpLoopbackClientGrant({
+@@ -1092,6 +1115,7 @@ async function prepareCliRunContextWithinReadFence(
+         ? await mintCliMcpClientGrant({ ...params, config: runConfig }, sessionAgentId, {
              ...mcpGrant,
              codeModeSkills,
 +            ...(sandboxExecution ? { sandboxExecution } : {}),
              sessionEventSourcePolicy,
              runtimeOwnerToken: mcpLoopbackRuntime.ownerToken,
              bindQuestionAnswerAuthority: (assertActive) =>
-@@ -1701,7 +1724,7 @@ async function prepareCliRunContextWithinReadFence(
-         warningMode: bootstrapPromptWarningMode,
+@@ -1731,7 +1755,7 @@ async function prepareCliRunContextWithinReadFence(
+         analysis: bootstrapAnalysis,
          warning: bootstrapPromptWarning,
        }),
 -      sandbox: { mode: "off", sandboxed: false },
@@ -1291,7 +1258,7 @@ index 3a03dafa..7bc747e3 100644
        injectedWorkspaceFiles: bootstrapInjectionStats,
        skillsPrompt: preparedSkills.prompt,
 diff --git a/src/agents/sandbox/backend-handle.types.ts b/src/agents/sandbox/backend-handle.types.ts
-index 2fff5c62..1c1612ba 100644
+index aae41dfec..f2cf167c1 100644
 --- a/src/agents/sandbox/backend-handle.types.ts
 +++ b/src/agents/sandbox/backend-handle.types.ts
 @@ -24,6 +24,8 @@ export type SandboxBackendCommandParams = {
@@ -1321,50 +1288,48 @@ index 2fff5c62..1c1612ba 100644
      command: string;
      workdir?: string;
 diff --git a/src/agents/sandbox/docker-backend.test.ts b/src/agents/sandbox/docker-backend.test.ts
-index 19af6cba..5694c050 100644
+index cf9d9e023..3f2f39d05 100644
 --- a/src/agents/sandbox/docker-backend.test.ts
 +++ b/src/agents/sandbox/docker-backend.test.ts
-@@ -202,6 +202,21 @@ describe("docker sandbox backend manager", () => {
-     },
-   );
+@@ -659,3 +659,18 @@ it("rejects browser sandboxing on the explicit Podman backend", async () => {
  
-+  it("rechecks caller authority after engine validation and before container execution", async () => {
-+    const backend = await createDockerExecBackend();
-+    expect(backend.enforcesMutationFence).toBe(true);
-+    await expect(
-+      backend.runShellCommand({
-+        script: "write should not run",
-+        assertBeforeMutation: () => {
-+          expect(dockerMocks.validateSandboxContainerEngineTarget).toHaveBeenCalled();
-+          throw new Error("tool invocation authority is no longer active");
-+        },
-+      }),
-+    ).rejects.toThrow("authority is no longer active");
-+    expect(dockerMocks.execContainerRaw).not.toHaveBeenCalled();
-+  });
+   expect(mocks.ensureSandboxContainer).not.toHaveBeenCalled();
+ });
 +
-   it.each(["removed", "stopped", "paused", "unreachable", "still present"] as const)(
-     "settles retained cleanup only for confirmed generation termination: %s",
-     async (state) => {
++it("rechecks caller authority after engine validation and before container execution", async () => {
++  const backend = await createDockerExecBackend();
++  expect(backend.enforcesMutationFence).toBe(true);
++  await expect(
++    backend.runShellCommand({
++      script: "write should not run",
++      assertBeforeMutation: () => {
++        expect(mocks.validateSandboxContainerEngineTarget).toHaveBeenCalled();
++        throw new Error("tool invocation authority is no longer active");
++      },
++    }),
++  ).rejects.toThrow("authority is no longer active");
++  expect(mocks.execContainerRaw).not.toHaveBeenCalled();
++});
 diff --git a/src/agents/sandbox/docker-backend.ts b/src/agents/sandbox/docker-backend.ts
-index 40993d13..863cd606 100644
+index 6021c8b6e..0f989c10d 100644
 --- a/src/agents/sandbox/docker-backend.ts
 +++ b/src/agents/sandbox/docker-backend.ts
-@@ -1,4 +1,5 @@
+@@ -1,5 +1,6 @@
  import { createContainerEnvFile } from "../../infra/container-env-file.js";
+ import { observeDiagnosticsTimelinePhases } from "../../infra/diagnostics-timeline.js";
 +import { runWithSpawnBroker } from "../../process/spawn-broker/context.js";
  import type { AdmittedRunOperatorAuthority } from "../admitted-run-context.js";
  import { buildGitHubExecLaunchArgv } from "../github-exec-launch.js";
- import type { PreparedGitHubToolEnvironment } from "../github-tool-identity.types.js";
-@@ -194,6 +195,7 @@ function createContainerSandboxBackendHandle(params: {
-     env: params.env,
-     configLabel: params.image,
+ import { CLEARED_GITHUB_CREDENTIALS } from "../github-host.js";
+@@ -120,6 +121,7 @@ async function createContainerSandboxBackend(
+     env: configuredEnv,
+     configLabel: image,
      configLabelKind: "Image",
 +    enforcesMutationFence: true,
      capabilities: {
-       browser: params.engine.id === "docker",
+       browser: boundEngine.id === "docker",
        readOnlyResourceMounts: true,
-@@ -329,10 +331,13 @@ async function runContainerSandboxShellCommand(
+@@ -387,10 +389,13 @@ async function runContainerSandboxShellCommand(
    }
    // The engine-target probe above can outlive the admitted workspace owner.
    params.assertCurrent?.();
@@ -1384,7 +1349,7 @@ index 40993d13..863cd606 100644
  
 diff --git a/src/agents/sandbox/fs-bridge.mutation-fence.test.ts b/src/agents/sandbox/fs-bridge.mutation-fence.test.ts
 new file mode 100644
-index 00000000..bf08dfeb
+index 000000000..bf08dfeb3
 --- /dev/null
 +++ b/src/agents/sandbox/fs-bridge.mutation-fence.test.ts
 @@ -0,0 +1,118 @@
@@ -1507,7 +1472,7 @@ index 00000000..bf08dfeb
 +  });
 +});
 diff --git a/src/agents/sandbox/fs-bridge.ts b/src/agents/sandbox/fs-bridge.ts
-index 2881a02f..c6719535 100644
+index d1d0dbf54..35f7143f6 100644
 --- a/src/agents/sandbox/fs-bridge.ts
 +++ b/src/agents/sandbox/fs-bridge.ts
 @@ -76,6 +76,10 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
@@ -1561,7 +1526,7 @@ index 2881a02f..c6719535 100644
      });
    }
  
-@@ -374,7 +383,10 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
+@@ -374,15 +383,20 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
    }
  
    private async runCheckedCommand(
@@ -1572,11 +1537,6 @@ index 2881a02f..c6719535 100644
 +    },
    ): Promise<SandboxBackendCommandResult> {
      await this.pathGuard.assertPathChecks(plan.checks);
-     if (plan.recheckBeforeCommand) {
-@@ -382,12 +394,14 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
-       // checks immediately before command execution to close TOCTOU gaps.
-       await this.pathGuard.assertPathChecks(plan.checks);
-     }
 +    plan.assertBeforeMutation?.();
      return await this.sandbox.backend.runShellCommand({
        script: plan.script,
@@ -1589,7 +1549,7 @@ index 2881a02f..c6719535 100644
    }
  
 diff --git a/src/agents/sandbox/fs-bridge.types.ts b/src/agents/sandbox/fs-bridge.types.ts
-index ab671f16..eade7d1b 100644
+index ab671f16f..eade7d1b7 100644
 --- a/src/agents/sandbox/fs-bridge.types.ts
 +++ b/src/agents/sandbox/fs-bridge.types.ts
 @@ -13,6 +13,8 @@ export type SandboxFsStat = {
@@ -1642,12 +1602,89 @@ index ab671f16..eade7d1b 100644
    stat(params: {
      filePath: string;
      cwd?: string;
+diff --git a/src/agents/sandbox/host-bridge-mutation-fence.test.ts b/src/agents/sandbox/host-bridge-mutation-fence.test.ts
+new file mode 100644
+index 000000000..d5bd48515
+--- /dev/null
++++ b/src/agents/sandbox/host-bridge-mutation-fence.test.ts
+@@ -0,0 +1,71 @@
++import fs from "node:fs/promises";
++import os from "node:os";
++import path from "node:path";
++import { expect, it } from "vitest";
++import { createHostSandboxFsBridge } from "../test-helpers/host-sandbox-fs-bridge.js";
++
++it.each(["write", "create", "copy", "rename", "mkdir", "remove"] as const)(
++  "keeps the host fixture from mutating after revocation: %s",
++  async (operation) => {
++    const root = await fs.mkdtemp(path.join(os.tmpdir(), "host-fence-"));
++    try {
++      await fs.writeFile(path.join(root, "source"), "original");
++      const bridge = createHostSandboxFsBridge(root);
++      const assertBeforeMutation = () => {
++        throw new Error("revoked");
++      };
++      const promise =
++        operation === "write"
++          ? bridge.writeFile({
++              filePath: "target",
++              data: "late",
++              mkdir: false,
++              assertBeforeMutation,
++            })
++          : operation === "create"
++            ? bridge.createFileExclusive!({
++                filePath: "target",
++                data: "late",
++                mkdir: false,
++                assertBeforeMutation,
++              })
++            : operation === "copy"
++              ? bridge.copyFile!({
++                  sourcePath: "source",
++                  destinationPath: "target",
++                  mkdir: false,
++                  assertBeforeMutation,
++                })
++              : operation === "rename"
++                ? bridge.rename({ from: "source", to: "target", assertBeforeMutation })
++                : operation === "mkdir"
++                  ? bridge.mkdirp({ filePath: "target", assertBeforeMutation })
++                  : bridge.remove({ filePath: "source", assertBeforeMutation });
++      await expect(promise).rejects.toThrow("revoked");
++      expect(await fs.readFile(path.join(root, "source"), "utf8")).toBe("original");
++      await expect(fs.stat(path.join(root, "target"))).rejects.toMatchObject({ code: "ENOENT" });
++    } finally {
++      await fs.rm(root, { recursive: true, force: true });
++    }
++  },
++);
++
++it("rechecks the host fixture after awaited directory preparation", async () => {
++  const root = await fs.mkdtemp(path.join(os.tmpdir(), "host-fence-"));
++  try {
++    let assertions = 0;
++    await expect(
++      createHostSandboxFsBridge(root).writeFile({
++        filePath: "target",
++        data: "late",
++        assertBeforeMutation: () => {
++          if (++assertions === 2) throw new Error("revoked");
++        },
++      }),
++    ).rejects.toThrow("revoked");
++    expect(assertions).toBe(2);
++    await expect(fs.stat(path.join(root, "target"))).rejects.toMatchObject({ code: "ENOENT" });
++  } finally {
++    await fs.rm(root, { recursive: true, force: true });
++  }
++});
 diff --git a/src/agents/sandbox/mcp-grant-mutation-fence.test.ts b/src/agents/sandbox/mcp-grant-mutation-fence.test.ts
 new file mode 100644
-index 00000000..3303038c
+index 000000000..cecf0ea31
 --- /dev/null
 +++ b/src/agents/sandbox/mcp-grant-mutation-fence.test.ts
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,117 @@
 +import path from "node:path";
 +import { expect, it } from "vitest";
 +import { createDeferred } from "../../../test/helpers/promise.js";
@@ -1688,6 +1725,7 @@ index 00000000..3303038c
 +    });
 +    const admittedRunContext = await admission.admit("gateway", "gateway-sandbox-fence");
 +    const grant = mintMcpLoopbackClientGrant({
++      toolPolicyConfig: {},
 +      context: {
 +        sessionKey: "agent:main:sandbox-mutation-fence",
 +        senderIsOwner: true,
@@ -1765,11 +1803,11 @@ index 00000000..3303038c
 +  });
 +});
 diff --git a/src/agents/sandbox/remote-fs-bridge.test.ts b/src/agents/sandbox/remote-fs-bridge.test.ts
-index 7de28c01..cdd70276 100644
+index 991e3910e..76eed45bc 100644
 --- a/src/agents/sandbox/remote-fs-bridge.test.ts
 +++ b/src/agents/sandbox/remote-fs-bridge.test.ts
-@@ -77,6 +77,26 @@ function createWorkspaceBridge(workspaceDir: string) {
-   });
+@@ -111,6 +111,26 @@ async function createFixture(remote = false, overrides?: Parameters<typeof creat
+   };
  }
  
 +describe("remote bridge mutation fence capability", () => {
@@ -1794,12 +1832,20 @@ index 7de28c01..cdd70276 100644
 +
  describe("remote pinned read sources", () => {
    it.runIf(process.platform !== "win32")(
-     "does not classify a parent alias into a protected mount as workspace memory",
+     "keeps protected aliases outside workspace provenance",
 diff --git a/src/agents/sandbox/remote-fs-bridge.ts b/src/agents/sandbox/remote-fs-bridge.ts
-index c5c6d518..1437e63d 100644
+index 063d0da87..e736ecd4d 100644
 --- a/src/agents/sandbox/remote-fs-bridge.ts
 +++ b/src/agents/sandbox/remote-fs-bridge.ts
-@@ -63,6 +63,10 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
+@@ -49,6 +49,7 @@ type ResolvedRemotePath = SandboxResolvedPath & {
+ 
+ /** Minimal remote shell contract used by the SSH filesystem bridge. */
+ export type RemoteShellSandboxHandle = {
++  readonly enforcesMutationFence?: true;
+   remoteWorkspaceDir: string;
+   remoteAgentWorkspaceDir: string;
+   runRemoteShellScript(params: SandboxBackendCommandParams): Promise<SandboxBackendCommandResult>;
+@@ -72,6 +73,10 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
      private readonly runtime: RemoteShellSandboxHandle,
    ) {}
  
@@ -1810,7 +1856,7 @@ index c5c6d518..1437e63d 100644
    resolvePath(params: { filePath: string; cwd?: string }): SandboxResolvedPath {
      const target = this.resolveTarget(params);
      return {
-@@ -203,6 +207,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
+@@ -212,6 +217,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
          mkdir: params.mkdir !== false,
        }),
        signal: params.signal,
@@ -1818,7 +1864,7 @@ index c5c6d518..1437e63d 100644
      });
    }
  
-@@ -254,6 +259,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
+@@ -263,6 +269,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
        stdin: buffer,
        allowFailure: kind === "create" ? true : undefined,
        signal: params.signal,
@@ -1826,7 +1872,7 @@ index c5c6d518..1437e63d 100644
      });
      return { result, containerPath: target.containerPath };
    }
-@@ -281,6 +287,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
+@@ -290,6 +297,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
          pinned: { mountRootPath: pinned.mountRootPath, relativePath: pinned.relativeParentPath },
        }),
        signal: params.signal,
@@ -1834,7 +1880,7 @@ index c5c6d518..1437e63d 100644
      });
    }
  
-@@ -308,6 +315,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
+@@ -317,6 +325,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
        }),
        signal: params.signal,
        allowFailure: params.force !== false,
@@ -1842,7 +1888,7 @@ index c5c6d518..1437e63d 100644
      });
    }
  
-@@ -330,6 +338,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
+@@ -339,6 +348,7 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
          destination: toPinned,
        }),
        signal: params.signal,
@@ -1850,7 +1896,7 @@ index c5c6d518..1437e63d 100644
      });
    }
  
-@@ -663,7 +672,9 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
+@@ -722,7 +732,9 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
      stdin?: Buffer | string;
      signal?: AbortSignal;
      allowFailure?: boolean;
@@ -1860,31 +1906,19 @@ index c5c6d518..1437e63d 100644
      return await this.runtime.runRemoteShellScript({
        script: [
          "set -eu",
-diff --git a/src/agents/sandbox/remote-fs-bridge.types.ts b/src/agents/sandbox/remote-fs-bridge.types.ts
-index 372bf97e..93cf6b80 100644
---- a/src/agents/sandbox/remote-fs-bridge.types.ts
-+++ b/src/agents/sandbox/remote-fs-bridge.types.ts
-@@ -13,5 +13,7 @@ export type ResolvedRemotePath = SandboxResolvedPath & {
- export type RemoteShellSandboxHandle = {
-   remoteWorkspaceDir: string;
-   remoteAgentWorkspaceDir: string;
-+  /** The command runner honors assertBeforeMutation immediately before launch. */
-+  readonly enforcesMutationFence?: true;
-   runRemoteShellScript(params: SandboxBackendCommandParams): Promise<SandboxBackendCommandResult>;
- };
 diff --git a/src/agents/sandbox/remote-shell-backend.test.ts b/src/agents/sandbox/remote-shell-backend.test.ts
-index bcb40d94..7e0bead8 100644
+index d0e134e53..7b6c94926 100644
 --- a/src/agents/sandbox/remote-shell-backend.test.ts
 +++ b/src/agents/sandbox/remote-shell-backend.test.ts
-@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
- import { createDeferred } from "../../../test/helpers/promise.js";
- import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+@@ -5,6 +5,7 @@ import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js"
+ import type { OpenClawConfig } from "../../config/types.openclaw.js";
  import { hasErrnoCode } from "../../infra/errno.js";
+ import { spawnCommand } from "../../process/exec.js";
 +import { getSpawnBroker, runWithSpawnBroker } from "../../process/spawn-broker/context.js";
+ import { createEnteredGate } from "../entered-gate.test-support.js";
  import { resolveSandboxConfigForAgent } from "./config.js";
  import { createRemoteShellSandboxBackend } from "./remote-shell-backend.js";
- import {
-@@ -60,6 +61,46 @@ async function createCommandCancellationFixture() {
+@@ -79,6 +80,46 @@ async function createCommandCancellationFixture() {
    return { backend, session, createSession };
  }
  
@@ -1929,21 +1963,21 @@ index bcb40d94..7e0bead8 100644
 +});
 +
  describe("remote shell command cancellation", () => {
-   it.each(["clear", "upload"] as const)(
-     "cancels the skills %s and joins it and session disposal before rejecting",
+   it.each(["acquire", "clear", "upload"] as const)(
+     "cancels during %s and joins remote work and session disposal before rejecting",
 diff --git a/src/agents/sandbox/remote-shell-backend.ts b/src/agents/sandbox/remote-shell-backend.ts
-index 8e3596ef..3f6cef00 100644
+index e70f82ae9..da51bb3c4 100644
 --- a/src/agents/sandbox/remote-shell-backend.ts
 +++ b/src/agents/sandbox/remote-shell-backend.ts
-@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
+@@ -1,6 +1,7 @@
+ import { randomUUID } from "node:crypto";
  import fs from "node:fs/promises";
  import path from "node:path";
- import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
 +import { runWithSpawnBroker } from "../../process/spawn-broker/context.js";
  import type {
    SandboxBackendCommandParams,
    SandboxBackendCommandResult,
-@@ -149,6 +150,7 @@ class RemoteShellSandboxBackendImpl {
+@@ -148,6 +149,7 @@ class RemoteShellSandboxBackendImpl {
            await pending.session.dispose();
          }
        },
@@ -1951,7 +1985,7 @@ index 8e3596ef..3f6cef00 100644
        runShellCommand: (command) => this.runRemoteShellScript(command),
        createFsBridge: ({ sandbox }) =>
          createRemoteShellSandboxFsBridge({
-@@ -391,17 +393,20 @@ class RemoteShellSandboxBackendImpl {
+@@ -390,17 +392,20 @@ class RemoteShellSandboxBackendImpl {
        await this.refreshRemoteSkillsWorkspace(session, params.signal);
        params.signal?.throwIfAborted();
        this.params.createParams.assertRuntimeCurrent?.();
@@ -1983,8 +2017,91 @@ index 8e3596ef..3f6cef00 100644
        });
      } finally {
        await session.dispose();
+diff --git a/src/agents/test-helpers/host-sandbox-fs-bridge.ts b/src/agents/test-helpers/host-sandbox-fs-bridge.ts
+index d53f333ab..86a155c52 100644
+--- a/src/agents/test-helpers/host-sandbox-fs-bridge.ts
++++ b/src/agents/test-helpers/host-sandbox-fs-bridge.ts
+@@ -14,11 +14,18 @@ export function createSandboxFsBridgeFromResolver(
+     }
+     return target.hostPath;
+   };
+-  const prepareWrite = async (filePath: string, cwd: string | undefined, mkdir: boolean) => {
++  const prepareWrite = async (
++    filePath: string,
++    cwd: string | undefined,
++    mkdir: boolean,
++    assertBeforeMutation?: () => void,
++  ) => {
+     const target = hostPath(filePath, cwd);
+     if (mkdir) {
++      assertBeforeMutation?.();
+       await fs.mkdir(path.dirname(target), { recursive: true });
+     }
++    assertBeforeMutation?.();
+     return target;
+   };
+   const transfer = async (
+@@ -27,22 +34,28 @@ export function createSandboxFsBridgeFromResolver(
+     to: string,
+     cwd: string | undefined,
+     mkdir = true,
++    assertBeforeMutation?: () => void,
+   ) => {
+     const source = hostPath(from, cwd);
+-    await operation(source, await prepareWrite(to, cwd, mkdir));
++    const target = await prepareWrite(to, cwd, mkdir, assertBeforeMutation);
++    assertBeforeMutation?.();
++    await operation(source, target);
+   };
+   return {
+     ...(pathMappings === undefined ? {} : { pathMappings }),
+     resolvePath: ({ filePath, cwd }) => resolvePath(filePath, cwd),
+-    copyFile: ({ sourcePath, destinationPath, cwd, mkdir = true }) =>
+-      transfer(fs.copyFile, sourcePath, destinationPath, cwd, mkdir),
++    copyFile: ({ sourcePath, destinationPath, cwd, mkdir = true, assertBeforeMutation }) =>
++      transfer(fs.copyFile, sourcePath, destinationPath, cwd, mkdir, assertBeforeMutation),
+     readFile: async ({ filePath, cwd }) => fs.readFile(hostPath(filePath, cwd)),
+-    writeFile: async ({ filePath, cwd, data, mkdir = true }) => {
+-      await fs.writeFile(await prepareWrite(filePath, cwd, mkdir), data);
++    writeFile: async ({ filePath, cwd, data, mkdir = true, assertBeforeMutation }) => {
++      const target = await prepareWrite(filePath, cwd, mkdir, assertBeforeMutation);
++      assertBeforeMutation?.();
++      await fs.writeFile(target, data);
+     },
+-    createFileExclusive: async ({ filePath, cwd, data, mkdir = true }) => {
+-      const target = await prepareWrite(filePath, cwd, mkdir);
++    createFileExclusive: async ({ filePath, cwd, data, mkdir = true, assertBeforeMutation }) => {
++      const target = await prepareWrite(filePath, cwd, mkdir, assertBeforeMutation);
+       try {
++        assertBeforeMutation?.();
+         await fs.writeFile(target, data, { flag: "wx" });
+         return "created";
+       } catch (error) {
+@@ -52,16 +65,19 @@ export function createSandboxFsBridgeFromResolver(
+         throw error;
+       }
+     },
+-    mkdirp: async ({ filePath, cwd }) => {
++    mkdirp: async ({ filePath, cwd, assertBeforeMutation }) => {
++      assertBeforeMutation?.();
+       await fs.mkdir(hostPath(filePath, cwd), { recursive: true });
+     },
+-    remove: async ({ filePath, cwd, recursive, force }) => {
++    remove: async ({ filePath, cwd, recursive, force, assertBeforeMutation }) => {
++      assertBeforeMutation?.();
+       await fs.rm(hostPath(filePath, cwd), {
+         recursive: recursive ?? false,
+         force: force ?? false,
+       });
+     },
+-    rename: ({ from, to, cwd }) => transfer(fs.rename, from, to, cwd),
++    rename: ({ from, to, cwd, assertBeforeMutation }) =>
++      transfer(fs.rename, from, to, cwd, true, assertBeforeMutation),
+     stat: async ({ filePath, cwd }) => {
+       try {
+         const stats = await fs.stat(hostPath(filePath, cwd));
 diff --git a/src/gateway/mcp-grant-store.test.ts b/src/gateway/mcp-grant-store.test.ts
-index 0049ebb7..bf358ca2 100644
+index 1b62562ae..ac2efd9aa 100644
 --- a/src/gateway/mcp-grant-store.test.ts
 +++ b/src/gateway/mcp-grant-store.test.ts
 @@ -5,6 +5,8 @@ import {
@@ -1993,10 +2110,10 @@ index 0049ebb7..bf358ca2 100644
  } from "../agents/admitted-run-context.js";
 +import type { PreparedCliSandboxExecution } from "../agents/cli-runner/prepare-sandbox.js";
 +import { createSandboxTestContext } from "../agents/sandbox/test-fixtures.js";
- import type { SkillLibraryAuthoringCapability } from "../skills/library/authoring.js";
  import {
-   activateMcpLoopbackClientGrantCapture,
-@@ -98,6 +100,37 @@ describe("mcp-grant-store", () => {
+   clearRuntimeConfigSnapshot,
+   setRuntimeConfigSnapshot,
+@@ -105,6 +107,37 @@ describe("mcp-grant-store", () => {
      expect(resolveMcpLoopbackClientGrant(params)).toBeUndefined();
    });
  
@@ -2022,20 +2139,20 @@ index 0049ebb7..bf358ca2 100644
 +    expect(grant.context).not.toHaveProperty("sandboxExecution");
 +    expect(() => structuredClone(grant)).not.toThrow();
 +    const capture = grantParams(grant.token, "sandbox-capture");
-+    expect(activateMcpLoopbackClientGrantCapture(capture)).toBeTruthy();
-+    const resolved = resolveMcpLoopbackClientGrant(capture);
++    expect(activateCapture(capture)).toBeTruthy();
++    const resolved = resolveClient(capture);
 +    expect(resolved?.sandboxExecution).toBe(sandboxExecution);
-+    expect(resolveMcpLoopbackClientGrant({ ...capture, captureKey: "other-run" })).toBeUndefined();
-+    revokeMcpLoopbackClientGrant(grant.token);
++    expect(resolveClient({ ...capture, captureKey: "other-run" })).toBeUndefined();
++    revokeClient(grant.token);
 +    expect(resolved?.isCurrent()).toBe(false);
-+    expect(resolveMcpLoopbackClientGrant(capture)).toBeUndefined();
++    expect(resolveClient(capture)).toBeUndefined();
 +  });
 +
    it("requires a non-empty sessionKey", () => {
-     expect(() => mintAttachGrant({ sessionKey: "  ", nowMs: T0 })).toThrow();
+     expect(() => attach("  ")).toThrow();
    });
 diff --git a/src/gateway/mcp-grant-store.ts b/src/gateway/mcp-grant-store.ts
-index 814b6341..5b65d76a 100644
+index fae2c1a48..acf8cea20 100644
 --- a/src/gateway/mcp-grant-store.ts
 +++ b/src/gateway/mcp-grant-store.ts
 @@ -6,6 +6,7 @@ import {
@@ -2046,7 +2163,7 @@ index 814b6341..5b65d76a 100644
  import type { CodeModeSkill } from "../agents/code-mode-skills.js";
  import type { DelegationCapability } from "../agents/delegation-capability.js";
  import type { ExecPolicyOverrides, ExecSessionDefaults } from "../agents/exec-defaults.js";
-@@ -184,6 +185,7 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
+@@ -197,6 +198,7 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
    /** Native memory capability retained on the host; never serialized to CLI context. */
    memoryAudience?: import("../plugins/memory-provider-types.js").MemoryAudience;
    memoryFlushTools?: import("../agents/agent-tools.memory-flush.types.js").MemoryFlushToolRunContext;
@@ -2054,7 +2171,7 @@ index 814b6341..5b65d76a 100644
    skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
    /** Configured MCP tools owned by the minting CLI run; disposed with that run. */
    bundledTools?: readonly AnyAgentTool[];
-@@ -322,6 +324,7 @@ export function mintMcpLoopbackClientGrant(
+@@ -336,6 +338,7 @@ export function mintMcpLoopbackClientGrant(
      codeModeSkills: params.codeModeSkills,
      assertCurrent: params.assertCurrent,
      bindQuestionAnswerAuthority: params.bindQuestionAnswerAuthority,
@@ -2062,15 +2179,15 @@ index 814b6341..5b65d76a 100644
      skillLibraryAuthoring: params.skillLibraryAuthoring,
      memoryAudience: params.memoryAudience,
      memoryFlushTools: params.memoryFlushTools,
-@@ -522,6 +525,7 @@ export function resolveMcpLoopbackClientGrant(params: {
-       mintCronRequesterGrant?: (signal?: AbortSignal) => CronCreatorAuthorityGrant;
+@@ -539,6 +542,7 @@ export function resolveMcpLoopbackClientGrant(params: {
        cronAuthorityCheck?: () => boolean;
+       withCronManagementToolConstruction?: <T>(run: () => T) => T;
        questionAnswerAuthority?: PreparedQuestionAnswerAuthority;
 +      sandboxExecution?: PreparedCliSandboxExecution;
        skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
        memoryAudience?: import("../plugins/memory-provider-types.js").MemoryAudience;
        memoryFlushTools?: import("../agents/agent-tools.memory-flush.types.js").MemoryFlushToolRunContext;
-@@ -580,6 +584,7 @@ export function resolveMcpLoopbackClientGrant(params: {
+@@ -608,6 +612,7 @@ export function resolveMcpLoopbackClientGrant(params: {
      questionAnswerAuthority,
      abortSignal: grant.abortSignal,
      codeModeSkills: grant.codeModeSkills,
@@ -2079,10 +2196,10 @@ index 814b6341..5b65d76a 100644
      memoryAudience: grant.memoryAudience,
      memoryFlushTools: grant.memoryFlushTools,
 diff --git a/src/gateway/mcp-http.runtime.ts b/src/gateway/mcp-http.runtime.ts
-index 07d1e0da..24b7d8c1 100644
+index a8871b04e..46b152867 100644
 --- a/src/gateway/mcp-http.runtime.ts
 +++ b/src/gateway/mcp-http.runtime.ts
-@@ -8,6 +8,7 @@ import {
+@@ -6,6 +6,7 @@ import {
  import { resolveSessionAgentIds } from "../agents/agent-scope.js";
  import { assertMemoryFlushPersistenceToolAvailable } from "../agents/agent-tools.memory-flush.js";
  import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
@@ -2090,7 +2207,7 @@ index 07d1e0da..24b7d8c1 100644
  import type { CodeModeSkill } from "../agents/code-mode-skills.js";
  import {
    loadPairedComputerUseAvailabilityForSurface,
-@@ -75,6 +76,7 @@ type McpLoopbackScopeParams = {
+@@ -73,6 +74,7 @@ type McpLoopbackScopeParams = {
    cfg: OpenClawConfig;
    authProfileStore?: AuthProfileStore;
    authProfileStoreAgentDir?: string;
@@ -2110,7 +2227,7 @@ index 07d1e0da..24b7d8c1 100644
  function resolveScopedMediatedNativeTools(
    params: McpLoopbackScopeParams,
    mode: LoopbackToolsAllowMode,
-@@ -368,6 +375,7 @@ async function constructMcpLoopbackTools(
+@@ -370,6 +377,7 @@ async function constructMcpLoopbackTools(
      memoryAudience: params.memoryAudience,
      memoryFlushTools: params.memoryFlushTools,
      bundledTools: params.bundledTools,
@@ -2119,22 +2236,28 @@ index 07d1e0da..24b7d8c1 100644
      agentDir: params.authProfileStoreAgentDir,
      conversationReadOrigin: "delegated",
 diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
-index dd356d32..31e19f8e 100644
+index 16db84f49..00b68a41b 100644
 --- a/src/gateway/mcp-http.ts
 +++ b/src/gateway/mcp-http.ts
-@@ -306,6 +306,7 @@ async function startMcpLoopbackServer(
+@@ -333,6 +333,7 @@ async function startMcpLoopbackServer(work: GatewayConnectionWork): Promise<() =
                    messageActionTurnCapability: boundClientGrant?.messageActionTurnCapability,
+                   // Only a run-bound CLI grant carries a verified turn sender's audience.
                    memoryAudience: boundClientGrant?.memoryAudience,
-                   memoryFlushTools: boundClientGrant?.memoryFlushTools,
 +                  sandboxExecution: boundClientGrant?.sandboxExecution,
-                   cfg,
+                   cfg: boundClientGrant?.toolPolicyConfig ?? cfg,
                    signal: requestAbort.signal,
                    authProfileStore: boundClientGrant?.toolAuth?.store,
 diff --git a/src/gateway/tool-resolution.test.ts b/src/gateway/tool-resolution.test.ts
-index ef9a8684..9328541d 100644
+index eb07438f5..1355a96d9 100644
 --- a/src/gateway/tool-resolution.test.ts
 +++ b/src/gateway/tool-resolution.test.ts
-@@ -8,6 +8,8 @@ import {
+@@ -1,4 +1,5 @@
+ import assert from "node:assert/strict";
++import fs from "node:fs/promises";
+ import os from "node:os";
+ import path from "node:path";
+ import { isRecord } from "@openclaw/normalization-core/record-coerce";
+@@ -8,6 +9,8 @@ import {
    prepareSystemAgentRunAdmission,
  } from "../agents/admitted-run-context.js";
  import type { AnyAgentTool } from "../agents/agent-tools.types.js";
@@ -2143,84 +2266,81 @@ index ef9a8684..9328541d 100644
  import {
    getGatewayToolCallerIdentity,
    wrapToolWithGatewayCallerIdentity,
-@@ -409,6 +411,64 @@ describe("resolveGatewayScopedTools", () => {
-     }
-   });
+@@ -369,3 +372,61 @@ it("applies sandbox tool denies to sandboxed loopback turns", async () => {
+ });
  
-+  it.each(["missing", "unmarked", "marked"] as const)(
-+    "binds mediated coding tools to a %s sandbox bridge",
-+    async (mode) => {
-+      const root = await fs.mkdtemp(path.join(os.tmpdir(), "sandbox-catalog-"));
-+      try {
-+        const bridge = {
-+          ...createSandboxFsBridgeFromResolver((filePath) => ({
-+            hostPath: path.resolve(root, filePath),
-+            containerPath: `/workspace/${filePath}`,
-+            relativePath: filePath,
-+          })),
-+          // Catalog-only declaration. This fixture does not execute mutations.
-+          ...(mode === "marked" ? { enforcesMutationFence: true as const } : {}),
-+        };
-+        const sandbox = createSandboxTestContext({
-+          overrides: {
-+            workspaceDir: root,
-+            agentWorkspaceDir: root,
-+            fsBridge: bridge,
-+          },
-+        });
-+        const owner = {
-+          sandbox,
-+          effectiveCwd: root,
-+          effectiveWorkspace: root,
-+          resolvedWorkspace: root,
-+          effectiveFsWorkspaceOnly: true,
-+          sessionPermissionRoot: root,
-+          sessionPermissionPolicy: undefined,
-+          sandboxSessionKey: "agent:main:main",
-+          sessionAgentId: "main",
-+          sandboxReport: { mode: "all" as const, sandboxed: true },
-+          [Symbol.dispose]: () => undefined,
-+        };
-+        const result = await resolveTools({
-+          cfg: {
-+            agents: { defaults: { sandbox: { mode: "all" } } },
-+            plugins: { enabled: false },
-+            tools: { fs: { workspaceOnly: true } },
-+          },
-+          workspaceDir: root,
-+          mediatedToolNames: ["read", "write", "edit", "exec", "process"],
-+          ...(mode === "missing" ? {} : { sandboxExecution: owner }),
-+        });
-+        const names = result.tools.map((tool) => tool.name);
-+        for (const name of ["read", "exec", "process"]) {
-+          expect(names.includes(name)).toBe(mode !== "missing");
-+        }
-+        for (const name of ["write", "edit"]) {
-+          expect(names.includes(name)).toBe(mode === "marked");
-+        }
-+        expect(names).toContain("sessions_history");
-+      } finally {
-+        await fs.rm(root, { recursive: true, force: true });
-+      }
-+    },
-+  );
+ registerGatewayToolFinalEffectTests();
 +
-   it("applies sandbox tool denies to sandboxed loopback turns", async () => {
-     const result = await resolveTools({
-       cfg: {
++it.each(["missing", "unmarked", "marked"] as const)(
++  "binds mediated coding tools to a %s sandbox bridge",
++  async (mode) => {
++    const root = await fs.mkdtemp(path.join(os.tmpdir(), "sandbox-catalog-"));
++    try {
++      const bridge = {
++        ...createSandboxFsBridgeFromResolver((filePath) => ({
++          hostPath: path.resolve(root, filePath),
++          containerPath: `/workspace/${filePath}`,
++          relativePath: filePath,
++        })),
++        // Catalog-only declaration. This fixture does not execute mutations.
++        ...(mode === "marked" ? { enforcesMutationFence: true as const } : {}),
++      };
++      const sandbox = createSandboxTestContext({
++        overrides: {
++          workspaceDir: root,
++          agentWorkspaceDir: root,
++          fsBridge: bridge,
++        },
++      });
++      const owner = {
++        sandbox,
++        effectiveCwd: root,
++        effectiveWorkspace: root,
++        resolvedWorkspace: root,
++        effectiveFsWorkspaceOnly: true,
++        sessionPermissionRoot: root,
++        sessionPermissionPolicy: undefined,
++        sandboxSessionKey: "agent:main:main",
++        sessionAgentId: "main",
++        sandboxReport: { mode: "all" as const, sandboxed: true },
++        [Symbol.dispose]: () => undefined,
++      };
++      const result = await resolveTools({
++        cfg: {
++          agents: { defaults: { sandbox: { mode: "all" } } },
++          plugins: { enabled: false },
++          tools: { fs: { workspaceOnly: true } },
++        },
++        workspaceDir: root,
++        mediatedToolNames: ["read", "write", "edit", "exec", "process"],
++        ...(mode === "missing" ? {} : { sandboxExecution: owner }),
++      });
++      const names = result.tools.map((tool) => tool.name);
++      for (const name of ["read", "exec", "process"]) {
++        expect(names.includes(name)).toBe(mode !== "missing");
++      }
++      for (const name of ["write", "edit"]) {
++        expect(names.includes(name)).toBe(mode === "marked");
++      }
++      expect(names).toContain("sessions_history");
++    } finally {
++      await fs.rm(root, { recursive: true, force: true });
++    }
++  },
++);
 diff --git a/src/gateway/tool-resolution.ts b/src/gateway/tool-resolution.ts
-index da0e4138..f72828f5 100644
+index 9f4705825..79b027646 100644
 --- a/src/gateway/tool-resolution.ts
 +++ b/src/gateway/tool-resolution.ts
-@@ -12,6 +12,7 @@ import { resolveEffectiveToolPolicy } from "../agents/agent-tools.policy.js";
- import { resolveTurnToolSurface } from "../agents/agent-tools.turn-authority.js";
+@@ -15,6 +15,7 @@ import {
+ } from "../agents/agent-tools.turn-authority.js";
  import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
  import { nodeExecSchema } from "../agents/bash-tools.schemas.js";
 +import type { PreparedCliSandboxExecution } from "../agents/cli-runner/prepare-sandbox.js";
- import { prepareConversationCapabilityProfile } from "../agents/conversation-capability-profile.js";
- import { resolveCoreToolFactoryFamily } from "../agents/core-tool-factory-descriptors.js";
+ import { resolveConversationQuestionInputMode } from "../agents/conversation-capability-profile.js";
  import { applyDelegationCapability } from "../agents/delegation-capability.js";
-@@ -88,6 +89,7 @@ export async function resolveGatewayScopedTools(
+ import { prepareExecDefaults, resolvePreparedExecDefaultsAsync } from "../agents/exec-defaults.js";
+@@ -90,6 +91,7 @@ export async function resolveGatewayScopedTools(
      | "cronCreatorCallerOrigin"
    > & {
      cfg: OpenClawConfig;
@@ -2228,7 +2348,7 @@ index da0e4138..f72828f5 100644
      /** Workspace from the invocation owner's exact session read. */
      preparedSessionWorkspaceDir?: string;
      messageActionTurnCapability?: string;
-@@ -499,16 +501,37 @@ export async function resolveGatewayScopedTools(
+@@ -512,16 +514,37 @@ export async function resolveGatewayScopedTools(
    const includeMediatedBaseCodingTools =
      providerMemoryFlush || mediatedToolFamilies.has("base-coding");
    const includeMediatedShellTools = !providerMemoryFlush && mediatedToolFamilies.has("shell");
@@ -2269,7 +2389,7 @@ index da0e4138..f72828f5 100644
            messageProvider: params.messageProvider,
            messageChannel: params.messageProvider,
            currentChannelId: params.currentChannelId,
-@@ -575,6 +598,11 @@ export async function resolveGatewayScopedTools(
+@@ -566,6 +589,11 @@ export async function resolveGatewayScopedTools(
          })
        : [];
    assertCurrent();
@@ -2282,10 +2402,10 @@ index da0e4138..f72828f5 100644
    // fixed to node so it cannot become a second path to Gateway-local execution.
    const baseTools = nodeExecSurface
 diff --git a/src/plugin-sdk/file-access-runtime.ts b/src/plugin-sdk/file-access-runtime.ts
-index e6635f68..311fe914 100644
+index 1aedff197..4d86d9a0d 100644
 --- a/src/plugin-sdk/file-access-runtime.ts
 +++ b/src/plugin-sdk/file-access-runtime.ts
-@@ -46,6 +46,7 @@ export const removePathWithinRoot: (params: {
+@@ -45,6 +45,7 @@ export const removePathWithinRoot: (params: {
    relativePath: string;
    recursive?: boolean;
    force?: boolean;
@@ -2294,10 +2414,10 @@ index e6635f68..311fe914 100644
  export { basenameFromMediaSource, safeFileURLToPath } from "@openclaw/fs-safe/advanced";
  export { isPathInside, isPathStrictlyInside } from "../infra/path-guards.js";
 diff --git a/src/plugin-sdk/process-runtime.ts b/src/plugin-sdk/process-runtime.ts
-index 55afbbc3..97ce4057 100644
+index 20127f534..8113df36b 100644
 --- a/src/plugin-sdk/process-runtime.ts
 +++ b/src/plugin-sdk/process-runtime.ts
-@@ -15,6 +15,7 @@ export {
+@@ -14,6 +14,7 @@ export {
    type SpawnResult,
  } from "../process/exec.js";
  export { withCommandProcessScope } from "../process/exec-spawn.js";

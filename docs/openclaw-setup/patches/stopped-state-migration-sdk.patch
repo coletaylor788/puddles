@@ -1,5 +1,5 @@
 diff --git a/src/commands/doctor/legacy-config-repair.ts b/src/commands/doctor/legacy-config-repair.ts
-index e043fd7..35673b4 100644
+index e043fd79e..35673b4dc 100644
 --- a/src/commands/doctor/legacy-config-repair.ts
 +++ b/src/commands/doctor/legacy-config-repair.ts
 @@ -1,7 +1,18 @@
@@ -140,10 +140,10 @@ index e043fd7..35673b4 100644
    config: OpenClawConfig;
 diff --git a/src/commands/doctor/stopped-config-repair.test.ts b/src/commands/doctor/stopped-config-repair.test.ts
 new file mode 100644
-index 0000000..0c947b6
+index 000000000..fc379ea4d
 --- /dev/null
 +++ b/src/commands/doctor/stopped-config-repair.test.ts
-@@ -0,0 +1,187 @@
+@@ -0,0 +1,186 @@
 +import fs from "node:fs/promises";
 +import { describe, expect, it } from "vitest";
 +import { readConfigFileSnapshotForWrite } from "../../plugin-sdk/config-mutation.js";
@@ -234,7 +234,6 @@ index 0000000..0c947b6
 +                ownership: "explicit",
 +                defaults: {
 +                  authInheritance: { agentId: owner },
-+                  heartbeat: { agentId: owner },
 +                  systemAgent: { agentId: owner },
 +                },
 +              }
@@ -274,12 +273,12 @@ index 0000000..0c947b6
 +                    ? "main"
 +                    : owner,
 +              },
-+              heartbeat: { agentId: owner },
 +              systemAgent: { agentId: owner },
 +            },
 +          },
 +          talk: { agentId: owner },
 +        });
++        expect(fullPreview?.expectedConfig).not.toHaveProperty("agents.defaults.heartbeat");
 +        expect(snapshot.sourceConfig).toEqual(originalSource);
 +        expect(await fs.readFile(state.statePath("openclaw.json"), "utf8")).toBe(originalRaw);
 +        const result = await repairLegacyConfigForStoppedState({
@@ -331,31 +330,8 @@ index 0000000..0c947b6
 +    });
 +  });
 +});
-diff --git a/src/config/io.runtime.ts b/src/config/io.runtime.ts
-index f0a2df1..5e85b5f 100644
---- a/src/config/io.runtime.ts
-+++ b/src/config/io.runtime.ts
-@@ -384,12 +384,17 @@ export async function readConfigFileSnapshotForRuntimeTransaction(
- 
- export async function readConfigFileSnapshotForWrite(options?: {
-   skipPluginValidation?: boolean;
-+  pluginValidation?: ConfigSnapshotReadOptions["pluginValidation"];
-   observe?: boolean;
-   deferredPluginMigrations?: ConfigWriteOptions["deferredPluginMigrations"];
-   preservedLegacyRootKeys?: readonly string[];
- }): Promise<ReadConfigFileSnapshotForWriteResult> {
-   const readOptions = {
--    ...(options?.skipPluginValidation ? { pluginValidation: "skip" as const } : {}),
-+    ...(options?.pluginValidation
-+      ? { pluginValidation: options.pluginValidation }
-+      : options?.skipPluginValidation
-+        ? { pluginValidation: "skip" as const }
-+        : {}),
-     ...(options?.observe === false ? { observe: false } : {}),
-     ...(options?.deferredPluginMigrations !== undefined
-       ? { deferredPluginMigrations: options.deferredPluginMigrations }
 diff --git a/src/config/sessions/session-accessor.sqlite-entry-mutation.ts b/src/config/sessions/session-accessor.sqlite-entry-mutation.ts
-index d308035..50985eb 100644
+index d7f771df2..aee8b6eff 100644
 --- a/src/config/sessions/session-accessor.sqlite-entry-mutation.ts
 +++ b/src/config/sessions/session-accessor.sqlite-entry-mutation.ts
 @@ -56,7 +56,13 @@ export function applySessionEntryPatchInDatabase(
@@ -373,7 +349,7 @@ index d308035..50985eb 100644
      > & { workerGuard?: Pick<SessionEntryPatchGuard, "cliHistory" | "conversation"> };
    },
  ): SessionEntryPatchMutation {
-@@ -80,6 +86,9 @@ export function writeSessionEntryPatchInDatabase(
+@@ -78,6 +84,9 @@ export function writeSessionEntryPatchInDatabase(
    > & { fresh: SqliteLifecycleTargetSnapshot },
  ): SessionEntryPatchMutation {
    const { fresh } = params;
@@ -383,7 +359,7 @@ index d308035..50985eb 100644
    params.options.assertCommitAllowed?.();
    const conversation = params.options.workerGuard?.conversation;
    if (conversation) {
-@@ -101,6 +110,10 @@ export function writeSessionEntryPatchInDatabase(
+@@ -99,6 +108,10 @@ export function writeSessionEntryPatchInDatabase(
    const selectedPreviousEntry = fresh[0]?.entry ?? params.writeBase;
    const postimages: SessionEntryWritePostimages = new Map();
    const persisted = writeSessionEntry(database, params.sessionKey, params.next, {
@@ -394,47 +370,87 @@ index d308035..50985eb 100644
      ...(params.options.consumePendingReset ? { consumePendingReset: true } : {}),
      ...(params.options.providerReviewMutation ? { providerReviewMutation: true } : {}),
      previousEntry: selectedPreviousEntry,
-diff --git a/src/config/sessions/session-accessor.sqlite-entry-store.ts b/src/config/sessions/session-accessor.sqlite-entry-store.ts
-index 1990bae..deea367 100644
---- a/src/config/sessions/session-accessor.sqlite-entry-store.ts
-+++ b/src/config/sessions/session-accessor.sqlite-entry-store.ts
-@@ -15,6 +15,7 @@ import { communicationEntryBinding } from "../../sessions/communication-admissio
- import { isIncognitoSessionKey } from "../../shared/incognito-session-key.js";
+diff --git a/src/config/sessions/session-accessor.sqlite-entry-write-queries.ts b/src/config/sessions/session-accessor.sqlite-entry-write-queries.ts
+index bc3844a02..5f76f640f 100644
+--- a/src/config/sessions/session-accessor.sqlite-entry-write-queries.ts
++++ b/src/config/sessions/session-accessor.sqlite-entry-write-queries.ts
+@@ -20,7 +20,7 @@ type SessionNodeWriteRow = ReturnType<typeof bindSessionNode> & {
+ 
+ type SessionWindowWriteRow = Omit<ReturnType<typeof bindSessionRoot>, "primary_conversation_id"> & {
+   primary_conversation_id: string | null;
+-  transcript_observed_at: number;
++  transcript_observed_at: number | null;
+ };
+ 
+ export function buildSessionEntryWindowUpsert(
+diff --git a/src/config/sessions/session-accessor.sqlite-entry-write.ts b/src/config/sessions/session-accessor.sqlite-entry-write.ts
+index 9f1955c3f..0cda10434 100644
+--- a/src/config/sessions/session-accessor.sqlite-entry-write.ts
++++ b/src/config/sessions/session-accessor.sqlite-entry-write.ts
+@@ -1,5 +1,9 @@
++import { isDeepStrictEqual } from "node:util";
+ import { sql } from "kysely";
+-import { executeSqliteQuerySync } from "../../infra/kysely-sync.js";
++import {
++  executeSqliteQuerySync,
++  executeSqliteQueryTakeFirstSync,
++} from "../../infra/kysely-sync.js";
+ import {
+   sqliteSessionIdWriteScope,
+   withSqliteDatabaseWriteScope,
+@@ -7,6 +11,7 @@ import {
+ import { communicationEntryBinding } from "../../sessions/communication-admission.js";
  import type { OpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
  import { readSessionActivitySummary } from "./activity-summary.js";
 +import { conversationIdentityFromSessionEntry } from "./conversation-identity.js";
  import type { ConversationRouteContext } from "./conversation-route-context.js";
  import { prepareLegacyAcpMigrationSourcesForEntryWrite } from "./session-accessor.sqlite-acp-provenance.js";
- import {
-@@ -65,11 +66,13 @@ import {
+ import { conversationPublication } from "./session-accessor.sqlite-conversation-publication.js";
+@@ -36,6 +41,7 @@ import {
+ import { advanceSessionEntryMaintenanceAgeFact } from "./session-accessor.sqlite-maintenance-age.js";
+ import { clearSessionCollaborationForKey } from "./session-accessor.sqlite-node-artifacts.js";
+ import { prepareSessionEntryWindowRow } from "./session-accessor.sqlite-provenance.js";
++import { getSessionKysely } from "./session-accessor.sqlite-scope-helpers.js";
+ import { bindSessionNode, bindSessionRoot } from "./session-accessor.sqlite-session-row.js";
+ import { hasValidSessionEntryIdentity } from "./session-accessor.sqlite-status.js";
+ import { readSessionTranscriptWatermarkInDatabase } from "./session-accessor.sqlite-transcript-watermark.js";
+@@ -52,10 +58,12 @@ import {
  } from "./session-canonical-key.js";
  import { validateCanonicalSessionRow } from "./session-canonical-row.js";
  import { normalizeSessionEntryTimestamp } from "./session-entry-json.js";
 +import { preserveCanonicalPrivateSessionMetadata } from "./session-entry-projection.js";
- import { preserveCreationStamp } from "./session-entry-provenance.js";
  import {
    splitSessionEntrySnapshots,
    writeSessionEntrySnapshots,
  } from "./session-entry-snapshots.js";
 +import { sessionEntryWindowColumns } from "./session-entry-window.types.js";
- import type { SessionEntryWindowFacts } from "./session-entry-window.types.js";
- import {
-   createSessionEntryWriteRow,
-@@ -323,6 +326,10 @@ export function writeSessionEntry(
-     postimages?: SessionEntryWritePostimages;
-     consumePendingReset?: boolean;
-     preserveNodeSuggestions?: boolean;
-+    preserveConversation?: boolean;
-+    restoreWindowActivity?: { updatedAt: number; transcriptObservedAt: number | null };
-+    preserveWindowActivity?: boolean;
-+    preservePrivateMetadata?: boolean;
-     previousEntry?: SessionEntry | null;
-     observeConversation?: boolean;
-     routeContext?: ConversationRouteContext | null;
-@@ -389,6 +396,22 @@ export function writeSessionEntry(
-   ) {
-     normalizedEntry = { ...normalizedEntry, compactionQualityDegraded: true };
-   }
+ import type {
+   SessionEntryWindowFacts,
+   SessionEntryWindowRow,
+@@ -97,6 +105,10 @@ type SessionEntryWriteOptions = {
+   /** A rehome can bind historical windows to an otherwise unchanged target. */
+   publishConversationBinding?: boolean;
+   preserveNodeSuggestions?: boolean;
++  preserveConversation?: boolean;
++  restoreWindowActivity?: { updatedAt: number; transcriptObservedAt: number | null };
++  preserveWindowActivity?: boolean;
++  preservePrivateMetadata?: boolean;
+   previousEntry?: SessionEntry | null;
+   observeConversation?: boolean;
+   routeContext?: ConversationRouteContext | null;
+@@ -110,7 +122,7 @@ type PreparedSessionEntryWrite = {
+   window:
+     | (Omit<ReturnType<typeof bindSessionRoot>, "primary_conversation_id"> & {
+         primary_conversation_id: string | null;
+-        transcript_observed_at: number;
++        transcript_observed_at: number | null;
+       })
+     | undefined;
+   windowPostimage: SessionEntryWindowRow;
+@@ -203,6 +215,22 @@ function prepareSessionEntryWrite(
+     options,
+   );
+   normalizedEntry = normalized.entry;
 +  if (options.preservePrivateMetadata) {
 +    if (
 +      !options.preserveConversation ||
@@ -451,12 +467,12 @@ index 1990bae..deea367 100644
 +      canonicalPreviousEntry,
 +    );
 +  }
-   if (!options.providerReviewMutation && !options.allowStoredAliases) {
-     // Bookkeeping can carry a stale snapshot; only the review owner may clear its pause.
-     normalizedEntry = {
-@@ -461,6 +484,34 @@ export function writeSessionEntry(
-     normalizedEntry.updatedAt = 0;
+   // Public/plugin projections omit this server-owned field. Same-session replacements
+   // retain publication; only an explicit field clear or a new session id revokes it.
+   if (
+@@ -221,6 +249,34 @@ function prepareSessionEntryWrite(
    }
+   const previousEntry = normalized.previousEntry;
    const updatedAt = normalizedEntry.updatedAt;
 +  const restoreWindowActivity = options.restoreWindowActivity;
 +  if (
@@ -486,11 +502,11 @@ index 1990bae..deea367 100644
 +    }
 +  }
 +
-   // Public/plugin projections omit this server-owned field. Same-session replacements
-   // retain publication; only an explicit field clear or a new session id revokes it.
-   if (
-@@ -543,12 +594,56 @@ export function writeSessionEntry(
-       }
+   const canonicalEntry = stripRuntimeOnlySessionSkillsFields(
+     projectCanonicalSessionEntryShape({ ...normalizedEntry }),
+   );
+@@ -282,12 +338,56 @@ function prepareSessionEntryWrite(
+     () => {
        const boundSessionRoot = bindSessionRoot({ entry: normalizedEntry, sessionKey, updatedAt });
        const preparedWindow = options.canonicalPreviousWindow ?? canonicalFacts?.window;
 +      let preservedWindow: SessionEntryWindowFacts["row"] | undefined;
@@ -537,7 +553,7 @@ index 1990bae..deea367 100644
 +        }
 +        preservedWindow = existingWindow;
 +      }
-       const { conversation, primaryConversationId } = prepareSessionConversationForWrite({
+       const conversationInput = {
          database,
          entry: normalizedEntry,
          previousEntry,
@@ -547,7 +563,7 @@ index 1990bae..deea367 100644
          observeConversation: options.observeConversation || options.allowStoredAliases,
          ...(options.routeContext !== undefined ? { routeContext: options.routeContext } : {}),
          sessionScope: boundSessionRoot.session_scope,
-@@ -560,6 +655,14 @@ export function writeSessionEntry(
+@@ -307,6 +407,14 @@ function prepareSessionEntryWrite(
          entry: normalizedEntry,
          previousEntry,
          retainOwner: retainWindowOwner,
@@ -562,24 +578,11 @@ index 1990bae..deea367 100644
          prepared: preparedWindow,
          stagedTranscriptUpdatedAt: actor
            ? undefined
-diff --git a/src/config/sessions/session-accessor.sqlite-entry-write-queries.ts b/src/config/sessions/session-accessor.sqlite-entry-write-queries.ts
-index 983b999..7183379 100644
---- a/src/config/sessions/session-accessor.sqlite-entry-write-queries.ts
-+++ b/src/config/sessions/session-accessor.sqlite-entry-write-queries.ts
-@@ -6,7 +6,7 @@ import type { bindSessionNode, bindSessionRoot } from "./session-accessor.sqlite
- 
- type SessionWindowWriteRow = Omit<ReturnType<typeof bindSessionRoot>, "primary_conversation_id"> & {
-   primary_conversation_id: string | null;
--  transcript_observed_at: number;
-+  transcript_observed_at: number | null;
- };
- 
- // Cache fixed SQL shapes only; every write binds fresh rows through the normal executor.
 diff --git a/src/config/sessions/session-accessor.sqlite-entry.ts b/src/config/sessions/session-accessor.sqlite-entry.ts
-index 96999f9..6428bc5 100644
+index 2c17d00f6..baabd3e44 100644
 --- a/src/config/sessions/session-accessor.sqlite-entry.ts
 +++ b/src/config/sessions/session-accessor.sqlite-entry.ts
-@@ -365,6 +365,14 @@ async function patchSqliteSessionEntrySnapshot(
+@@ -321,6 +321,14 @@ async function patchSqliteSessionEntrySnapshot(
    params: SqliteSessionEntrySnapshotPatchParams,
  ): Promise<SessionEntry | null> {
    const { options, sessionKey } = params;
@@ -594,7 +597,7 @@ index 96999f9..6428bc5 100644
    const captured = params.capturedSource;
    const {
      resolved,
-@@ -428,6 +436,11 @@ async function patchSqliteSessionEntrySnapshot(
+@@ -388,6 +396,11 @@ async function patchSqliteSessionEntrySnapshot(
        validateCanonicalKeys: params.validateCanonicalKeys,
        consumePendingReset: options.consumePendingReset,
        providerReviewMutation: options.providerReviewMutation,
@@ -606,7 +609,7 @@ index 96999f9..6428bc5 100644
        shouldCommitIf: options.workerGuard?.shouldCommitIf,
        cliHistory: options.workerGuard?.cliHistory,
        conversation: options.workerGuard?.conversation,
-@@ -478,6 +491,11 @@ async function patchSqliteSessionEntrySnapshot(
+@@ -442,6 +455,11 @@ async function patchSqliteSessionEntrySnapshot(
                preserveActivity: options.preserveActivity,
                consumePendingReset: options.consumePendingReset,
                providerReviewMutation: options.providerReviewMutation,
@@ -619,7 +622,7 @@ index 96999f9..6428bc5 100644
                cliHistory: options.workerGuard?.cliHistory,
                conversation: options.workerGuard?.conversation,
 diff --git a/src/config/sessions/session-accessor.sqlite-provenance.ts b/src/config/sessions/session-accessor.sqlite-provenance.ts
-index 31cc119..07d1ab5 100644
+index 31cc119a1..07d1ab585 100644
 --- a/src/config/sessions/session-accessor.sqlite-provenance.ts
 +++ b/src/config/sessions/session-accessor.sqlite-provenance.ts
 @@ -83,8 +83,9 @@ export function prepareSessionEntryWindowRow<
@@ -646,10 +649,10 @@ index 31cc119..07d1ab5 100644
    // Updates cannot prove provenance for a migrated transcript. Known exclusion metadata is monotonic.
    if (
 diff --git a/src/config/sessions/session-accessor.types.ts b/src/config/sessions/session-accessor.types.ts
-index dec3665..15816d8 100644
+index 1fd693df9..9956ec825 100644
 --- a/src/config/sessions/session-accessor.types.ts
 +++ b/src/config/sessions/session-accessor.types.ts
-@@ -598,6 +598,14 @@ export type SessionEntryPatchOptions = SessionEntryUpdateOptions & {
+@@ -602,6 +602,14 @@ export type SessionEntryPatchOptions = SessionEntryUpdateOptions & {
    maintenanceConfig?: ResolvedSessionMaintenanceConfig;
    /** Keep the previous updatedAt value when the patch should not count as activity. */
    preserveActivity?: boolean;
@@ -665,11 +668,11 @@ index dec3665..15816d8 100644
    replaceEntry?: boolean;
  };
 diff --git a/src/config/sessions/session-entry-patch.types.ts b/src/config/sessions/session-entry-patch.types.ts
-index 25f7bd1..7186ae8 100644
+index 26be22ca5..7fe839146 100644
 --- a/src/config/sessions/session-entry-patch.types.ts
 +++ b/src/config/sessions/session-entry-patch.types.ts
-@@ -50,6 +50,10 @@ export type SessionEntryPatchCommit = {
-   validateCanonicalKeys: boolean;
+@@ -57,6 +57,10 @@ export type SessionEntryPatchCommit = {
+   };
    consumePendingReset?: boolean;
    providerReviewMutation?: boolean;
 +  preserveConversation?: boolean;
@@ -680,10 +683,10 @@ index 25f7bd1..7186ae8 100644
    cliHistory?: SessionEntryPatchGuard["cliHistory"];
    conversation?: SessionEntryPatchGuard["conversation"];
 diff --git a/src/config/sessions/session-entry-patch.worker.ts b/src/config/sessions/session-entry-patch.worker.ts
-index 7fe640f..9fb43ca 100644
+index e4f4d7556..049f3a527 100644
 --- a/src/config/sessions/session-entry-patch.worker.ts
 +++ b/src/config/sessions/session-entry-patch.worker.ts
-@@ -186,6 +186,11 @@ export function commitSessionEntryPatch(
+@@ -194,6 +194,11 @@ export function commitSessionEntryPatch(
        const options = {
          consumePendingReset: input.consumePendingReset,
          providerReviewMutation: input.providerReviewMutation,
@@ -696,10 +699,10 @@ index 7fe640f..9fb43ca 100644
          assertCommitAllowed: () => {
            const validation = readSessionSourceValidation(database, input.sources);
 diff --git a/src/config/sessions/session-entry-projection.ts b/src/config/sessions/session-entry-projection.ts
-index e9fb82d..0b3b2d0 100644
+index 977880a56..bf25c0453 100644
 --- a/src/config/sessions/session-entry-projection.ts
 +++ b/src/config/sessions/session-entry-projection.ts
-@@ -40,6 +40,21 @@ const PRIVATE_SESSION_ENTRY_KEYS = [
+@@ -43,6 +43,21 @@ const PRIVATE_SESSION_ENTRY_KEYS = [
    "transcriptByteCompactionLatch",
  ] as const satisfies readonly (keyof InternalSessionEntry)[];
  
@@ -718,15 +721,15 @@ index e9fb82d..0b3b2d0 100644
 +  return result;
 +}
 +
- function stripPrivateSessionEntryFields(entry: InternalSessionEntry): SessionEntry;
  function stripPrivateSessionEntryFields(
-   entry: Partial<InternalSessionEntry>,
+   entry: InternalSessionEntry,
+   identity: "public" | "execution",
 diff --git a/src/cron/stopped-state-sdk.test.ts b/src/cron/stopped-state-sdk.test.ts
 new file mode 100644
-index 0000000..9bd5e12
+index 000000000..c0f3f3baa
 --- /dev/null
 +++ b/src/cron/stopped-state-sdk.test.ts
-@@ -0,0 +1,265 @@
+@@ -0,0 +1,284 @@
 +import fs from "node:fs/promises";
 +import { DatabaseSync } from "node:sqlite";
 +import { gunzipSync } from "node:zlib";
@@ -745,6 +748,7 @@ index 0000000..9bd5e12
 +} from "../plugin-sdk/cron-store-runtime.js";
 +import { resolveOpenClawStateSqlitePath } from "../plugin-sdk/state-paths.js";
 +import { repairOpenClawStateDatabaseSchema } from "../state/openclaw-state-db.js";
++import { withStateMigrationBackupForTest } from "../state/openclaw-state-schema.test-support.js";
 +import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 +import type { CronStoredJob } from "./types.js";
 +
@@ -784,7 +788,8 @@ index 0000000..9bd5e12
 +      const selected = job("historical-selected");
 +      const expectedRevision = resolveCronJobConfigRevision(selected);
 +      const storePath = state.statePath("cron", "legacy-jobs.json");
-+      const targetStorePath = state.statePath("cron", "jobs.json");
++      const defaultStorePath = state.statePath("cron", "jobs.json");
++      const targetStorePath = state.statePath("cron", "migrated-jobs.json");
 +      const database = new DatabaseSync(databasePath);
 +      database
 +        .prepare(`INSERT INTO cron_jobs (
@@ -820,7 +825,7 @@ index 0000000..9bd5e12
 +        resolveCronJobsStorePathFromConfig({}, state.env, state.env, {
 +          artifactPreservingReadOnly: true,
 +        }),
-+      ).toBe(targetStorePath);
++      ).toBe(defaultStorePath);
 +      expect(
 +        resolveCronJobsStorePathFromConfig(
 +          snapshot.snapshot.sourceConfigBeforeMigrations ?? {},
@@ -838,13 +843,24 @@ index 0000000..9bd5e12
 +      );
 +      expect(readOnlyHistorical.store.jobs).toHaveLength(1);
 +      expect(await fs.readdir(state.statePath("state"))).toEqual(beforeFiles);
-+      expect(repairOpenClawStateDatabaseSchema({ env: state.env }).warnings).toEqual([]);
++      expect(
++        (
++          await withStateMigrationBackupForTest({ env: state.env }, () =>
++            repairOpenClawStateDatabaseSchema({ env: state.env }),
++          )
++        ).warnings,
++      ).toEqual([]);
 +      const beforeMaterialize = await loadCronJobsStoreWithConfigJobsReadOnly(
 +        storePath,
 +        state.env,
 +        { artifactPreservingReadOnly: true, includeJobsFingerprint: true },
 +      );
 +      expect(beforeMaterialize.configJobs).toHaveLength(1);
++      // Native default selection refuses ambiguous historical partitions. This helper
++      // may copy only to an explicit reviewed partition, never choose the default.
++      await expect(
++        loadCronJobsStoreWithConfigJobsReadOnly(defaultStorePath, state.env),
++      ).rejects.toThrow("Default cron partition selection is unresolved");
 +      const targetBefore = await loadCronJobsStoreWithConfigJobsReadOnly(
 +        targetStorePath,
 +        state.env,
@@ -881,7 +897,13 @@ index 0000000..9bd5e12
 +          };
 +        },
 +      });
-+      expect(repairOpenClawStateDatabaseSchema({ env: state.env }).warnings).toEqual([]);
++      expect(
++        (
++          await withStateMigrationBackupForTest({ env: state.env }, () =>
++            repairOpenClawStateDatabaseSchema({ env: state.env }),
++          )
++        ).warnings,
++      ).toEqual([]);
 +      const loaded = (
 +        await loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath, state.env, {
 +          artifactPreservingReadOnly: true,
@@ -993,18 +1015,25 @@ index 0000000..9bd5e12
 +  });
 +});
 diff --git a/src/cron/store.ts b/src/cron/store.ts
-index 8d31fc9..5b6dbd9 100644
+index bf2202b2d..971a1e920 100644
 --- a/src/cron/store.ts
 +++ b/src/cron/store.ts
-@@ -15,6 +15,7 @@ import { readCronJobNamesInDatabase } from "./store/job-name.kernel.js";
- import { cronStoreKey } from "./store/key.js";
- import { restoreCronLoadError } from "./store/load-error.js";
- import { resolveCronJobsStorePath, resolveCronJobsStorePathAsync } from "./store/paths.js";
+@@ -1,3 +1,4 @@
++import path from "node:path";
+ /** Public cron store load/save API backed entirely by shared SQLite state. */
+ import { pruneMapToMaxSize } from "../infra/map-size.js";
+ import type { EngineConnection } from "../infra/sql-connection.js";
+@@ -19,7 +20,9 @@ import {
+   resolveDefaultCronStorePath,
+   prepareMutableCronStoreKey,
+   resolveCronStoreKeyInDatabase,
++  resolveCronStoreKeyAsync,
+ } from "./store/paths.js";
 +import { loadCronJobsStoreWithConfigJobsReadOnly } from "./store/read-only.js";
  import {
    assertCronStoreCanPersist,
    readCronJobsFingerprint,
-@@ -361,6 +362,58 @@ export async function saveCronJobsStore(
+@@ -454,6 +457,59 @@ export async function saveCronJobsStore(
    await saveCronJobsStoreWithRevision(storePath, store, opts);
  }
  
@@ -1023,7 +1052,8 @@ index 8d31fc9..5b6dbd9 100644
 +    throw new CronJobsStoreChangedError(path.resolve(sourceStorePath));
 +  }
 +  const samePartition =
-+    cronStoreKey(path.resolve(sourceStorePath)) === cronStoreKey(path.resolve(targetStorePath));
++    (await resolveCronStoreKeyAsync(sourceStorePath)) ===
++    (await resolveCronStoreKeyAsync(targetStorePath));
 +  const target = samePartition
 +    ? source
 +    : await loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath, process.env, {
@@ -1061,15 +1091,15 @@ index 8d31fc9..5b6dbd9 100644
 +}
 +
  // Public plugin SDK seam; core callers use the SQLite-backed cron-jobs names above.
- /** @deprecated Await resolveCronStorePathAsync. Final compatibility day: 2026-12-31. */
+ /** @deprecated Await resolveCronStorePathAsync. Final compatibility day: 2026-12-31. Removal in the first January 2027 stable release. */
  export function resolveCronStorePath(storePath?: string) {
 diff --git a/src/cron/store/config-state.ts b/src/cron/store/config-state.ts
-index c22d971..31459ad 100644
+index 30c3849bb..d57ca9e1c 100644
 --- a/src/cron/store/config-state.ts
 +++ b/src/cron/store/config-state.ts
-@@ -2,8 +2,11 @@
- import { readConfigMachineState } from "../../state/config-machine-state.js";
- import { executeExistingOpenClawStateRead } from "../../state/openclaw-state-db-readonly.js";
+@@ -12,8 +12,11 @@ export function readCronStoreStatePathInDatabase(db: EngineConnection): string |
+   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+ }
  
 -export function readCronStoreStatePath(env: NodeJS.ProcessEnv = process.env): string | undefined {
 -  const value = readConfigMachineState<unknown>("cron.store", { env });
@@ -1082,10 +1112,10 @@ index c22d971..31459ad 100644
  }
  
 diff --git a/src/cron/store/paths.ts b/src/cron/store/paths.ts
-index 844a3b1..dbb44f0 100644
+index cfbaa9121..92b858638 100644
 --- a/src/cron/store/paths.ts
 +++ b/src/cron/store/paths.ts
-@@ -17,8 +17,9 @@ export function resolveCronJobsStorePath(
+@@ -195,8 +195,9 @@ export function resolveCronJobsStorePath(
    storePath?: string,
    env: NodeJS.ProcessEnv = process.env,
    stateEnv: NodeJS.ProcessEnv = env,
@@ -1096,7 +1126,7 @@ index 844a3b1..dbb44f0 100644
    return resolveSelectedCronJobsStorePath(selected, env);
  }
  
-@@ -42,9 +43,15 @@ export function resolveCronJobsStorePathFromConfig(
+@@ -217,9 +218,15 @@ export function resolveCronJobsStorePathFromConfig(
    cfg: { cron?: unknown },
    env: NodeJS.ProcessEnv = process.env,
    stateEnv: NodeJS.ProcessEnv = env,
@@ -1114,10 +1144,10 @@ index 844a3b1..dbb44f0 100644
  
  /** Runtime path selection never opens SQLite on the caller's thread. */
 diff --git a/src/cron/store/read-only.ts b/src/cron/store/read-only.ts
-index ef66b24..7538930 100644
+index 75fd85de3..d6ac7f468 100644
 --- a/src/cron/store/read-only.ts
 +++ b/src/cron/store/read-only.ts
-@@ -29,6 +29,7 @@ import type {
+@@ -37,6 +37,7 @@ import type {
    CronRunHistoryBinding,
    CronRunHistorySelector,
  } from "./read-only.types.js";
@@ -1125,90 +1155,95 @@ index ef66b24..7538930 100644
  import type { CronRunRecord } from "./run-history.types.js";
  import type { LoadedCronStore } from "./types.js";
  
-@@ -46,10 +47,13 @@ function emptyLoadedCronStore(): LoadedCronStore {
+@@ -92,18 +93,25 @@ function emptyLoadedCronStore(): LoadedCronStore {
  export async function loadCronJobsStoreWithConfigJobsReadOnly(
    storePath: string,
    env: NodeJS.ProcessEnv = process.env,
 +  options: { artifactPreservingReadOnly?: boolean; includeJobsFingerprint?: boolean } = {},
  ): Promise<LoadedCronStore> {
-   return (
--    (await readCronState({ storeKey: cronStoreKey(storePath), env })).loaded ??
--    emptyLoadedCronStore()
-+    (await readCronState({ storeKey: cronStoreKey(storePath), env, ...options })).loaded ?? {
+   const context = captureOpenClawStateWorkerContext({ env });
+   const storeKey = await resolveCronStoreKeyAsync(storePath, env, context);
+-  return loadCronJobsStoreWithConfigJobsReadOnlyByKey(storeKey, env);
++  return loadCronJobsStoreWithConfigJobsReadOnlyByKey(storeKey, env, options);
+ }
+ 
+ /** Reads a captured opaque partition without applying public pathname selection again. */
+ export async function loadCronJobsStoreWithConfigJobsReadOnlyByKey(
+   storeKey: string,
+   env: NodeJS.ProcessEnv = process.env,
++  options: { artifactPreservingReadOnly?: boolean; includeJobsFingerprint?: boolean } = {},
+ ): Promise<LoadedCronStore> {
+-  return (await readCronState({ storeKey, env })).loaded ?? emptyLoadedCronStore();
++  return (
++    (await readCronState({ storeKey, env, ...options })).loaded ?? {
 +      ...emptyLoadedCronStore(),
 +      ...(options.includeJobsFingerprint ? { jobsFingerprint: fingerprintCronJobRows([]) } : {}),
 +    }
-   );
++  );
  }
  
-@@ -64,17 +68,24 @@ async function readCronState({
-   storeKey,
+ /** PostgreSQL state is read in the cron worker, never on the Gateway thread. */
+@@ -134,11 +142,15 @@ async function readCronState({
    env,
    history,
+   inspect,
 +  artifactPreservingReadOnly,
 +  includeJobsFingerprint,
  }: {
    storeKey?: string;
    env: NodeJS.ProcessEnv;
    history?: CronReadOnlyRequest["history"];
+   inspect?: CronReadOnlyRequest["inspect"];
 +  artifactPreservingReadOnly?: boolean;
 +  includeJobsFingerprint?: boolean;
  }): Promise<Extract<CronReadOnlyResult, { ok: true }>> {
    const statePath = resolveOpenClawStateSqlitePath(env);
    if (!fs.existsSync(statePath)) {
-     return { ok: true };
+@@ -146,7 +158,10 @@ async function readCronState({
    }
    // Doctor's all-partition inventory must not create WAL/SHM files beside the source.
--  const preserveArtifacts = storeKey === undefined || isArtifactPreservingStateRead();
-+  const preserveArtifacts =
-+    artifactPreservingReadOnly === true ||
-+    storeKey === undefined ||
-+    isArtifactPreservingStateRead();
+   const preserveArtifacts =
+-    !isStatePostgres() && (storeKey === undefined || isArtifactPreservingStateRead());
++    !isStatePostgres() &&
++    (artifactPreservingReadOnly === true ||
++      storeKey === undefined ||
++      isArtifactPreservingStateRead());
    const admission = captureOpenClawStateDatabaseReadAdmission(statePath);
    const identity = admission.identity;
    const canonicalPath = identity.canonicalPath;
-@@ -172,6 +183,7 @@ async function readCronState({
+@@ -236,6 +251,7 @@ async function readCronState({
            location,
            storeKey,
            history,
 +          includeJobsFingerprint,
            stagingRoot,
+           inspect,
          },
-         {
 diff --git a/src/cron/store/read-only.types.ts b/src/cron/store/read-only.types.ts
-index 0e91ae7..f2a8b5d 100644
+index 246a3acd7..dfea1a821 100644
 --- a/src/cron/store/read-only.types.ts
 +++ b/src/cron/store/read-only.types.ts
-@@ -13,6 +13,7 @@ export type CronRunHistoryBinding = {
+@@ -15,6 +15,7 @@ export type CronRunHistoryBinding = {
  
  export type CronReadOnlyRequest = {
    location: string;
 +  includeJobsFingerprint?: boolean;
-   history?: { jobId?: string; transcript?: CronRunHistorySelector };
-   /** Omitted only for Doctor's all-partition raw inventory. */
-   storeKey?: string;
+   history?: {
+     jobId?: string;
+     query?: string;
 diff --git a/src/cron/store/read-only.worker.ts b/src/cron/store/read-only.worker.ts
-index 1ec6e5e..1ebf8fe 100644
+index ade316879..376e6de0e 100644
 --- a/src/cron/store/read-only.worker.ts
 +++ b/src/cron/store/read-only.worker.ts
-@@ -17,6 +17,7 @@ import type {
+@@ -21,6 +21,7 @@ import type {
    CronRunHistoryBinding,
    CronRunHistorySelector,
  } from "./read-only.types.js";
 +import { fingerprintCronJobRows, loadCronRows } from "./row-codec.js";
- import { readCronRunRecordsInDatabase } from "./run-history.kernel.js";
- import type { CronRunRecord } from "./run-history.types.js";
- 
-@@ -79,6 +80,8 @@ serveWorkerTasks(async (input, _channel, control): Promise<CronReadOnlyResult> =
-       !isRecord(input) ||
-       typeof input.location !== "string" ||
-       (input.storeKey !== undefined && typeof input.storeKey !== "string") ||
-+      (input.includeJobsFingerprint !== undefined &&
-+        typeof input.includeJobsFingerprint !== "boolean") ||
-       (input.stagingRoot !== undefined && typeof input.stagingRoot !== "string") ||
-       (input.history !== undefined &&
-         (typeof input.storeKey !== "string" ||
-@@ -142,7 +145,12 @@ serveWorkerTasks(async (input, _channel, control): Promise<CronReadOnlyResult> =
+ import {
+   readCronRunHistoryCandidatesInDatabase,
+   readCronRunHistoryRecordsInDatabase,
+@@ -155,7 +156,12 @@ serveWorkerTasks<CronReadOnlyResult, CronReadOnlyRequest>(async (input, _channel
            inventory: storeKey === undefined ? inspectCronRowsForDoctor(db) : undefined,
            loaded:
              storeKey !== undefined && tableExists(db, "cron_jobs")
@@ -1223,11 +1258,10 @@ index 1ec6e5e..1ebf8fe 100644
          } satisfies CronReadOnlyResult;
        } finally {
 diff --git a/src/plugin-sdk/config-mutation.ts b/src/plugin-sdk/config-mutation.ts
-index 3caf4de..3182fe9 100644
+index c0773c691..4e4e47ac1 100644
 --- a/src/plugin-sdk/config-mutation.ts
 +++ b/src/plugin-sdk/config-mutation.ts
-@@ -3,6 +3,8 @@
-  */
+@@ -1,5 +1,7 @@
  export { logConfigUpdated } from "../config/logging.js";
  export { readConfigFileSnapshotForWrite } from "../config/io.js";
 +export { resolveIncludeWriteBoundary } from "../config/include-write-boundary.js";
@@ -1236,7 +1270,7 @@ index 3caf4de..3182fe9 100644
 +export { previewLegacyConfigRepair } from "../commands/doctor/legacy-config-repair.js";
  export { updateConfig } from "../commands/models/shared.js";
 diff --git a/src/plugin-sdk/cron-store-runtime.ts b/src/plugin-sdk/cron-store-runtime.ts
-index 62d2cb0..e59a798 100644
+index 62d2cb0f8..e59a79887 100644
 --- a/src/plugin-sdk/cron-store-runtime.ts
 +++ b/src/plugin-sdk/cron-store-runtime.ts
 @@ -7,3 +7,10 @@ export {
@@ -1251,10 +1285,10 @@ index 62d2cb0..e59a798 100644
 +} from "../cron/store.js";
 +export { resolveCronJobConfigRevision } from "../cron/config-revision.js";
 diff --git a/src/plugin-sdk/doctor-repair-runtime.ts b/src/plugin-sdk/doctor-repair-runtime.ts
-index ffb1a88..af2528f 100644
+index e985f5963..6791ac625 100644
 --- a/src/plugin-sdk/doctor-repair-runtime.ts
 +++ b/src/plugin-sdk/doctor-repair-runtime.ts
-@@ -18,4 +18,8 @@ export {
+@@ -18,6 +18,10 @@ export {
    detectOpenClawStateDatabaseSchemaMigrations,
    repairOpenClawStateDatabaseSchema,
  } from "../state/openclaw-state-db.js";
@@ -1263,8 +1297,10 @@ index ffb1a88..af2528f 100644
 +  repairLegacyConfigForStoppedState,
 +} from "../commands/doctor/legacy-config-repair.js";
  export type { OpenClawStateDatabaseSchemaMigration } from "../state/openclaw-state-db.js";
+ 
+ /** Read-only model selector inventory for provider retirement diagnostics. */
 diff --git a/src/plugin-sdk/session-store-runtime.conversation.test.ts b/src/plugin-sdk/session-store-runtime.conversation.test.ts
-index 45880ff..6281ad6 100644
+index cff8ec31d..27770aa8e 100644
 --- a/src/plugin-sdk/session-store-runtime.conversation.test.ts
 +++ b/src/plugin-sdk/session-store-runtime.conversation.test.ts
 @@ -10,11 +10,17 @@ import {
@@ -1285,271 +1321,321 @@ index 45880ff..6281ad6 100644
    runOpenClawAgentWriteTransaction,
  } from "../state/openclaw-agent-db.js";
  import {
-@@ -57,6 +63,397 @@ describe("current conversation session binding", () => {
-     expect(hasOpenClawAgentDatabaseAsyncResources()).toBe(false);
-   });
- 
-+  it.each([false, true])(
-+    "retains canonical private fields only for opted-in replacement (%s)",
-+    async (preservePrivateMetadata) => {
-+      const scope = { agentId: "main", storePath, sessionKey: "agent:main:private-repair" };
-+      const privateFields = {
-+        activeWriterRunId: "writer",
-+        lastRunId: "last",
-+        lifecycleRunId: "lifecycle",
-+        pendingProjectGitUrl: "https://example.invalid/repository.git",
-+        pendingWorktree: { titleSource: "approved", baseRef: "main" },
-+        cliHistoryBoundary: {
-+          version: 1 as const,
-+          sessionId: "private-session",
-+          state: "unknown" as const,
-+        },
-+        mainRestartRecovery: { cycleId: "cycle", revision: 1, chargedAttempts: 0 },
-+        sessionDiffBaselineCapture: {
-+          version: 1 as const,
-+          captureId: "capture",
-+          status: "pending" as const,
-+        },
-+        transcriptByteCompactionLatch: {
-+          activeBytes: 200,
-+          maxBytes: 100,
-+          sessionId: "private-session",
-+        },
-+        profileInvolvement: {
-+          key: scope.sessionKey,
-+          profiles: { synthetic: { hidden: true, updatedAt: 5 } },
-+        },
-+        publicShare: { id: "a".repeat(48), sessionId: "private-session", createdAt: 5 },
-+      };
-+      replaceSessionEntrySync(scope, {
-+        ...privateFields,
+@@ -316,3 +322,396 @@ it("does not let a later parent turn replace an existing thread owner", async ()
+   await deleteSessionEntry({ agentId: "main", sessionKey: threadKey, storePath });
+   expect(getConversationSession(address)).toBeUndefined();
+ });
++
++it.each([false, true])(
++  "retains canonical private fields only for opted-in replacement (%s)",
++  async (preservePrivateMetadata) => {
++    const scope = { agentId: "main", storePath, sessionKey: "agent:main:private-repair" };
++    const privateFields = {
++      activeWriterRunId: "writer",
++      lastRunId: "last",
++      lifecycleRunId: "lifecycle",
++      pendingProjectGitUrl: "https://example.invalid/repository.git",
++      pendingWorktree: { titleSource: "approved", baseRef: "main" },
++      cliHistoryBoundary: {
++        version: 1 as const,
 +        sessionId: "private-session",
-+        lifecycleRevision: "generation",
-+        updatedAt: 100,
-+      });
-+      const before = loadSessionEntry(scope)!;
-+      expect(before).toMatchObject(privateFields);
-+      await patchSessionEntry({
++        state: "unknown" as const,
++      },
++      mainRestartRecovery: { cycleId: "cycle" },
++      sessionDiffBaselineCapture: {
++        version: 1 as const,
++        captureId: "capture",
++        status: "pending" as const,
++      },
++      transcriptByteCompactionLatch: {
++        activeBytes: 200,
++        maxBytes: 100,
++        sessionId: "private-session",
++      },
++      profileInvolvement: {
++        key: scope.sessionKey,
++        profiles: { synthetic: { hidden: true, updatedAt: 5 } },
++      },
++      publicShare: { id: "a".repeat(48), sessionId: "private-session", createdAt: 5 },
++    };
++    replaceSessionEntrySync(scope, {
++      sessionId: "private-session",
++      lifecycleRevision: "generation",
++      updatedAt: 100,
++    });
++    replaceSessionEntrySync(scope, {
++      ...privateFields,
++      sessionId: "private-session",
++      lifecycleRevision: "generation",
++      updatedAt: 100,
++    });
++    const before = loadSessionEntry(scope)!;
++    expect(before).toMatchObject(privateFields);
++    await patchSessionEntry({
++      ...scope,
++      replaceEntry: true,
++      preserveActivity: true,
++      preserveConversation: true,
++      preservePrivateMetadata,
++      update: (entry) => ({
++        ...entry,
++        modelOverrideSource: "default",
++        lastRunId: "forged",
++        activeWriterRunId: "forged",
++      }),
++    });
++    const after = loadSessionEntry(scope)!;
++    if (preservePrivateMetadata) {
++      for (const key of Object.keys(privateFields) as (keyof typeof privateFields)[]) {
++        expect(after[key], key).toEqual(before[key]);
++      }
++    } else {
++      // Existing SDK replacement semantics remain unchanged for other callers.
++      expect(after.lastRunId).toBeUndefined();
++      expect(after.pendingWorktree).toBeUndefined();
++      expect(after.activeWriterRunId).toBe(before.activeWriterRunId);
++    }
++    expect(getSessionEntry(scope)).not.toHaveProperty("lastRunId");
++    expect(getSessionEntry(scope)).not.toHaveProperty("activeWriterRunId");
++  },
++);
++
++it.each(["conversation", "generation", "private-drift"])(
++  "rejects unsafe private metadata preservation: %s",
++  async (reason) => {
++    const scope = { agentId: "main", storePath, sessionKey: "agent:main:private-refusal" };
++    replaceSessionEntrySync(scope, {
++      sessionId: "private-session",
++      lifecycleRevision: "generation",
++      updatedAt: 100,
++      lastRunId: "old",
++    });
++    const before = loadSessionEntry(scope)!;
++    await expect(
++      patchSessionEntry({
 +        ...scope,
 +        replaceEntry: true,
 +        preserveActivity: true,
-+        preserveConversation: true,
-+        preservePrivateMetadata,
-+        update: (entry) => ({
-+          ...entry,
-+          modelOverrideSource: "default",
-+          lastRunId: "forged",
-+          activeWriterRunId: "forged",
-+        }),
-+      });
-+      const after = loadSessionEntry(scope)!;
-+      if (preservePrivateMetadata) {
-+        for (const key of Object.keys(privateFields) as (keyof typeof privateFields)[]) {
-+          expect(after[key], key).toEqual(before[key]);
-+        }
-+      } else {
-+        // Existing SDK replacement semantics remain unchanged for other callers.
-+        expect(after.lastRunId).toBeUndefined();
-+        expect(after.pendingWorktree).toBeUndefined();
-+        expect(after.activeWriterRunId).toBe(before.activeWriterRunId);
-+      }
-+      expect(getSessionEntry(scope)).not.toHaveProperty("lastRunId");
-+      expect(getSessionEntry(scope)).not.toHaveProperty("activeWriterRunId");
-+    },
-+  );
++        preserveConversation: reason !== "conversation",
++        preservePrivateMetadata: true,
++        update: (entry) => {
++          if (reason === "private-drift")
++            replaceSessionEntrySync(scope, { ...before, lastRunId: "new" });
++          return {
++            ...entry,
++            ...(reason === "generation" ? { lifecycleRevision: "successor" } : {}),
++            modelOverrideSource: "default",
++          };
++        },
++      }),
++    ).rejects.toThrow();
++    expect(loadSessionEntry(scope)).toEqual(
++      reason === "private-drift" ? { ...before, lastRunId: "new" } : before,
++    );
++  },
++);
 +
-+  it.each(["conversation", "generation", "private-drift"])(
-+    "rejects unsafe private metadata preservation: %s",
-+    async (reason) => {
-+      const scope = { agentId: "main", storePath, sessionKey: "agent:main:private-refusal" };
-+      replaceSessionEntrySync(scope, {
-+        sessionId: "private-session",
-+        lifecycleRevision: "generation",
-+        updatedAt: 100,
-+        lastRunId: "old",
-+      });
-+      const before = loadSessionEntry(scope)!;
-+      await expect(
-+        patchSessionEntry({
-+          ...scope,
-+          replaceEntry: true,
-+          preserveActivity: true,
-+          preserveConversation: reason !== "conversation",
-+          preservePrivateMetadata: true,
-+          update: (entry) => {
-+            if (reason === "private-drift")
-+              replaceSessionEntrySync(scope, { ...before, lastRunId: "new" });
-+            return {
-+              ...entry,
-+              ...(reason === "generation" ? { lifecycleRevision: "successor" } : {}),
-+              modelOverrideSource: "default",
-+            };
-+          },
-+        }),
-+      ).rejects.toThrow();
-+      expect(loadSessionEntry(scope)).toEqual(
-+        reason === "private-drift" ? { ...before, lastRunId: "new" } : before,
-+      );
-+    },
-+  );
-+
-+  it.each([false, true])(
-+    "preserves newer shared conversation activity during metadata repair (replace: %s)",
-+    async (replaceEntry) => {
-+      const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
-+      const scope = { ...databaseOptions, sessionKey: "agent:main:reef:group:room" };
-+      const newerScope = { ...scope, sessionKey: `${scope.sessionKey}:thread:first` };
-+      const delivery = normalizeSessionDeliveryState({
-+        context: { channel: "reef", accountId: "default", to: "group:room", threadId: "first" },
-+      });
-+      await upsertSessionEntry({
-+        ...scope,
-+        entry: {
-+          sessionId: "older",
-+          lifecycleRevision: "same",
-+          updatedAt: 100,
-+          chatType: "group",
-+          delivery,
-+          label: "Older title",
-+        },
-+      });
-+      await upsertSessionEntry({
-+        ...newerScope,
-+        entry: {
-+          sessionId: "newer",
-+          updatedAt: 200,
-+          chatType: "group",
-+          delivery,
-+          label: "Newer title",
-+        },
-+      });
-+      const database = openOpenClawAgentDatabase(databaseOptions);
-+      const conversations = () =>
-+        database.db.prepare("SELECT * FROM conversations ORDER BY conversation_id").all();
-+      const links = () =>
-+        database.db
-+          .prepare("SELECT * FROM session_conversations ORDER BY session_id, conversation_id, role")
-+          .all();
-+      const primary = () =>
-+        database.db
-+          .prepare("SELECT primary_conversation_id FROM session_windows WHERE session_id = ?")
-+          .get("older");
-+      let before = { conversations: conversations(), links: links(), primary: primary() };
-+      expect(before.conversations).toHaveLength(1);
-+      expect(before.links).toHaveLength(2);
-+      expect(before.primary).toMatchObject({ primary_conversation_id: expect.any(String) });
-+      const current = getSessionEntry(scope)!;
-+      await patchSessionEntry({
-+        ...scope,
-+        preserveActivity: true,
-+        preserveConversation: true,
-+        replaceEntry,
-+        skipMaintenance: true,
-+        update: () => {
-+          // The selected entry remains unchanged while another session advances
-+          // its shared conversation between preparation and native commit.
-+          queueMicrotask(() => {
-+            replaceSessionEntrySync(newerScope, {
-+              sessionId: "newer",
-+              updatedAt: 300,
-+              chatType: "group",
-+              delivery,
-+              label: "Latest title",
-+            });
-+            before = { conversations: conversations(), links: links(), primary: primary() };
-+          });
-+          return replaceEntry
-+            ? { ...current, updatedAt: 10, modelOverrideSource: "default" }
-+            : { modelOverrideSource: "default" };
-+        },
-+      });
-+      expect({ conversations: conversations(), links: links(), primary: primary() }).toEqual(
-+        before,
-+      );
-+      expect(getSessionEntry(scope)).toMatchObject({
++it.each([false, true])(
++  "preserves newer shared conversation activity during metadata repair (replace: %s)",
++  async (replaceEntry) => {
++    const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
++    const scope = { ...databaseOptions, sessionKey: "agent:main:reef:group:room" };
++    const newerScope = { ...scope, sessionKey: `${scope.sessionKey}:thread:first` };
++    const delivery = normalizeSessionDeliveryState({
++      context: { channel: "reef", accountId: "default", to: "group:room", threadId: "first" },
++    });
++    await upsertSessionEntry({
++      ...scope,
++      entry: {
 +        sessionId: "older",
 +        lifecycleRevision: "same",
-+        updatedAt: replaceEntry ? 10 : current.updatedAt,
-+        modelOverrideSource: "default",
-+      });
-+      expect(
-+        database.db
-+          .prepare("SELECT updated_at FROM session_windows WHERE session_id = ?")
-+          .get("older"),
-+      ).toEqual({ updated_at: replaceEntry ? 10 : current.updatedAt });
-+    },
-+  );
++        updatedAt: 100,
++        chatType: "group",
++        delivery,
++        label: "Older title",
++      },
++    });
++    await upsertSessionEntry({
++      ...newerScope,
++      entry: {
++        sessionId: "newer",
++        updatedAt: 200,
++        chatType: "group",
++        delivery,
++        label: "Newer title",
++      },
++    });
++    const database = openOpenClawAgentDatabase(databaseOptions);
++    const conversations = () =>
++      database.db.prepare("SELECT * FROM conversations ORDER BY conversation_id").all();
++    const links = () =>
++      database.db
++        .prepare("SELECT * FROM session_conversations ORDER BY session_id, conversation_id, role")
++        .all();
++    const primary = () =>
++      database.db
++        .prepare("SELECT primary_conversation_id FROM session_windows WHERE session_id = ?")
++        .get("older");
++    let before = { conversations: conversations(), links: links(), primary: primary() };
++    expect(before.conversations).toHaveLength(1);
++    expect(before.links).toHaveLength(2);
++    expect(before.primary).toMatchObject({ primary_conversation_id: expect.any(String) });
++    const current = getSessionEntry(scope)!;
++    await patchSessionEntry({
++      ...scope,
++      preserveActivity: true,
++      preserveConversation: true,
++      replaceEntry,
++      skipMaintenance: true,
++      update: () => {
++        // The selected entry remains unchanged while another session advances
++        // its shared conversation between preparation and native commit.
++        queueMicrotask(() => {
++          replaceSessionEntrySync(newerScope, {
++            sessionId: "newer",
++            updatedAt: 300,
++            chatType: "group",
++            delivery,
++            label: "Latest title",
++          });
++          before = { conversations: conversations(), links: links(), primary: primary() };
++        });
++        return replaceEntry
++          ? { ...current, updatedAt: 10, modelOverrideSource: "default" }
++          : { modelOverrideSource: "default" };
++      },
++    });
++    expect({ conversations: conversations(), links: links(), primary: primary() }).toEqual(before);
++    expect(getSessionEntry(scope)).toMatchObject({
++      sessionId: "older",
++      lifecycleRevision: "same",
++      updatedAt: replaceEntry ? 10 : current.updatedAt,
++      modelOverrideSource: "default",
++    });
++    expect(
++      database.db
++        .prepare("SELECT updated_at FROM session_windows WHERE session_id = ?")
++        .get("older"),
++    ).toEqual({ updated_at: replaceEntry ? 10 : current.updatedAt });
++  },
++);
 +
-+  it.each([null, 100])(
-+    "restores independent window clocks without acknowledging history (%s)",
-+    async (observedAt) => {
-+      const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
-+      const scope = { ...databaseOptions, sessionKey: "agent:main:reef:group:room" };
-+      const delivery = normalizeSessionDeliveryState({
-+        context: { channel: "reef", accountId: "default", to: "group:room" },
-+      });
-+      await upsertSessionEntry({
-+        ...scope,
-+        entry: {
-+          sessionId: "existing",
-+          lifecycleRevision: "same",
-+          updatedAt: 100,
-+          delivery,
-+          chatType: "group",
-+        },
-+      });
-+      const database = openOpenClawAgentDatabase(databaseOptions);
-+      const window = () =>
-+        database.db.prepare("SELECT * FROM session_windows WHERE session_id = ?").get("existing")!;
-+      // A real transcript write advances window activity independently of the entry.
-+      await appendTranscriptMessage(
++it.each([null, 100])(
++  "restores independent window clocks without acknowledging history (%s)",
++  async (observedAt) => {
++    const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
++    const scope = { ...databaseOptions, sessionKey: "agent:main:reef:group:room" };
++    const delivery = normalizeSessionDeliveryState({
++      context: { channel: "reef", accountId: "default", to: "group:room" },
++    });
++    await upsertSessionEntry({
++      ...scope,
++      entry: {
++        sessionId: "existing",
++        lifecycleRevision: "same",
++        updatedAt: 100,
++        delivery,
++        chatType: "group",
++      },
++    });
++    const database = openOpenClawAgentDatabase(databaseOptions);
++    const window = () =>
++      database.db.prepare("SELECT * FROM session_windows WHERE session_id = ?").get("existing")!;
++    // A real transcript write advances window activity independently of the entry.
++    await appendTranscriptMessage(
++      { ...scope, sessionId: "existing" },
++      { message: { content: "Synthetic history", role: "user" }, cwd: tempDir },
++    );
++    const originalWindow = window();
++    expect(originalWindow.updated_at).not.toBe(getSessionEntry(scope)!.updatedAt);
++    expect(originalWindow.transcript_updated_at).not.toBe(originalWindow.transcript_observed_at);
++    const history = () => database.db.prepare("SELECT * FROM transcript_events ORDER BY seq").all();
++    const beforeHistory = history();
++    await patchSessionEntry({
++      ...scope,
++      preserveConversation: true,
++      replaceEntry: true,
++      update: (current) => ({ ...current, updatedAt: Number(originalWindow.updated_at) + 100 }),
++    });
++    const beforeWindow = window();
++    const shared = () => ({
++      conversations: database.db.prepare("SELECT * FROM conversations").all(),
++      links: database.db.prepare("SELECT * FROM session_conversations").all(),
++    });
++    const beforeShared = shared();
++    await patchSessionEntry({
++      ...scope,
++      preserveConversation: true,
++      replaceEntry: true,
++      restoreWindowActivity: {
++        updatedAt: Number(originalWindow.updated_at),
++        transcriptObservedAt: observedAt,
++      },
++      assertCommitAllowed: () => {
++        expect(window()).toEqual(beforeWindow);
++        expect(history()).toEqual(beforeHistory);
++      },
++      update: (current) => ({ ...current, updatedAt: 100, modelOverrideSource: "default" }),
++    });
++    expect(getSessionEntry(scope)!.updatedAt).toBe(100);
++    expect(window()).toEqual({
++      ...beforeWindow,
++      updated_at: originalWindow.updated_at,
++      transcript_observed_at: observedAt,
++    });
++    expect(history()).toEqual(beforeHistory);
++    expect(shared()).toEqual(beforeShared);
++  },
++);
++
++it("preserves current window clocks after transcript progress during an ordinary metadata callback", async () => {
++  const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
++  const scope = { ...databaseOptions, sessionKey: "agent:main:main" };
++  await upsertSessionEntry({
++    ...scope,
++    entry: { sessionId: "existing", lifecycleRevision: "same", updatedAt: 100 },
++  });
++  const database = openOpenClawAgentDatabase(databaseOptions);
++  const window = () =>
++    database.db.prepare("SELECT * FROM session_windows WHERE session_id = ?").get("existing")!;
++  let expectedWindow = window();
++  await patchSessionEntry({
++    ...scope,
++    preserveActivity: true,
++    preserveConversation: true,
++    preserveWindowActivity: true,
++    update: () => {
++      const appended = appendTranscriptMessageSync(
 +        { ...scope, sessionId: "existing" },
-+        { message: { content: "Synthetic history", role: "user" }, cwd: tempDir },
++        { message: { content: "Synthetic new history", role: "user" }, cwd: tempDir },
 +      );
-+      const originalWindow = window();
-+      expect(originalWindow.updated_at).not.toBe(getSessionEntry(scope)!.updatedAt);
-+      expect(originalWindow.transcript_updated_at).not.toBe(originalWindow.transcript_observed_at);
-+      const history = () =>
-+        database.db.prepare("SELECT * FROM transcript_events ORDER BY seq").all();
-+      const beforeHistory = history();
-+      await patchSessionEntry({
-+        ...scope,
-+        preserveConversation: true,
-+        replaceEntry: true,
-+        update: (current) => ({ ...current, updatedAt: Number(originalWindow.updated_at) + 100 }),
-+      });
-+      const beforeWindow = window();
-+      const shared = () => ({
-+        conversations: database.db.prepare("SELECT * FROM conversations").all(),
-+        links: database.db.prepare("SELECT * FROM session_conversations").all(),
-+      });
-+      const beforeShared = shared();
-+      await patchSessionEntry({
-+        ...scope,
-+        preserveConversation: true,
-+        replaceEntry: true,
-+        restoreWindowActivity: {
-+          updatedAt: Number(originalWindow.updated_at),
-+          transcriptObservedAt: observedAt,
-+        },
-+        assertCommitAllowed: () => {
-+          expect(window()).toEqual(beforeWindow);
-+          expect(history()).toEqual(beforeHistory);
-+        },
-+        update: (current) => ({ ...current, updatedAt: 100, modelOverrideSource: "default" }),
-+      });
-+      expect(getSessionEntry(scope)!.updatedAt).toBe(100);
-+      expect(window()).toEqual({
-+        ...beforeWindow,
-+        updated_at: originalWindow.updated_at,
-+        transcript_observed_at: observedAt,
-+      });
-+      expect(history()).toEqual(beforeHistory);
-+      expect(shared()).toEqual(beforeShared);
++      expect(appended.ok).toBe(true);
++      expectedWindow = window();
++      expect(expectedWindow.updated_at).not.toBe(100);
++      expect(expectedWindow.transcript_observed_at).toBe(100);
++      return { modelOverrideSource: "default" };
 +    },
-+  );
++  });
++  expect(getSessionEntry(scope)!.updatedAt).toBe(100);
++  expect(window()).toEqual(expectedWindow);
++  const entry = getSessionEntry(scope);
++  await expect(
++    patchSessionEntry({
++      ...scope,
++      preserveConversation: true,
++      preserveWindowActivity: true,
++      restoreWindowActivity: { updatedAt: 10, transcriptObservedAt: null },
++      assertCommitAllowed: () => {},
++      update: () => ({ modelOverrideSource: "user" }),
++    }),
++  ).rejects.toThrow(/no restoration/);
++  expect(getSessionEntry(scope)).toEqual(entry);
++  expect(window()).toEqual(expectedWindow);
++});
 +
-+  it("preserves current window clocks after transcript progress during an ordinary metadata callback", async () => {
++it.each(["admission", "conversation", "shape", "generation"])(
++  "refuses unguarded window recovery: %s",
++  async (reason) => {
 +    const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
 +    const scope = { ...databaseOptions, sessionKey: "agent:main:main" };
 +    await upsertSessionEntry({
@@ -1557,137 +1643,86 @@ index 45880ff..6281ad6 100644
 +      entry: { sessionId: "existing", lifecycleRevision: "same", updatedAt: 100 },
 +    });
 +    const database = openOpenClawAgentDatabase(databaseOptions);
-+    const window = () =>
-+      database.db.prepare("SELECT * FROM session_windows WHERE session_id = ?").get("existing")!;
-+    let expectedWindow = window();
-+    await patchSessionEntry({
-+      ...scope,
-+      preserveActivity: true,
-+      preserveConversation: true,
-+      preserveWindowActivity: true,
-+      update: () => {
-+        const appended = appendTranscriptMessageSync(
-+          { ...scope, sessionId: "existing" },
-+          { message: { content: "Synthetic new history", role: "user" }, cwd: tempDir },
-+        );
-+        expect(appended.ok).toBe(true);
-+        expectedWindow = window();
-+        expect(expectedWindow.updated_at).not.toBe(100);
-+        expect(expectedWindow.transcript_observed_at).toBe(100);
-+        return { modelOverrideSource: "default" };
-+      },
++    const rows = () => ({
++      nodes: database.db.prepare("SELECT * FROM session_nodes").all(),
++      windows: database.db.prepare("SELECT * FROM session_windows").all(),
 +    });
-+    expect(getSessionEntry(scope)!.updatedAt).toBe(100);
-+    expect(window()).toEqual(expectedWindow);
-+    const entry = getSessionEntry(scope);
++    const before = rows();
 +    await expect(
 +      patchSessionEntry({
 +        ...scope,
-+        preserveConversation: true,
-+        preserveWindowActivity: true,
-+        restoreWindowActivity: { updatedAt: 10, transcriptObservedAt: null },
-+        assertCommitAllowed: () => {},
-+        update: () => ({ modelOverrideSource: "user" }),
-+      }),
-+    ).rejects.toThrow(/no restoration/);
-+    expect(getSessionEntry(scope)).toEqual(entry);
-+    expect(window()).toEqual(expectedWindow);
-+  });
-+
-+  it.each(["admission", "conversation", "shape", "generation"])(
-+    "refuses unguarded window recovery: %s",
-+    async (reason) => {
-+      const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
-+      const scope = { ...databaseOptions, sessionKey: "agent:main:main" };
-+      await upsertSessionEntry({
-+        ...scope,
-+        entry: { sessionId: "existing", lifecycleRevision: "same", updatedAt: 100 },
-+      });
-+      const database = openOpenClawAgentDatabase(databaseOptions);
-+      const rows = () => ({
-+        nodes: database.db.prepare("SELECT * FROM session_nodes").all(),
-+        windows: database.db.prepare("SELECT * FROM session_windows").all(),
-+      });
-+      const before = rows();
-+      await expect(
-+        patchSessionEntry({
-+          ...scope,
-+          preserveConversation: reason !== "conversation",
-+          replaceEntry: true,
-+          restoreWindowActivity: {
-+            updatedAt: reason === "shape" ? -1 : 20,
-+            transcriptObservedAt: null,
-+          },
-+          ...(reason !== "admission" ? { assertCommitAllowed: () => {} } : {}),
-+          update: (current) => ({
-+            ...current,
-+            updatedAt: 10,
-+            ...(reason === "generation" ? { lifecycleRevision: "successor" } : {}),
-+          }),
-+        }),
-+      ).rejects.toThrow();
-+      expect(rows()).toEqual(before);
-+    },
-+  );
-+
-+  it.each(["generation", "identity", "route", "title", "new-row"])(
-+    "refuses conversation preservation for %s changes",
-+    async (change) => {
-+      const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
-+      const scope = { ...databaseOptions, sessionKey: "agent:main:reef:group:room" };
-+      const delivery = normalizeSessionDeliveryState({
-+        context: { channel: "reef", accountId: "default", to: "group:room" },
-+      });
-+      await upsertSessionEntry({
-+        ...scope,
-+        entry: {
-+          sessionId: "existing",
-+          lifecycleRevision: "original",
-+          updatedAt: 100,
-+          chatType: "group",
-+          delivery,
-+          label: "Retained title",
++        preserveConversation: reason !== "conversation",
++        replaceEntry: true,
++        restoreWindowActivity: {
++          updatedAt: reason === "shape" ? -1 : 20,
++          transcriptObservedAt: null,
 +        },
-+      });
-+      const database = openOpenClawAgentDatabase(databaseOptions);
-+      const snapshot = () =>
-+        ["session_nodes", "session_windows", "conversations", "session_conversations"].map(
-+          (table) => database.db.prepare(`SELECT * FROM ${table}`).all(),
-+        );
-+      const before = snapshot();
-+      const entry = getSessionEntry(scope)!;
-+      const replacement = { ...entry, updatedAt: 10 };
-+      if (change === "generation") replacement.lifecycleRevision = "successor";
-+      if (change === "identity") replacement.sessionId = "successor";
-+      if (change === "title") replacement.label = "Changed title";
-+      if (change === "route")
-+        replacement.delivery = normalizeSessionDeliveryState({
-+          context: { channel: "reef", accountId: "default", to: "group:other" },
-+        });
-+      await expect(
-+        patchSessionEntry({
-+          ...scope,
-+          ...(change === "new-row"
-+            ? { sessionKey: "agent:main:missing", fallbackEntry: replacement }
-+            : {}),
-+          preserveConversation: true,
-+          replaceEntry: true,
-+          skipMaintenance: true,
-+          update: () => replacement,
++        ...(reason !== "admission" ? { assertCommitAllowed: () => {} } : {}),
++        update: (current) => ({
++          ...current,
++          updatedAt: 10,
++          ...(reason === "generation" ? { lifecycleRevision: "successor" } : {}),
 +        }),
-+      ).rejects.toThrow(/Conversation preservation/);
-+      expect(snapshot()).toEqual(before);
-+    },
-+  );
++      }),
++    ).rejects.toThrow();
++    expect(rows()).toEqual(before);
++  },
++);
 +
-   it.each(["policy", "conversation"] as const)(
-     "observes committed %s changes in async effect checks without host SQLite",
-     async (change) => {
++it.each(["generation", "identity", "route", "title", "new-row"])(
++  "refuses conversation preservation for %s changes",
++  async (change) => {
++    const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
++    const scope = { ...databaseOptions, sessionKey: "agent:main:reef:group:room" };
++    const delivery = normalizeSessionDeliveryState({
++      context: { channel: "reef", accountId: "default", to: "group:room" },
++    });
++    await upsertSessionEntry({
++      ...scope,
++      entry: {
++        sessionId: "existing",
++        lifecycleRevision: "original",
++        updatedAt: 100,
++        chatType: "group",
++        delivery,
++        label: "Retained title",
++      },
++    });
++    const database = openOpenClawAgentDatabase(databaseOptions);
++    const snapshot = () =>
++      ["session_nodes", "session_windows", "conversations", "session_conversations"].map((table) =>
++        database.db.prepare(`SELECT * FROM ${table}`).all(),
++      );
++    const before = snapshot();
++    const entry = getSessionEntry(scope)!;
++    const replacement = { ...entry, updatedAt: 10 };
++    if (change === "generation") replacement.lifecycleRevision = "successor";
++    if (change === "identity") replacement.sessionId = "successor";
++    if (change === "title") replacement.label = "Changed title";
++    if (change === "route")
++      replacement.delivery = normalizeSessionDeliveryState({
++        context: { channel: "reef", accountId: "default", to: "group:other" },
++      });
++    await expect(
++      patchSessionEntry({
++        ...scope,
++        ...(change === "new-row"
++          ? { sessionKey: "agent:main:missing", fallbackEntry: replacement }
++          : {}),
++        preserveConversation: true,
++        replaceEntry: true,
++        skipMaintenance: true,
++        update: () => replacement,
++      }),
++    ).rejects.toThrow(/Conversation preservation/);
++    expect(snapshot()).toEqual(before);
++  },
++);
 diff --git a/src/plugin-sdk/session-store-runtime.ts b/src/plugin-sdk/session-store-runtime.ts
-index 55d989b..50fadc4 100644
+index 6b0391b20..77cfe98f8 100644
 --- a/src/plugin-sdk/session-store-runtime.ts
 +++ b/src/plugin-sdk/session-store-runtime.ts
-@@ -102,6 +102,14 @@ type PatchSessionEntryParams = SessionStoreReadParams & {
+@@ -109,6 +109,14 @@ type PatchSessionEntryParams = SessionStoreReadParams & {
    fallbackEntry?: SessionEntry;
    maintenanceConfig?: ResolvedSessionMaintenanceConfigInput;
    preserveActivity?: boolean;
@@ -1702,7 +1737,7 @@ index 55d989b..50fadc4 100644
    requireWriteSuccess?: boolean;
    replaceEntry?: boolean;
    skipMaintenance?: boolean;
-@@ -113,7 +121,12 @@ export type { PreparedSessionSourceAssertion as SessionEntrySourceAuthority } fr
+@@ -120,7 +128,12 @@ export type { PreparedSessionSourceAssertion as SessionEntrySourceAuthority } fr
  
  export type PrepareSessionEntryPatchParams = Omit<
    PatchSessionEntryParams,
@@ -1716,22 +1751,22 @@ index 55d989b..50fadc4 100644
  > & {
    prepare: SessionStoreEntryPatch;
    authority?: SessionEntryPatchAuthority;
-@@ -363,6 +376,10 @@ export async function patchSessionEntry(
-           ? normalizeResolvedMaintenanceConfigInput(params.maintenanceConfig)
-           : undefined,
-       preserveActivity: params.preserveActivity,
-+      preserveConversation: params.preserveConversation,
-+      restoreWindowActivity: params.restoreWindowActivity,
-+      preserveWindowActivity: params.preserveWindowActivity,
-+      preservePrivateMetadata: params.preservePrivateMetadata,
-       requireWriteSuccess: params.requireWriteSuccess,
-       replaceEntry: params.replaceEntry,
-       skipMaintenance: params.skipMaintenance,
+@@ -498,6 +511,10 @@ function sessionEntryPatchFields(params: Omit<PatchSessionEntryParams, "update">
+         ? normalizeResolvedMaintenanceConfigInput(params.maintenanceConfig)
+         : undefined,
+     preserveActivity: params.preserveActivity,
++    preserveConversation: params.preserveConversation,
++    restoreWindowActivity: params.restoreWindowActivity,
++    preserveWindowActivity: params.preserveWindowActivity,
++    preservePrivateMetadata: params.preservePrivateMetadata,
+     requireWriteSuccess: params.requireWriteSuccess,
+     replaceEntry: params.replaceEntry,
+     skipMaintenance: params.skipMaintenance,
 diff --git a/src/plugin-sdk/state-paths.ts b/src/plugin-sdk/state-paths.ts
-index b6140d8..0e6bd21 100644
+index 61b8db6a4..f54848bc9 100644
 --- a/src/plugin-sdk/state-paths.ts
 +++ b/src/plugin-sdk/state-paths.ts
-@@ -15,3 +15,4 @@ export function resolveManagedResourceStateDir(): string {
+@@ -13,3 +13,4 @@ export function resolveManagedResourceStateDir(): string {
      ? resolveActivePluginInstallRoots().stateDir
      : resolveStateDir();
  }

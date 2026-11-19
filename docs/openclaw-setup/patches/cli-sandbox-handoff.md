@@ -1,7 +1,7 @@
 # CLI tools in the native OpenClaw sandbox
 
 Managed CLI turns call OpenClaw file and shell tools through its MCP bridge.
-Stable v2026.11.4 lacks the prepared sandbox at this boundary. This patch binds
+Stable v2026.11.5 lacks the prepared sandbox at this boundary. This patch binds
 the existing native workspace/sandbox owner to the host-only MCP grant and coding
 tool factory. The Gateway and CLI remain on the host; native Docker supplies
 file and shell containment. Existing exec/process handles, background completion,
@@ -45,7 +45,7 @@ Repeated labels, security summaries and checklist entries in the edited comment 
 | CLI/cron end-to-end proof gap | Keep open until locally qualified. Upstream explicitly did not run live CLI or cron. Use an actual prepared Gateway and CLI protocol route for direct/nested tool execution, then real configured Claude qualification where required. For cron/delegated paths, first check stable admission: a deliberate native sandbox-CLI rejection must remain a refusal unless changing it is explicitly within scope. Do not claim this patch makes a rejected path work. |
 | OpenShell service and Windows MXC process-container proof absent | Disclose as platform validation limits, not proof of a Docker failure. Test shared changed backend/bridge contracts. Do not advertise those platforms as installed-qualified from a Linux filesystem or stubbed OpenShell control-plane run. |
 | Automated stored-data/model migration warning in intermediate review | Dismiss as a false positive for this patch's transient callback/capability fields. No changed on-disk format is present in the reviewed upstream diff. Preserve existing jobs/configuration through behavior tests; do not invent a schema migration. If the actual port adds persisted fields, reassess. |
-| Current-main merge conflict / fresh integrated review | Translate to our actual target: port against exact stable plus the accepted 35-patch composition, not an unrelated current-main merge. Preserve stable ownership APIs and all prior overlay behavior. Strict full composition, source/export review, relevant runtime/test types and installed proofs remain mandatory. |
+| Current-main merge conflict / fresh integrated review | Translate to our actual target: port against exact stable plus the accepted patch composition, not an unrelated current-main merge. Preserve stable ownership APIs and all prior overlay behavior. Strict full composition, source/export review, relevant runtime/test types and installed proofs remain mandatory. |
 | Upstream security-sensitive approval and review bot commands | Informational upstream workflow only. Do not post commands, request upstream merges, or use upstream bot status as local authorization. Current requester approval applies to the one handoff patch. |
 | Labels, numeric review ratings and earlier `needs proof` status | Historical summaries, not extra requirements. Their concrete defect/proof content is covered above. The latest review accepts scoped production-boundary evidence but still rejects the two removal regressions. |
 
@@ -58,8 +58,21 @@ These are derived from the exact target APIs, not new upstream feature requests.
 3. **Reuse current mutation authority.** Stable `src/gateway/tool-resolution-authority.ts` distinguishes preparation cancellation from invocation lifetime. Carry the exact invocation assertion rather than a one-time config/owner check or captured request abort alone. Stable `src/infra/fs-safe-remove.ts:106` already supports the required removal callback and its own path pinning.
 4. **Preserve the current grant/Code Mode path.** The existing Claude Code Mode patch adds host skill readers, exact grant fields and single before-tool-hook preparation. New sandbox plumbing must not spread away tool metadata, bypass the native preparer, add a second hook, resurrect a stale cached tool, or widen `toolsAllow`. Direct and nested calls must reach the same sandbox-bound tools and current authority.
 5. **Preserve backend preparation cleanup.** `src/agents/cli-runner/prepare.ts` uses `sequenceCliCleanups`, `cleanupPreparedResources`, and a preparation-failure cleanup catch. Integrate the owner into that existing chain, including failures before grant minting or backend preparation finishes. Do not let a later cleanup assignment overwrite sandbox disposal.
-6. **Do not broaden admission.** Native delegated CLI and cron sandbox admission checks are separate from this missing context handoff. Existing approved removals and the remaining 35 patch behaviors stay accepted. Native refusal remains truthful where that caller cannot reach the supported runner; Phase 2 remains untouched.
+6. **Do not broaden admission.** Native delegated CLI and cron sandbox admission checks are separate from this missing context handoff. Existing approved removals and the remaining retained patch behaviors stay accepted. Native refusal remains truthful where that caller cannot reach the supported runner.
 7. **Keep builtin compatibility while failing closed for unmarked bridges.** Changes to shared bridge interfaces touch Docker/Podman, remote shell, OpenShell and MXC even though the configured backend is Docker. Preserve existing root/path/rename/removal semantics and wrapper capability propagation. A minimal adapter is preferable to replacing native implementations.
+
+## Native 11.5 adaptation
+
+The port follows the native combined write/create operation, which now creates
+parent directories itself. It passes the same captured assertion through that
+operation rather than restoring a separate mkdir stage. The remote shell handle
+type now lives with its bridge. Prepared sandbox custody still stays on the
+host and is released through the native CLI resource stack.
+
+The test-only host bridge now checks the callback after parent preparation and
+immediately before each filesystem effect. Its dedicated regression is registered
+with the native agents-support project. This fixture behavior does not establish
+installed Docker containment.
 
 ## Qualification and retirement
 
