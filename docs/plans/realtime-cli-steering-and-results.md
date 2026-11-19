@@ -105,15 +105,13 @@ Tests qualify the resulting candidate without silently expanding its scope.
 | `talk-conversation-progress` | **Keep** | Native instructions still delegate reasoning and broad follow-ups, and the runner lacks the progress callback. Preserve conversational reasoning during research, silent user-facing progress, and the existing guards against progress/steering after transport retirement. This is separate from the new runtime-selection fix. |
 | `facetime-talk-client` | **Keep** | 11.5's FaceTime changes do not add shared Talk mode, the carrier session API, shared result/steering ownership, or our helper packaging. Preserve those integrations, inbound-call restriction, audio startup and accepted-work lifetime. Port to the changed native call APIs; do not restore obsolete upstream types or duplicate the new native greeting logic. |
 | `facetime-native/call-lifecycle` | **Keep** | This patches the separately pinned native helper, not OpenClaw. Updating OpenClaw does not replace its verified-muted answer acknowledgment or all-alias closure checks. Keep its separate source pin and compiled regressions. |
-| `harness-tool-work-owner` | **Keep; shared dependency** | Native 11.5 still executes bound callbacks without capturing their current async work owner. Keep attempt ownership for reused transports and prepared tools. This affects regular turns too; do not expand it into a voice-specific authority mechanism. |
-| `untrusted-agent-results` | **Keep; shared dependency** | Native completion metadata is not the configured source-agent trust policy. 11.5 still lacks `tools.agentToAgent.untrustedAgents` and its history/send/list projections. Keep the existing boundary for reader findings; do not redesign it as part of steering. |
 
 Add only `talk-native-agent-runtime-consult.patch` for the repair described
 above. Do not revive the held implementation in PR #347, the removed
 `talk-agent-parity` patch, or test-only overlays retired in Phase 1. Companion
 provider and delivery-policy patches have a separate private table, with the
-same explicit keep/remove decisions. Other patch categories are not redesigned
-in this realtime proposal.
+same explicit keep/remove decisions. Only realtime patches belong in this proposal. Other patch categories remain
+unchanged apart from required compatibility with the upgraded baseline.
 
 #### Acceptance
 
@@ -132,8 +130,7 @@ report physical device acceptance separately.
 explicit patch disposition before implementation. This is that review plan;
 implementation remains paused pending approval of the completed scope.
 
-Code inspection is complete for the listed realtime patches and their shared
-dependencies. The recommendations are specific; no removal, port, runtime test
+Code inspection is complete for the listed realtime patches. The recommendations are specific; no removal, port, runtime test
 or deployment has been performed. Runtime qualification may expose a new gap,
 which must be reported rather than silently enlarging the patch.
 
@@ -158,7 +155,7 @@ Inspected current production patch hunks and their 11.4-to-11.5 counterparts:
 - [Delegation controller](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/openai/realtime-quicksilver-delegation-controller.ts): native acknowledgment, steering error handling and pending-input behavior.
 - [Control classifier](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/talk/agent-run-control-shared.ts), [instructions](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/openai/realtime-quicksilver-instructions.ts) and [consult runner](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/talk/agent-consult-runtime.ts): retained policy/progress gaps.
 - [FaceTime driver](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/facetime/src/talk-driver.ts) and [separate native helper contract](../openclaw-setup/patches/facetime-native/README.md).
-- [Bound tools](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/agents/harness/host-bound-tool.ts), [host capabilities](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/agents/harness/host-capability.ts) and [native CLI history](https://github.com/openclaw/openclaw/blob/v2026.11.5/docs/gateway/cli-backends.md).
+- [Native CLI history](https://github.com/openclaw/openclaw/blob/v2026.11.5/docs/gateway/cli-backends.md): conversation updates on native CLI resume.
 
 Runtime searches found only the removed helper's definition, no caller. The
 private companion records provider-specific evidence without publishing it here.
