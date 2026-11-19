@@ -141,7 +141,7 @@
     "src/agents/embedded-agent-runner/compact.hooks.test.ts": "infra",
     "extensions/anthropic/cli-shared.test.ts": "extension-providers",
     "src/agents/cli-runner.spawn.test.ts": "agents-core",
-    "src/agents/harness/tool-surface-bridge.test.ts": "agents-support",
+    "src/agents/harness/tool-surface-bridge.test.ts": "unit-fast-isolated",
     "src/agents/code-mode.config.test.ts": "unit-fast",
     "src/agents/embedded-agent-runner/terminal-tool-failure.test.ts": "unit-fast",
     "src/agents/sessions/tools/tool-definition-wrapper.test.ts": "unit-fast",
