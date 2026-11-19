@@ -52,247 +52,128 @@ not complete this proposal.
 
 #### Route voice through the normal agent command
 
-One proposed patch, `talk-native-agent-runtime-consult.patch`, connects Gateway
-Talk consultations to the authenticated agent-command entrypoint. That command
-selects the session's configured runtime and its existing tools. Voice supplies
-the request, caller identity, session and cancellation signal. It does not
-choose a different model, create an API credential requirement, or grant extra
-tool access.
+One new patch, `talk-native-agent-runtime-consult.patch`, adapts upstream
+[PR #199379](https://github.com/openclaw/openclaw/pull/199379) to the combined
+candidate. It will:
 
-The patch covers routing, use of native steering, and consuming the command's
-settled result as one coherent Talk repair. It includes the necessary propagation
-of permissions, workspace/session bindings, and internal reply metadata. Any
-shared helper changes must preserve ordinary text behavior and the serialized
-reply format. Talk's configured thinking preference may normalize to a supported
-value without rewriting the chat preference or relaxing explicit text-command
-validation. This is not a promise that every changed file is voice-only.
+- Start voice work through the normal authenticated agent command, retaining
+  the chat's configured runtime, caller permissions, workspace and sandbox.
+- Send refinements through the native controller for the same logical task.
+  Do not cancel and restart work to imitate steering.
+- Return the command's settled answer through Talk's existing completion owner,
+  including native yield/resume and session changes during compaction. Preserve
+  internal reply metadata; reject partial failures and stale calls.
+- Preserve the existing nonfatal response for a confirmed unaccepted follow-up.
+  No separate queue, replay mechanism, delivery service or plugin-scope bypass.
 
-FaceTime already calls the shared Gateway Talk consultation runner through its
-carrier integration. Preserve that route and its authenticated call ownership.
-Do not broaden generic plugin voice bridges to obtain access to the agent.
+FaceTime already uses our shared Gateway Talk runner and must pass the same
+acceptance scenario. Generic plugin voice bridges remain unchanged. Necessary
+shared-helper changes must preserve ordinary text behavior, stored preferences
+and the serialized reply format. Talk's machine-selected thinking preference
+may normalize to a supported value without relaxing explicit text validation.
 
-#### Keep conversation, steering and completion native
+Use the PR's fixes for CLI steering and results lost across session changes.
+Its remaining fresh-install and existing-state acceptance gaps become our
+release checks; its reported successes are not proof for our candidate.
 
-Conversation and status questions remain available while tools run. A refinement
-such as “only compare the two cheaper options” goes to OpenClaw's active-task
-control path. It must reach that logical task once, with its current permissions.
-Cancellation followed by a fresh request is not an acceptable imitation of
-steering. If the task finishes during the refinement, use the native outcome
-and explain accurately whether the input was accepted.
+#### Existing patches: proposed disposition
 
-Child research results return through OpenClaw's normal parent continuation.
-Talk consumes the final visible answer belonging to the current consultation
-and presents it once, without another user prompt. OpenClaw retains ownership
-of transcripts, queues, cancellation and result delivery. No new polling loop,
-replay queue, transcript conversion or custom completion injection is proposed.
+These decisions come from inspecting the current patch bodies and their touched
+upstream files at 11.4 and 11.5. **Keep** means preserve the behavior while porting
+it to native 11.5 interfaces. **Shrink** identifies specific hunks to remove.
+Tests still qualify the resulting candidate; they are not a substitute for
+choosing the patch scope now.
 
-“Same task” does not mean “one subprocess forever.” Native CLI yield can end a
-subprocess and resume the saved CLI session for a child-completion turn. Native
-compaction can also advance session identity. The voice result must follow that
-authorized continuation, while rejecting stale results from replaced calls.
+| Patch | Decision | What stays or goes, and why |
+| --- | --- | --- |
+| `shared-conversation-context` | **Remove** | Its remaining production change only exports `readSessionConversationContext`. No runtime caller remains in the composed source or either repository. Native CLI history already supplies conversation updates. Delete the unused helper and its patch registration; preserve native cross-mode history tests. The neighboring patch document describes an older caller that is no longer present. |
+| `talk-request-recovery` | **Shrink** | Remove the hunk that suppresses the launch acknowledgment. 11.5 replaces “I'll check” with a provisional acknowledgment that explicitly does not claim admission or progress. Keep the status-question recognition, correction of overly broad “also” follow-ups, displaced-input feedback, and nonfatal handling of confirmed unaccepted input. Those are absent upstream. Adapt the latter to the native controller used by the new Talk patch. |
+| `talk-overlap-recovery` | **Keep** | 11.5 still revokes the original answer and fails the voice connection when steering throws. Keep the narrow nonfatal treatment of confirmed unsupported steering. This protects the running task and call, including an unsupported backup runtime; it does not add steering capability to that runtime. |
+| `talk-conversation-progress` | **Keep** | Native instructions still delegate reasoning and broad follow-ups, and the runner lacks the progress callback. Preserve conversational reasoning during research, silent user-facing progress, and the existing guards against progress/steering after transport retirement. This is separate from the new runtime-selection fix. |
+| `facetime-talk-client` | **Keep** | 11.5's FaceTime changes do not add shared Talk mode, the carrier session API, shared result/steering ownership, or our helper packaging. Preserve those integrations, inbound-call restriction, audio startup and accepted-work lifetime. Port to the changed native call APIs; do not restore obsolete upstream types or duplicate the new native greeting logic. |
+| `facetime-native/call-lifecycle` | **Keep** | This patches the separately pinned native helper, not OpenClaw. Updating OpenClaw does not replace its verified-muted answer acknowledgment or all-alias closure checks. Keep its separate source pin and compiled regressions. |
+| `harness-tool-work-owner` | **Keep; shared dependency** | Native 11.5 still executes bound callbacks without capturing their current async work owner. Keep attempt ownership for reused transports and prepared tools. This affects regular turns too; do not expand it into a voice-specific authority mechanism. |
+| `untrusted-agent-results` | **Keep; shared dependency** | Native completion metadata is not the configured source-agent trust policy. 11.5 still lacks `tools.agentToAgent.untrustedAgents` and its history/send/list projections. Keep the existing boundary for reader findings; do not redesign it as part of steering. |
 
-Explicit task cancellation prevents further task effects and speech. A normal
-hangup preserves the existing accepted-work policy: audio stops, accepted work
-may finish in the canonical conversation, and a later call must not inherit
-stale audio delivery rights. Partial output from a failed run is not presented
-as successful completion. Failures must leave the call able to accept new work.
+Add only `talk-native-agent-runtime-consult.patch` for the repair described
+above. Do not revive the held implementation in PR #347, the removed
+`talk-agent-parity` patch, or test-only overlays retired in Phase 1. Companion
+provider and delivery-policy patches have a separate private table, with the
+same explicit keep/remove decisions. Other patch categories are not redesigned
+in this realtime proposal.
 
-#### Review existing realtime patches together
+#### Acceptance
 
-The review includes every public and companion realtime patch, grouped by
-behavior. Applying cleanly is not a reason to keep one. Record a remove, shrink
-or retain decision per behavior against the exact 11.5 source. Preserve existing
-coverage when a native implementation replaces a patch.
-
-| Behavior and current public patches | Proposed treatment |
-| --- | --- |
-| Conversation and progress: `talk-conversation-progress` | Preserve live discussion and user-facing progress. Remove duplicate transport or ownership handling when native Talk passes the same tests. |
-| Busy requests and failure recovery: `talk-overlap-recovery`, `talk-request-recovery` | Test native controller handling first. Remove obsolete refusal/recovery branches; retain truthful unsupported-runtime responses where still needed. Do not retain a competing steering path. |
-| FaceTime: `facetime-talk-client` | Keep required call admission and audio transport. Reuse shared Talk controls and completion. Remove only behavior now supplied by native carrier support. |
-| Cross-mode history: `shared-conversation-context` | Compare native CLI history updates with each consumer. Remove proven duplication; do not extend the backup harness to achieve voice parity. |
-| Tool lifetime and result trust: `harness-tool-work-owner`, `untrusted-agent-results` | Check their interaction with native command execution. Preserve permission and untrusted-result boundaries. No new callback authority or plugin-scope bypass is part of this design. |
-| Companion voice integration | Review provider transport, retirement, channel-delivery policy and request-context handling in the private repository. Keep account configuration and operational details private. |
-
-These are audit directions, not claims that all listed patches are removable.
-The approved CLI tool/sandbox behavior remains a requirement. Unrelated memory,
-deployment and model-routing redesigns remain separate. The backup CLI keeps
-its supported capabilities; this proposal adds no backup-specific steering fix.
-
-#### Prove the complete user experience
-
-The main acceptance scenario is one continuous conversation: request research,
-keep discussing something else, refine the research, then receive the corrected
-answer proactively. Run it with the configured subscription CLI and real tools
-under the existing sandbox and workspace restrictions. Test both a busy parent
-and a parent that yielded while its reader worked.
-
-| Qualification | Required outcome |
-| --- | --- |
-| Browser Talk and FaceTime | Correct answer arrives without a follow-up prompt; ordinary conversation continues during research. |
-| Active refinement | The same logical task receives the revision once. No cancellation/restart or duplicated external action. |
-| Child completion and compaction | Findings reach the right parent and the answer reaches the current call once, including a native session continuation. |
-| Races and failures | Completion racing steering, tool failure, CLI failure, startup refusal, Stop, hangup and reconnect leave truthful state and no stale speech. |
-| Permissions and tools | Current caller policy, approvals, workspace restrictions and shell sandbox hold for initial work, steering and resumed work. |
-| Existing data and text chat | Stored sessions, runtime selection, preferences and history survive the update. Ordinary chat, tool use and child completion keep working. |
-
-Recorded fixtures provide deterministic timing and external-write checks.
-Real subscription and voice-model qualification is also required. Synthetic
-audio or a saved speech file does not establish physical microphone, device or
-FaceTime acceptance; report that evidence separately.
+One continuous Browser Talk and FaceTime conversation must delegate research,
+remain conversational, accept a same-task refinement, and deliver the corrected
+answer proactively. Cover a busy parent, native yield/resume, compaction,
+completion racing steering, failure, Stop and hangup/reconnect. Keep current
+permissions, sandboxing, stored sessions and ordinary text behavior intact.
+Use deterministic recordings plus real subscription CLI and voice qualification;
+report physical device acceptance separately.
 
 ### Status
 
-**Approval:** Proposed. **Approval reference:** The requester asked for a
-specific Phase 2 proposal for review, after requesting a pause following Phase 1.
-The requester agreed to bundle the upgrade, patch removals and narrow patch in
-one proposal and plan. That scope is reflected here as one release candidate.
-Implementation approval for the completed design remains pending review.
+**Approval:** Proposed. **Approval reference:** The requester approved bundling
+11.5, patch removals and the narrow repair in one proposal, and requested this
+explicit patch disposition before implementation. This is that review plan;
+implementation remains paused pending approval of the completed scope.
 
-Source and upstream review research are complete enough to propose the design.
-No Phase 2 runtime has been changed or tested. PR #199379 is a draft, not an
-accepted upstream fix. Its latest review still requires fresh-install and
-existing-state acceptance. Patch removal decisions and end-to-end steering,
-child completion and physical voice acceptance remain unproved locally.
+Code inspection is complete for the listed realtime patches and their shared
+dependencies. The recommendations are specific; no removal, port, runtime test
+or deployment has been performed. Runtime qualification may expose a new gap,
+which must be reported rather than silently enlarging the patch.
 
 ## Agent section
 
 ### State
 
-Documentation-only proposal, based on public main
-`0e6b86208098fccf00d735161963c8deec6b8862`. The Phase 1 runtime baseline is
-OpenClaw 2026.11.4, commit `d843d6af39a42cd3c30084edbeabeece732fd93a`.
-This plan supersedes the deferred Phase 2 outline in
-[the upgrade plan](voice-consultation-through-agent-turn.md). It does not
-supersede Phase 1 release evidence or authorize reopening its retained output.
+Proposal only. Public base `fc295c9e8a0c2545181c62809783534c8f68a4e4`.
+Compared OpenClaw 11.4 `d843d6af39a42cd3c30084edbeabeece732fd93a` with 11.5
+`e13cf15ece9bbd969b7362927c315362c90c97ff`. Replaces the deferred Phase 2 outline
+in [the upgrade plan](voice-consultation-through-agent-turn.md).
 
 ### Scope and acceptance criteria
 
-Implement the Human section only after explicit approval. The production
-acceptance target is the configured subscription CLI. Do not replace it with an
-API-authenticated runner to pass tests. Preserve stock backup-runtime behavior
-and coordinate, without overlapping, the separate fallback-routing owner.
-
-Coverage must include active CLI steering and the native yield/resume path as
-separate cases. If native child continuation cannot satisfy proactive delivery,
-report that specific gap and revise the design before adding another patch.
-No new delivery service, queue, scope restoration or authority workaround is
-authorized by the proposed Talk patch.
+The Human section is the complete patch decision. Preserve subscription CLI
+access and containment. Backup routing stays separately owned.
 
 ### Architecture and decisions
 
-Evidence checked on 2026-11-18:
+Inspected current production patch hunks and their 11.4-to-11.5 counterparts:
 
-- [11.5 release notes](https://github.com/openclaw/openclaw/releases/tag/v2026.11.5)
-  identify relevant busy-session, Talk startup, child-result and CLI recovery
-  changes. They also announce a breaking session-control contract for harnesses
-  and plugin RPC handlers. Qualify affected integrations, not just compilation.
-- [11.5 Talk runtime source](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/gateway/talk/client-agent-runtime.ts)
-  still calls `runEmbeddedAgent`. The same bypass exists in the prepared 11.4
-  source. [Issue #161885](https://github.com/openclaw/openclaw/issues/161885)
-  contains an independent 11.5 reproduction; that report is not local proof.
-- [Native session admission](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/sessions/session-controller.admission.ts)
-  exists in 11.5 and is absent at that path in 11.4. Prefer the stable update to
-  backporting the controller infrastructure used by the proposed Talk repair.
-- [Official CLI documentation at 11.5](https://github.com/openclaw/openclaw/blob/v2026.11.5/docs/gateway/cli-backends.md)
-  documents per-model runtime selection, Gateway tools over MCP, conversation
-  updates and `sessions_yield` resumption. A resumed subprocess is not failure
-  or a reason to switch providers.
-- [PR #199379](https://github.com/openclaw/openclaw/pull/199379), reviewed head
-  `6f7f68c4092718ceec5ff99a0694cc20b6291e02`, is open and draft. Its implementation
-  uses `agentCommandFromGatewayIngress`, controller steering and the command's
-  settled result. It changes shared helpers as well as Talk, so ordinary-turn
-  regressions are mandatory. Pin the source used; do not follow a moving head.
-- [Earlier local PR #347](https://github.com/coletaylor788/puddles/pull/347)
-  remains held. It identified the command boundary but predates this controller
-  design and mixes runtime and test-infrastructure changes. Do not resume or
-  cherry-pick it wholesale. Compare useful regressions with the new design.
+- [Delegation controller](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/openai/realtime-quicksilver-delegation-controller.ts): acknowledgment replacement, fatal steering catch and pending-input behavior.
+- [Control classifier](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/talk/agent-run-control-shared.ts), [instructions](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/openai/realtime-quicksilver-instructions.ts) and [consult runner](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/talk/agent-consult-runtime.ts): retained policy/progress gaps.
+- [FaceTime driver](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/facetime/src/talk-driver.ts) and [separate native helper contract](../openclaw-setup/patches/facetime-native/README.md).
+- [Bound tools](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/agents/harness/host-bound-tool.ts), [host capabilities](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/agents/harness/host-capability.ts) and [native CLI history](https://github.com/openclaw/openclaw/blob/v2026.11.5/docs/gateway/cli-backends.md).
 
-The local FaceTime `src/gateway/talk/carrier-session.ts` calls
-`createTalkClientAgentConsultRunner`; this establishes a shared source path, not
-proof that the upstream Gateway-only patch already passes carrier acceptance.
-The private audit remains in its repository. No private operational material is
-copied into this public plan.
+Runtime searches found only the removed helper's definition, no caller. The
+private companion records provider-specific evidence without publishing it here.
 
 ### Implementation
 
-After approval, use a fresh paired feature workspace from current mains. First
-qualify 11.5 and record every patch's native equivalent or continuing need.
-Preserve behavior during mechanical compatibility changes. Any new behavior
-outside the named patch scope requires a revised decision before implementation.
-
-For the combined candidate, derive `talk-native-agent-runtime-consult.patch`
-from the pinned upstream proposal against 11.5. Preserve these bounds:
-
-1. Reuse authenticated Gateway command admission. Carry the original input and
-   caller authority once, with immediate revocation on abort.
-2. Resolve follow-up readiness from the exact native controller operation and
-   use its steering interface, not embedded-run registration or raw CLI stdin.
-3. Use command-owned workspace preparation, configured runtime selection and
-   per-run supported thinking preferences. Do not mutate stored preferences.
-4. Consume settled visible completion, preserving private reply metadata and
-   native session succession. Reject failed, aborted or replaced owners.
-5. Keep exact source and current-call checks through the relay's speech claim.
-   Preserve canonical transcript completion after normal transport detach.
-
-Keep the patch in the public repository, without account-specific routing.
-Companion changes are limited to necessary compatibility, qualification and
-approved realtime retirement decisions. Register retained and new regressions
-in the cumulative suite even when a patch is removed.
+After approval, use PR #199379 head `6f7f68c4092718ceec5ff99a0694cc20b6291e02`
+as the reference, not held PR #347. Port retained behavior to native interfaces;
+retain meaningful regressions independently of deleted patch registrations.
 
 ### Validation
 
-Before removing each patch, run its meaningful regressions against the native
-replacement on the complete composed runtime. A mock returning success does
-not establish CLI steering or proactive voice delivery.
-
-Address every substantive finding in the upstream review:
-
-| Finding or evidence limit | Local qualification |
-| --- | --- |
-| Earlier CLI follow-ups required embedded registration | Real admitted CLI operation accepts a refinement and retains caller/tool policy. |
-| Compaction changed the result's session owner | Exercise actual compaction and the composed Talk relay; require the authorized successor's answer once. Simulated callbacks alone are insufficient. |
-| Relay retained the old session registration | Include a native session transition through the real registration and speech claim. |
-| Incomplete CLI settlement could contain visible text | Failed and partial outcomes never claim successful final speech; the next request still works. |
-| Fresh-install and stored-state proof remains open upstream | Test clean state and supported existing state, including model/runtime bindings, preferences, history, Doctor and startup. |
-| Saved audio is not physical client proof | Separate real provider/tool evidence from browser microphone and FaceTime call acceptance. |
-
-The upstream review currently reports no remaining actionable code finding,
-but its acceptance gaps remain. Its reported CLI and locked-native speech proofs
-are supporting evidence only. Locked-native compatibility is relevant shared
-regression coverage, not a new local product or backup-parity commitment.
+No runtime tests for this documentation change. Qualify the combined candidate,
+including real CLI/voice, existing state and Doctor, ordinary chat, and the
+upstream review's steering, compaction/relay and partial-settlement findings.
 
 ### Rollout and rollback
 
-One combined candidate: 11.5, proven patch removals and the Talk repair. Use the
-installed `build`, `ci-dev` and `ci-prod` entrypoints, fresh paired mains,
-independent review, required source checks, full application suite, installed
-TEST and bounded read-only PROD checks. Yield after dispatch and resume from
-CI completion events. Verify exact terminal deployment receipts, source merge,
-queue closure and eligible cleanup. CI owns deployment and recovery.
-
-Native-baseline comparisons are local qualification stages, not an intermediate
-production release. Preserve the subscription CLI and the Phase 1 containment contract.
-No manual production restart, rollback, credential change or artifact copy is
-part of this proposal. For a failed candidate, CI recovers to its accepted
-baseline; it does not revert the architecture to an older harness.
+One candidate, installed `build`, `ci-dev`, `ci-prod`, independent review and
+normal CI gates. Yield after dispatch. CI owns deployment, recovery, exact merge
+and eligible cleanup. No manual production changes or older-harness rollback.
 
 ### Review log
 
-2026-11-18: Proposal authored after reading the pinned 11.4 source, relevant
-11.5 source and documentation, current public/private realtime patch documents,
-the held local patch summary, and PR #199379's latest review and changes.
-No local Phase 2 implementation, runtime qualification or independent candidate
-review is claimed. The document's local link, required section structure and
-whitespace have been checked. The cited upstream source, release and review
-pages were inspected. No runtime tests or CI dispatch apply to this docs-only change.
+2026-11-18: Source audit completed; decisions and document simplified for review.
+Local links, structure and whitespace checked. Runtime acceptance remains open.
 
 ### Checklist
 
-- [x] Record the user experience, native ownership and patch boundary.
-- [x] Check latest stable and upstream feedback.
-- [ ] Obtain approval for this specific design and patch scope.
-- [ ] Qualify native 11.5 behavior and identify redundant patches locally.
-- [ ] Complete realtime patch decisions and implement the bounded Talk fix.
-- [ ] Pass deterministic, real CLI, child-continuation and voice qualification.
-- [ ] Complete CI-owned production acceptance, exact merge and eligible cleanup.
-- [ ] Record physical Browser Talk and FaceTime acceptance separately.
+- [x] Inspect stable delta and choose patch dispositions.
+- [ ] Obtain approval, implement and qualify the combined candidate through CI.
