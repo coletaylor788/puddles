@@ -52,9 +52,10 @@ not complete this proposal.
 
 #### Route voice through the normal agent command
 
-One new patch, `talk-native-agent-runtime-consult.patch`, adapts upstream
-[PR #199379](https://github.com/openclaw/openclaw/pull/199379) to the combined
-candidate. It will:
+**Start from the existing implementation in upstream
+[PR #199379](https://github.com/openclaw/openclaw/pull/199379).** Port it to 11.5
+and our retained patches as `talk-native-agent-runtime-consult.patch`; do not
+reimplement its routing, steering or completion machinery. It will:
 
 - Start voice work through the normal authenticated agent command, retaining
   the chat's configured runtime, caller permissions, workspace and sandbox.
@@ -72,9 +73,22 @@ shared-helper changes must preserve ordinary text behavior, stored preferences
 and the serialized reply format. Talk's machine-selected thinking preference
 may normalize to a supported value without relaxing explicit text validation.
 
-Use the PR's fixes for CLI steering and results lost across session changes.
-Its remaining fresh-install and existing-state acceptance gaps become our
-release checks; its reported successes are not proof for our candidate.
+Keep the PR's already completed fixes for CLI steering, result ownership across
+compaction, relay registration after a session change, and rejection of partial
+failed completions. Its latest review reports no remaining actionable code
+finding. The open items are acceptance evidence, plus our integration work:
+
+| Work remaining | Specific requirement |
+| --- | --- |
+| **Open upstream: end-to-end proof** | Demonstrate a fresh installation and an upgrade from stable with real CLI tools and finalized speech. The author's saved-audio proof does not cover this matrix. |
+| **Open upstream: existing-data compatibility** | Preserve stored session identity, model/runtime selection, fallback settings, native locks where applicable, thinking preferences and history. Validate Doctor and startup. |
+| **Additional here: 11.5 and patch integration** | Port the PR's pinned implementation to the exact 11.5 tree, apply the keep/remove/shrink table, and preserve the existing permissions and sandbox. No blanket adoption of the held local PR #347. |
+| **Additional here: FaceTime** | Exercise the retained carrier integration through the same command and completion path. Upstream Gateway relay evidence does not establish our FaceTime behavior. |
+| **Additional here: complete asynchronous scenario** | Prove same-task refinement and proactive reader-result delivery with a busy or yielded parent, actual compaction, and concurrent conversation. Include failure, Stop and reconnect; no duplicate work or stale speech. |
+
+These are explicit implementation and qualification tasks, not authorization
+for another delivery or authority patch. A new defect outside the proposed
+scope returns to design review.
 
 #### Existing patches: proposed disposition
 
@@ -152,8 +166,9 @@ private companion records provider-specific evidence without publishing it here.
 
 ### Implementation
 
-After approval, use PR #199379 head `6f7f68c4092718ceec5ff99a0694cc20b6291e02`
-as the reference, not held PR #347. Port retained behavior to native interfaces;
+After approval, start from PR #199379 head `6f7f68c4092718ceec5ff99a0694cc20b6291e02`,
+not held PR #347. Resolve the open evidence gaps and additional integration
+items listed above. Port retained behavior to native interfaces;
 retain meaningful regressions independently of deleted patch registrations.
 
 ### Validation
