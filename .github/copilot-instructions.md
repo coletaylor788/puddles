@@ -91,6 +91,11 @@ and rollback. Its Puddles lifecycle section is the daily entrypoint;
 `packages/e2e/README.md` supplies the commands. Plan 039 records the delivery
 infrastructure and its historical acceptance, not additional approval gates.
 
+For an OpenClaw version upgrade, also read the
+[`openclaw-upgrades`](skills/openclaw-upgrades/SKILL.md) sub-skill before planning
+or changing pins. It covers upstream compatibility, patch retirement, and the
+browser image refresh that must accompany the upgrade.
+
 Documentation-only changes use the skill's short documentation path, not the
 feature lifecycle. Check the changed documents and relevant links or contracts;
 do not run the cumulative pool, start DEV or TEST, or build, rehearse, or deploy

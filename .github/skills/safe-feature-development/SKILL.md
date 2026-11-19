@@ -19,6 +19,11 @@ runtime configuration, plugins, integrations, and deployment automation. Follow
 more specific repository instructions as additional constraints. Never weaken a
 global safety or publication boundary.
 
+For an OpenClaw version upgrade, also follow
+[openclaw-upgrades](../openclaw-upgrades/SKILL.md) before planning or changing
+pins. That sub-skill adds upgrade checks, including refreshing the browser image;
+this skill continues to own approval, validation, release, and cleanup.
+
 ## Documentation-only path
 
 Classify the diff before starting validation. Changes limited to human-facing
