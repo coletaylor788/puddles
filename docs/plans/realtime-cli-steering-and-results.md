@@ -67,8 +67,9 @@ reimplement its routing, steering or completion machinery. It will:
 - Use the existing realtime integration for request classification and dispatch.
   No custom follow-up classifier, queue, replay mechanism or delivery service.
 
-FaceTime already uses our shared Gateway Talk runner and must pass the same
-acceptance scenario. Generic plugin voice bridges remain unchanged. Necessary
+FaceTime will attach to the configured main session using existing native
+interfaces and must pass the same acceptance scenario. Its adaptation stays
+inside the FaceTime extension; it adds no Gateway or SDK entrypoint. Necessary
 shared-helper changes must preserve ordinary text behavior, stored preferences
 and the serialized reply format. Talk's machine-selected thinking preference
 may normalize to a supported value without relaxing explicit text validation.
@@ -103,7 +104,7 @@ Tests qualify the resulting candidate without silently expanding its scope.
 | `talk-request-recovery` | **Remove** | Use native realtime request classification, dispatch, acknowledgment and follow-up handling. Drop the entire patch, including custom status patterns, “also” classification, displaced-input messages and unaccepted-input handling. 11.5 fixes the misleading acknowledgment; the other removals deliberately choose stock behavior rather than claiming upstream equivalence. |
 | `talk-overlap-recovery` | **Remove** | Use native steering success and failure handling. The supported CLI path must pass qualification; actual failures should surface normally. Remove the special nonfatal fallback for unsupported steering. |
 | `talk-conversation-progress` | **Remove** | Its custom conversation policy and silent progress callbacks are not required for CLI routing, native steering or proactive final answers. Use native Talk behavior and supported instructions instead. Remove the entire patch, including its added hangup/steering guards; qualify those races against native behavior without carrying the hunks forward. |
-| `facetime-talk-client` | **Keep** | 11.5's FaceTime changes do not add shared Talk mode, the carrier session API, shared result/steering ownership, or our helper packaging. Preserve those integrations, inbound-call restriction, audio startup and accepted-work lifetime. Port to the changed native call APIs; do not restore obsolete upstream types or duplicate the new native greeting logic. |
+| `facetime-talk-client` | **Change** | Replace the existing patch with changes confined to the FaceTime extension. Attach calls to the configured main session through existing native interfaces. Remove the added Gateway carrier API, SDK, plugin-loader and shared Talk runtime hunks. Preserve authenticated call admission and native task ownership; do not recreate steering or result delivery in the extension. |
 | `facetime-native/call-lifecycle` | **Keep** | This patches the separately pinned native helper, not OpenClaw. Updating OpenClaw does not replace its verified-muted answer acknowledgment or all-alias closure checks. Keep its separate source pin and compiled regressions. |
 
 Add only `talk-native-agent-runtime-consult.patch` for the repair described
@@ -125,20 +126,22 @@ report physical device acceptance separately.
 
 ### Status
 
-**Approval:** Proposed. **Approval reference:** The requester approved bundling
-11.5, patch removals and the narrow repair in one proposal, and requested this
-explicit patch disposition before implementation. This is that review plan;
-implementation remains paused pending approval of the completed scope.
+**Approval:** Production approved. **Approval reference:** On 2026-11-18 the
+requester said: “mark it change and adapt it to be a facetime extension change
+only that has it attach to main session. Then design is approved to push
+implement and ship.” This approves the combined 11.5 upgrade, four removals,
+upstream-based Talk repair and extension-only FaceTime adaptation through CI,
+source merge and eligible cleanup. No new FaceTime Gateway entrypoint is allowed.
 
-Code inspection is complete for the listed realtime patches. The recommendations are specific; no removal, port, runtime test
-or deployment has been performed. Runtime qualification may expose a new gap,
-which must be reported rather than silently enlarging the patch.
+Implementation is starting from refreshed paired mains. The retained reviewer
+is checking existing native interfaces for the FaceTime adaptation. Tests and
+release acceptance remain outstanding; production is unchanged.
 
 ## Agent section
 
 ### State
 
-Proposal only. Public base `fc295c9e8a0c2545181c62809783534c8f68a4e4`.
+Production-approved implementation. Public base `fc295c9e8a0c2545181c62809783534c8f68a4e4`.
 Compared OpenClaw 11.4 `d843d6af39a42cd3c30084edbeabeece732fd93a` with 11.5
 `e13cf15ece9bbd969b7362927c315362c90c97ff`. Replaces the deferred Phase 2 outline
 in [the upgrade plan](voice-consultation-through-agent-turn.md).
@@ -162,7 +165,7 @@ private companion records provider-specific evidence without publishing it here.
 
 ### Implementation
 
-After approval, start from PR #199379 head `6f7f68c4092718ceec5ff99a0694cc20b6291e02`,
+Start from PR #199379 head `6f7f68c4092718ceec5ff99a0694cc20b6291e02`,
 not held PR #347. Resolve the open evidence gaps and additional integration
 items listed above. Port retained behavior to native interfaces;
 retain meaningful regressions independently of deleted patch registrations.
@@ -183,10 +186,12 @@ and eligible cleanup. No manual production changes or older-harness rollback.
 
 2026-11-18: Source audit completed; requester selected native dispatch and native steering failures. Propose full
 removal of request recovery, overlap recovery and conversation progress.
-Only the existing FaceTime patches remain in the public realtime keep list.
+The FaceTime integration is now Change with an extension-only boundary; the
+separate native helper remains Keep.
 Local links, structure and whitespace checked. Runtime acceptance remains open.
 
 ### Checklist
 
 - [x] Inspect stable delta and choose patch dispositions.
-- [ ] Obtain approval, implement and qualify the combined candidate through CI.
+- [x] Record production approval and the extension-only FaceTime boundary.
+- [ ] Implement and qualify the combined candidate through CI.
