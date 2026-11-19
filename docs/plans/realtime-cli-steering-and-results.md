@@ -64,8 +64,8 @@ reimplement its routing, steering or completion machinery. It will:
 - Return the command's settled answer through Talk's existing completion owner,
   including native yield/resume and session changes during compaction. Preserve
   internal reply metadata; reject partial failures and stale calls.
-- Preserve the existing nonfatal response for a confirmed unaccepted follow-up.
-  No separate queue, replay mechanism, delivery service or plugin-scope bypass.
+- Use the existing realtime integration for request classification and dispatch.
+  No custom follow-up classifier, queue, replay mechanism or delivery service.
 
 FaceTime already uses our shared Gateway Talk runner and must pass the same
 acceptance scenario. Generic plugin voice bridges remain unchanged. Necessary
@@ -82,7 +82,7 @@ finding. The open items are acceptance evidence, plus our integration work:
 | --- | --- |
 | **Open upstream: end-to-end proof** | Demonstrate a fresh installation and an upgrade from stable with real CLI tools and finalized speech. The author's saved-audio proof does not cover this matrix. |
 | **Open upstream: existing-data compatibility** | Preserve stored session identity, model/runtime selection, fallback settings, native locks where applicable, thinking preferences and history. Validate Doctor and startup. |
-| **Additional here: 11.5 and patch integration** | Port the PR's pinned implementation to the exact 11.5 tree, apply the keep/remove/shrink table, and preserve the existing permissions and sandbox. No blanket adoption of the held local PR #347. |
+| **Additional here: 11.5 and patch integration** | Port the PR's pinned implementation to the exact 11.5 tree, apply the patch table, and preserve the existing permissions and sandbox. No blanket adoption of the held local PR #347. |
 | **Additional here: FaceTime** | Exercise the retained carrier integration through the same command and completion path. Upstream Gateway relay evidence does not establish our FaceTime behavior. |
 | **Additional here: complete asynchronous scenario** | Prove same-task refinement and proactive reader-result delivery with a busy or yielded parent, actual compaction, and concurrent conversation. Include failure, Stop and reconnect; no duplicate work or stale speech. |
 
@@ -94,14 +94,13 @@ scope returns to design review.
 
 These decisions come from inspecting the current patch bodies and their touched
 upstream files at 11.4 and 11.5. **Keep** means preserve the behavior while porting
-it to native 11.5 interfaces. **Shrink** identifies specific hunks to remove.
-Tests still qualify the resulting candidate; they are not a substitute for
-choosing the patch scope now.
+it to native 11.5 interfaces. **Remove** means delete the whole patch.
+Tests qualify the resulting candidate without silently expanding its scope.
 
-| Patch | Decision | What stays or goes, and why |
+| Patch | Proposed treatment | Reason |
 | --- | --- | --- |
 | `shared-conversation-context` | **Remove** | Its remaining production change only exports `readSessionConversationContext`. No runtime caller remains in the composed source or either repository. Native CLI history already supplies conversation updates. Delete the unused helper and its patch registration; preserve native cross-mode history tests. The neighboring patch document describes an older caller that is no longer present. |
-| `talk-request-recovery` | **Shrink** | Remove the hunk that suppresses the launch acknowledgment. 11.5 replaces “I'll check” with a provisional acknowledgment that explicitly does not claim admission or progress. Keep the status-question recognition, correction of overly broad “also” follow-ups, displaced-input feedback, and nonfatal handling of confirmed unaccepted input. Those are absent upstream. Adapt the latter to the native controller used by the new Talk patch. |
+| `talk-request-recovery` | **Remove** | Use native realtime request classification, dispatch, acknowledgment and follow-up handling. Drop the entire patch, including custom status patterns, “also” classification, displaced-input messages and unaccepted-input handling. 11.5 fixes the misleading acknowledgment; the other removals deliberately choose stock behavior rather than claiming upstream equivalence. |
 | `talk-overlap-recovery` | **Keep** | 11.5 still revokes the original answer and fails the voice connection when steering throws. Keep the narrow nonfatal treatment of confirmed unsupported steering. This protects the running task and call, including an unsupported backup runtime; it does not add steering capability to that runtime. |
 | `talk-conversation-progress` | **Keep** | Native instructions still delegate reasoning and broad follow-ups, and the runner lacks the progress callback. Preserve conversational reasoning during research, silent user-facing progress, and the existing guards against progress/steering after transport retirement. This is separate from the new runtime-selection fix. |
 | `facetime-talk-client` | **Keep** | 11.5's FaceTime changes do not add shared Talk mode, the carrier session API, shared result/steering ownership, or our helper packaging. Preserve those integrations, inbound-call restriction, audio startup and accepted-work lifetime. Port to the changed native call APIs; do not restore obsolete upstream types or duplicate the new native greeting logic. |
@@ -156,7 +155,7 @@ access and containment. Backup routing stays separately owned.
 
 Inspected current production patch hunks and their 11.4-to-11.5 counterparts:
 
-- [Delegation controller](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/openai/realtime-quicksilver-delegation-controller.ts): acknowledgment replacement, fatal steering catch and pending-input behavior.
+- [Delegation controller](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/openai/realtime-quicksilver-delegation-controller.ts): native acknowledgment, steering error handling and pending-input behavior.
 - [Control classifier](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/talk/agent-run-control-shared.ts), [instructions](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/openai/realtime-quicksilver-instructions.ts) and [consult runner](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/talk/agent-consult-runtime.ts): retained policy/progress gaps.
 - [FaceTime driver](https://github.com/openclaw/openclaw/blob/v2026.11.5/extensions/facetime/src/talk-driver.ts) and [separate native helper contract](../openclaw-setup/patches/facetime-native/README.md).
 - [Bound tools](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/agents/harness/host-bound-tool.ts), [host capabilities](https://github.com/openclaw/openclaw/blob/v2026.11.5/src/agents/harness/host-capability.ts) and [native CLI history](https://github.com/openclaw/openclaw/blob/v2026.11.5/docs/gateway/cli-backends.md).
@@ -185,7 +184,8 @@ and eligible cleanup. No manual production changes or older-harness rollback.
 
 ### Review log
 
-2026-11-18: Source audit completed; decisions and document simplified for review.
+2026-11-18: Source audit completed; requester selected native dispatch and full removal of
+`talk-request-recovery`. Decisions and document simplified for review.
 Local links, structure and whitespace checked. Runtime acceptance remains open.
 
 ### Checklist
