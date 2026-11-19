@@ -33,6 +33,9 @@ does not change embedding request timeouts or claim model readiness.
 
 The 2026.11.5 relay returns its adapter before readiness settles. The local
 service owner retains that adapter and joins preparation before stopping it.
+The exact native diagnostic lease also records whether the gateway owns a live
+process or relay. Callers can distinguish that custody from an already-running
+external endpoint without wrapping the lease or losing its bounded diagnostics.
 Upstream's protections for late lease release, concurrent reacquisition and
 failed exit observation stay in place. Its current lineage and closing
 acknowledgment protocol owns group cleanup.

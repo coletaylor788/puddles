@@ -38,6 +38,59 @@ index a49ba46c6..7fcb2ecdc 100644
  }
  
  export function createLocalServiceLease(
+diff --git a/src/agents/provider-local-service.diagnostics.test.ts b/src/agents/provider-local-service.diagnostics.test.ts
+index 19b4e95b5..acdf55a68 100644
+--- a/src/agents/provider-local-service.diagnostics.test.ts
++++ b/src/agents/provider-local-service.diagnostics.test.ts
+@@ -29,7 +29,7 @@ describe("managed service failure diagnostics", () => {
+               env: { DIAGNOSTIC_SECRET: secret },
+               args: [
+                 "-e",
+-                `const http=require("node:http");http.createServer((req,res)=>{res.setHeader("content-type","application/json");if(req.url==="/v1/models"){res.end('{"data":[]}');return;}process.stderr.write(Array.from({length:100},(_,i)=>"old-line-"+i).join("\\n")+"\\n"+"x".repeat(9000)+"\\nmissing model /synthetic/missing.gguf "+process.env.DIAGNOSTIC_SECRET+"\\n",()=>{res.writeHead(500);res.end('{"error":{"message":"model failed to load","code":500}}');});}).listen(${port},"127.0.0.1");`,
++                `const http=require("node:http");http.createServer((req,res)=>{res.setHeader("content-type","application/json");if(req.url==="/v1/models"){res.end('{"data":[]}');return;}if(req.url==="/emit-diagnostic"){process.stderr.write(Array.from({length:100},(_,i)=>"old-line-"+i).join("\\n")+"\\n"+"x".repeat(9000)+"\\nmissing model /synthetic/missing.gguf "+process.env.DIAGNOSTIC_SECRET+"\\n",()=>res.end("ok"));return;}res.writeHead(500);res.end('{"error":{"message":"model failed to load","code":500}}');}).listen(${port},"127.0.0.1");`,
+               ],
+               readyTimeoutMs: 5000,
+             },
+@@ -50,11 +50,22 @@ describe("managed service failure diagnostics", () => {
+     if (!result.provider) {
+       throw new Error("Expected embedding provider");
+     }
++    const diagnosticLease = await options.acquireLocalService({
++      providerId: "tail-fixture",
++      baseUrl,
++    });
++    const diagnosticResponse = await fetch(`http://127.0.0.1:${port}/emit-diagnostic`);
++    await diagnosticResponse.body?.cancel();
++    await expect
++      .poll(() => getManagedProviderLocalServiceDiagnosticsForTest()[0]?.stderrTail ?? "")
++      .toContain("missing model /synthetic/missing.gguf");
+     let failure: unknown;
+     try {
+       await result.provider.embed("synthetic probe");
+     } catch (error) {
+       failure = error;
++    } finally {
++      diagnosticLease?.release();
+     }
+     if (!(failure instanceof Error)) {
+       throw new Error("Expected embedding request to fail", { cause: failure });
+diff --git a/src/agents/provider-local-service.readiness.test.ts b/src/agents/provider-local-service.readiness.test.ts
+index 27dc474b3..5455d1f72 100644
+--- a/src/agents/provider-local-service.readiness.test.ts
++++ b/src/agents/provider-local-service.readiness.test.ts
+@@ -45,10 +45,10 @@ describe("provider readiness wait", () => {
+       },
+     };
+     const coldLease = await acquire(target);
+-    expect(coldLease).toBeDefined();
++    expect(coldLease).toMatchObject({ owned: true });
+     phases.length = 0;
+     const warmLease = await acquire(target);
+-    expect(warmLease).toBeDefined();
++    expect(warmLease).toMatchObject({ owned: true });
+     coldLease?.release();
+     warmLease?.release();
+   });
 diff --git a/src/agents/provider-local-service.shutdown.test.ts b/src/agents/provider-local-service.shutdown.test.ts
 index 4aa35b14e..02f1c6309 100644
 --- a/src/agents/provider-local-service.shutdown.test.ts
@@ -319,7 +372,7 @@ index 4aa35b14e..02f1c6309 100644
      }
  
 diff --git a/src/agents/provider-local-service.test.ts b/src/agents/provider-local-service.test.ts
-index 916744969..7ca1b810e 100644
+index 916744969..ca6b1b3d0 100644
 --- a/src/agents/provider-local-service.test.ts
 +++ b/src/agents/provider-local-service.test.ts
 @@ -13,6 +13,7 @@ import { createTempDirTracker } from "../../test/helpers/temp-dir.js";
@@ -330,7 +383,21 @@ index 916744969..7ca1b810e 100644
  import { mintSecretSentinel } from "../secrets/sentinel.js";
  import { createDeferredCore } from "../shared/deferred.js";
  import { isPidAlive } from "../shared/pid-alive.js";
-@@ -584,6 +585,48 @@ describe("provider local service", () => {
+@@ -408,9 +409,12 @@ describe("provider local service", () => {
+ 
+     try {
+       const lease = await ensureModelProviderLocalService(model);
+-      expect(lease).toBeDefined();
++      expect(lease).toMatchObject({ owned: false });
+       expect(reconcile).toHaveBeenCalledOnce();
+       lease?.release();
++      const afterRelease = await fetch(`http://127.0.0.1:${port}`);
++      expect(afterRelease.ok).toBe(true);
++      await afterRelease.body?.cancel();
+       await expect.poll(() => socketClosed, { timeout: 1000, interval: 20 }).toBe(true);
+     } finally {
+       for (const socket of sockets) {
+@@ -584,6 +588,48 @@ describe("provider local service", () => {
      await verifyOneShotExit(target, script, servicePidPath, signal);
    });
  
@@ -380,7 +447,7 @@ index 916744969..7ca1b810e 100644
      const port = await fixture.claimPort();
      const servicePidPath = path.join(
 diff --git a/src/agents/provider-local-service.ts b/src/agents/provider-local-service.ts
-index 6f85dd529..c804fd956 100644
+index 6f85dd529..2ba1d6f32 100644
 --- a/src/agents/provider-local-service.ts
 +++ b/src/agents/provider-local-service.ts
 @@ -8,9 +8,11 @@ import {
@@ -420,7 +487,36 @@ index 6f85dd529..c804fd956 100644
    processStop?: Promise<void>;
    stopping?: { promise?: Promise<void> };
    starting?: Promise<void>;
-@@ -411,7 +420,7 @@ async function startAndWaitForLocalService(params: {
+@@ -221,7 +230,9 @@ async function acquireProviderLocalService(
+         !managed.processStop &&
+         !hasLocalServiceProcessExited(currentProcess.child)
+       ) {
+-        return createLocalServiceLease(release, managed.diagnostics, healthHeaders);
++        const lease = createLocalServiceLease(release, managed.diagnostics, healthHeaders);
++        lease.owned = hasManagedProcess(managed);
++        return lease;
+       }
+       if (!managed.starting) {
+         ownsStartup = true;
+@@ -252,13 +263,13 @@ async function acquireProviderLocalService(
+       ownsStartup = false;
+       assertCurrentServiceAcquisition(key, managed, signal);
+       assertAuthCurrent?.();
+-      return createLocalServiceLease(
++      const lease = createLocalServiceLease(
+         release,
+-        managed.process && !hasLocalServiceProcessExited(managed.process.child)
+-          ? managed.diagnostics
+-          : undefined,
++        hasManagedProcess(managed) ? managed.diagnostics : undefined,
+         healthHeaders,
+       );
++      lease.owned = hasManagedProcess(managed);
++      return lease;
+     } finally {
+       target.onReadinessWait?.(false);
+     }
+@@ -411,7 +422,7 @@ async function startAndWaitForLocalService(params: {
    if (healthy) {
      return;
    }
@@ -429,7 +525,7 @@ index 6f85dd529..c804fd956 100644
      log.info(`restarting unhealthy ${provider} local service`);
      await stopManagedProcess(managed, signal);
    }
-@@ -430,33 +439,69 @@ async function startAndWaitForLocalService(params: {
+@@ -430,33 +441,67 @@ async function startAndWaitForLocalService(params: {
    const preparedSpawn = prepareLocalServiceSpawn(service.command, service.args ?? [], {
      env: serviceEnv,
    });
@@ -481,9 +577,7 @@ index 6f85dd529..c804fd956 100644
 +    managed.relay = relay;
 +    managed.extinction = relay.waitForExtinction().then(() => {});
 +    void managed.extinction.catch(() => {});
-+    relay.onStderr((chunk) => {
-+      if (diagnostics.readyAt === undefined) captureStderr(chunk);
-+    });
++    relay.onStderr(captureStderr);
 +    relay.onExit(onExit);
 +    relay.onError((error) => log.warn(`local service supervision failed: ${error.message}`));
 +    await ready;

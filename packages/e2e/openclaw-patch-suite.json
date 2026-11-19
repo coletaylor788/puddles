@@ -2,6 +2,8 @@
   "openclawRef": "e13cf15ece9bbd969b7362927c315362c90c97ff",
   "testProjects": {
     "src/agents/provider-local-service.test.ts": "agents-core",
+    "src/agents/provider-local-service.readiness.test.ts": "unit-fast",
+    "src/agents/provider-local-service.diagnostics.test.ts": "unit-fast",
     "src/agents/provider-local-service.shutdown.test.ts": "agents-core",
     "src/process/supervisor/service-child-relay-host.test.ts": "process",
     "src/process/supervisor/adapters/child.service-lifecycle.test.ts": "process",
@@ -262,6 +264,8 @@
       "name": "managed-local-service-lifecycle",
       "tests": [
         "src/agents/provider-local-service.test.ts",
+        "src/agents/provider-local-service.readiness.test.ts",
+        "src/agents/provider-local-service.diagnostics.test.ts",
         "src/agents/provider-local-service.shutdown.test.ts",
         "src/process/supervisor/service-child-ownership.test.ts",
         "src/process/supervisor/service-child-relay-host.test.ts",
