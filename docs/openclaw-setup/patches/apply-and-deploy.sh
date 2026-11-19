@@ -24,19 +24,15 @@ PATCHES=(
   native-heartbeat-response
   stopped-state-migration-sdk
   core-declaration-portability
+  talk-native-agent-command
   facetime-talk-client
   harness-tool-work-owner
-  talk-overlap-recovery
-  talk-conversation-progress
-  shared-conversation-context
   wiki-get-mutation-metadata
   untrusted-agent-results
-  talk-request-recovery
   code-mode-additive-surface
   claude-code-mode-mcp
   compaction-memory-idle
   claude-native-agent-profiles
-  copilot-configured-mcp
   claude-configured-mcp
   cli-sandbox-handoff
 )

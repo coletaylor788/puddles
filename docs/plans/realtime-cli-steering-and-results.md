@@ -54,7 +54,7 @@ not complete this proposal.
 
 **Start from the existing implementation in upstream
 [PR #199379](https://github.com/openclaw/openclaw/pull/199379).** Port it to 11.5
-and our retained patches as `talk-native-agent-runtime-consult.patch`; do not
+and our retained patches as `talk-native-agent-command.patch`; do not
 reimplement its routing, steering or completion machinery. It will:
 
 - Start voice work through the normal authenticated agent command, retaining
@@ -107,7 +107,7 @@ Tests qualify the resulting candidate without silently expanding its scope.
 | `facetime-talk-client` | **Change** | Replace the existing patch with changes confined to the FaceTime extension. Attach calls to the configured main session through existing native interfaces. Remove the added Gateway carrier API, SDK, plugin-loader and shared Talk runtime hunks. Preserve authenticated call admission and native task ownership; do not recreate steering or result delivery in the extension. |
 | `facetime-native/call-lifecycle` | **Keep** | This patches the separately pinned native helper, not OpenClaw. Updating OpenClaw does not replace its verified-muted answer acknowledgment or all-alias closure checks. Keep its separate source pin and compiled regressions. |
 
-Add only `talk-native-agent-runtime-consult.patch` for the repair described
+Add only `talk-native-agent-command.patch` for the repair described
 above. Do not revive the held implementation in PR #347, the removed
 `talk-agent-parity` patch, or test-only overlays retired in Phase 1. Companion
 provider and delivery-policy patches have a separate private table, with the
@@ -133,9 +133,10 @@ implement and ship.” This approves the combined 11.5 upgrade, four removals,
 upstream-based Talk repair and extension-only FaceTime adaptation through CI,
 source merge and eligible cleanup. No new FaceTime Gateway entrypoint is allowed.
 
-Implementation is starting from refreshed paired mains. The retained reviewer
-is checking existing native interfaces for the FaceTime adaptation. Tests and
-release acceptance remain outstanding; production is unchanged.
+The extension-only FaceTime client is implemented and source-reviewed. Focused
+attachment and shutdown regressions pass. Compatibility work on the retained
+patches and combined qualification are in progress. No Phase 2 candidate has
+been submitted to CI; production is unchanged.
 
 ## Agent section
 
@@ -172,7 +173,8 @@ retain meaningful regressions independently of deleted patch registrations.
 
 ### Validation
 
-No runtime tests for this documentation change. Qualify the combined candidate,
+Focused FaceTime attachment tests and extension typechecking have passed.
+The full compatibility and installed acceptance gates remain pending. Qualify the combined candidate,
 including real CLI/voice, existing state and Doctor, ordinary chat, and the
 upstream review's steering, compaction/relay and partial-settlement findings.
 

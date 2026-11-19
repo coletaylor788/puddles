@@ -1,118 +1,55 @@
-# FaceTime as a shared Talk client
+# FaceTime as a native Talk client
 
-This patch targets OpenClaw 2026.11.3. Native Talk now supplies the permission
-handling previously maintained in `talk-agent-parity.patch`.
-FaceTime supplies call admission and audio while the Gateway owns the same
-conversation and agent behavior used by native Talk.
+This patch targets OpenClaw 2026.11.5 and changes only the FaceTime extension.
+The [approved design](../../plans/realtime-cli-steering-and-results.md) replaces
+its old custom Gateway carrier API with existing authenticated Talk methods.
 
-## Shared session
+## Session attachment
 
-Set `plugins.entries.facetime.config.realtime.mode` to `talk`. Configure the
-allowlisted owner and canonical session as usual. Provider, model, voice,
-instructions, reasoning, tools, and authorization come from native Talk.
-Independent provider, voice, instruction, and tool-policy overrides are rejected
-in shared mode. Shared Talk accepts inbound calls only: outbound tool discovery and dialing are blocked, and retained standalone dials are cancelled instead of adopted. Normalized Talk configuration can be parsed repeatedly without introducing standalone defaults. Existing standalone installations keep their current behavior.
+Set `plugins.entries.facetime.config.realtime.mode` to `talk`. The extension
+opens a normal Gateway client and calls `talk.session.create` with
+`gateway-relay`, `agent-consult`, and the configured main session. Native Talk
+owns provider selection, transcript storage, dispatch, steering and completion.
+The Gateway grants authority through its existing connection authentication and
+scope checks. FaceTime still admits only configured owner handles.
 
-The scoped `runtime.realtimeVoice.createSession` API binds an authenticated call
-to the existing Talk runners, session history, transcript writer, and task
-controls. Registry retirement, Gateway retirement, and call closure prevent new
-admission. Native asynchronous provider selection and launch validation also
-serve carrier readiness and call creation. The bridge retains steering and completion-ownership methods instead
-of reducing the native runner to a plain callback.
+Provider, model, voice, instructions and tool policy come from Talk. Independent
+FaceTime overrides are rejected in this mode. It remains inbound-only. Existing
+standalone configurations retain the published carrier behavior.
 
-## Call lifetime
+## Audio and call lifetime
 
-A normal hangup stops audio and detaches accepted work so it can finish in the
-canonical conversation. Task cancellation remains a separate native control.
-Explicit phrases such as “hang up” or “end this call” request the carrier's
-physical hangup; quoted, conditional, and negated phrases do not. Transport
-closure fences stale audio and new work while preserving final transcript flush.
+The extension forwards PCM audio through `talk.session.appendAudio`, consumes
+connection-owned `talk.event` output, and acknowledges provider marks after
+playback drains. Startup audio stays buffered until the call's media route is
+ready. Events from another relay or a closed call cannot play audio.
 
-The carrier captures the native voice database source for the call. Conversation
-writes use native per-operation source admission, and close retains its admitted
-writer through the final transcript flush. A replaced source or refused settlement
-surfaces failure while still tearing down the provider. Uncertain writes are not
-replayed. This follows the native browser lifecycle without adding a separate
-conversation store lock for the entire call.
+Normal hangup calls native close with `disposition: detach`, preserving accepted
+work in main. Explicit task cancellation remains native Talk behavior. The
+existing FaceTime tool handles delegated requests to end the physical call.
+There is no custom phrase classifier, steering queue, progress channel or replay.
 
-Provider teardown begins as soon as the carrier is revoked. Native audio suspension
-runs concurrently with shared session cleanup so persistence cannot keep playback
-running. Process-output suppression remains until physical hangup is confirmed.
+Suspension stops model audio immediately. Capture suppression remains until the
+native carrier has confirmed closure. Final close joins connection startup and
+teardown, including authentication and session-creation races. A failed media
+suspension still reaches the carrier safety handler.
 
-## Incoming audio startup
+## Native packaging
 
-The native companion needs an answered call before normal capture can find its
-active audio owner. The adapter answers with a verified muted uplink, starts
-capture, then waits for provider and route readiness before unmuting. Active
-call events cannot bypass the outstanding answer acknowledgement. Startup
-failure hangs up the carrier and verifies closure.
+The existing pinned helper package, verified capture launcher and streaming SoX
+input are retained. The capture launcher preserves the stable macOS audio-consent
+identity. The separate [native companion patch](facetime-native/README.md) retains
+its verified muted-answer and closure behavior. Neither requires an OpenClaw
+Gateway patch.
 
-Before process-output suppression starts, caller audio can reach the host
-speaker. Set host output volume to zero when local playback is unwanted. This host
-setting is separate from the microphone readiness gate and must be retained
-across output-device changes.
+## Qualification
 
-## Automatic helper recovery
+The cumulative suite retains FaceTime admission, native helper, audio, packaging
+and lifecycle coverage. New extension tests cover attachment to main, readiness,
+playback acknowledgements, stale events, detached work, startup/close races and
+failed suspension. Native Talk and the upstream-based command patch supply the
+agent routing and steering regressions.
 
-The helper supervisor starts the call apps and reconnects after app or Gateway
-exit. The injector owns a single timeout process and joins it when attachment
-finishes. Successful, failed, timed-out, and interrupted attempts release their
-output pipes and temporary authentication files before the next attempt.
-
-## Packaging and validation
-
-FaceTime is distributed separately from the OpenClaw package. Install or bundle
-the patched FaceTime source package with this host runtime. Installing the
-unmodified published plugin will not select this shared session path.
-
-The cumulative manifest covers the carrier's existing admission, audio,
-packaging, helper, lifecycle, and driver regressions, plus native session,
-runtime authority, runner properties, and initial-history propagation. Tests use
-synthetic providers and native helper fixtures. Physical account routing,
-helper/driver readiness, bidirectional audio, latency, and interruption still
-require target-host acceptance before enabling the carrier. Stable compatibility source review and focused native checks pass, including
-provider selection, readiness, persistence failure, physical source replacement,
-and final transcript cleanup. Core and extension runtime typechecks pass.
-Complete test typechecking, artifact composition and installed qualification
-remain release requirements. Local checks do not establish device readiness.
-
-The separate [native companion patches](facetime-native/README.md) cover shared
-answer acknowledgement and carrier closure. Puddles owns their pinned source and
-compiled regressions; native packaging and device acceptance remain separate.
-
-## Rollout and rollback
-
-For first-time adoption, stage the plugin disabled and owner-only until target
-acceptance. An upgrade preserves the installation's approved enablement and owner
-settings. Inherit later fixes through the native Talk owners. Use the maintained
-artifact pipeline for installation and rollback;
-restore the matching runtime and configuration together. Native helper changes
-have their own tracked rollback and must preserve pre-existing host settings.
-
-## Shared Talk readiness
-
-FaceTime preflight and call creation use the same host provider resolver in Talk mode.
-The check inherits Talk model precedence and rejects unsupported carrier routing
-without opening a voice session. Standalone FaceTime provider settings remain separate.
-
-## Durable audio permission identity
-
-Setup copies the unchanged, verified Developer ID capture helper to a stable
-per-user FaceTime audio directory. A narrow native launcher gives that helper
-responsibility for macOS audio consent, independently of Node. Process replacement
-preserves the PID, standard streams, and existing call-cleanup behavior. Preflight
-and normal capture use the same launcher. The private macOS responsibility API is
-a tested dependency; missing support fails setup explicitly.
-
-Installation serializes setup, stages and verifies files before replacement, and
-restores the prior files on a failed commit. Failed rollback preserves recovery
-files and the installation lock for inspection. A normal macOS consent grant and
-physical audio acceptance are still required. A successful process-tap check
-alone does not establish consent.
-
-## Streaming playback
-
-SoX must read the live PCM input until EOF. Its raw reader can otherwise infer a
-finite length from macOS socket metadata and truncate an ongoing conversation.
-The input length override applies to both initial and interruption replacement
-processes. This fixes truncation, not the separate physical audio acceptance gate.
+Installed acceptance must also prove real subscription CLI delegation, ongoing
+conversation, steering and proactive completion. Local fixtures do not establish
+physical call readiness. CI deploys and recovers the same qualified artifact.
