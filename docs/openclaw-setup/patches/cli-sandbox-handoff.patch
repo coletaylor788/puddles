@@ -1057,10 +1057,10 @@ index 000000000..0add308c0
 +  }
 +}
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 2d3d506bd..18784829b 100644
+index 82d5fc39d..ea4a565da 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
-@@ -126,6 +126,7 @@ import { claimPendingAgentQuestionAnswerFromCaller } from "../harness/gateway-qu
+@@ -127,6 +127,7 @@ import { claimPendingAgentQuestionAnswerFromCaller } from "../harness/gateway-qu
  import { withQuestionGateway } from "../harness/gateway-question.test-support.js";
  import { buildMediaTaskRuntimeContext } from "../media-generation-task-status.js";
  import { createAgentCleanupScope } from "../run-cleanup-timeout.js";
@@ -1068,7 +1068,7 @@ index 2d3d506bd..18784829b 100644
  import type { SandboxWorkspaceInfo } from "../sandbox/types.js";
  import {
    beginForegroundSessionMaintenance,
-@@ -138,6 +139,7 @@ import {
+@@ -139,6 +140,7 @@ import {
  } from "../test-helpers/model-routing-decision-e2e-fixtures.js";
  import { attachToolAllowlistIntersection } from "../tool-policy.js";
  import type { SystemAgentToolOptions } from "../tools/system-agent-tool.js";
@@ -1076,7 +1076,7 @@ index 2d3d506bd..18784829b 100644
  import { prepareCliBundleMcpCaptureAttempt, prepareCliBundleMcpConfig } from "./bundle-mcp.js";
  import { prepareClaudeCliSkillsPlugin } from "./claude-skills-plugin.js";
  import { finalizeCliContextEngineTurn } from "./cli-run-transcript.js";
-@@ -478,6 +480,99 @@ describe("prepareCliRunContext", () => {
+@@ -479,6 +481,99 @@ describe("prepareCliRunContext", () => {
      });
    });
  
@@ -2084,7 +2084,7 @@ index d53f333ab..86a155c52 100644
        try {
          const stats = await fs.stat(hostPath(filePath, cwd));
 diff --git a/src/gateway/mcp-grant-store.test.ts b/src/gateway/mcp-grant-store.test.ts
-index aa2eb7776..f4c6cf564 100644
+index 0b4a00299..4b1d09032 100644
 --- a/src/gateway/mcp-grant-store.test.ts
 +++ b/src/gateway/mcp-grant-store.test.ts
 @@ -5,6 +5,8 @@ import {
@@ -2097,7 +2097,7 @@ index aa2eb7776..f4c6cf564 100644
    clearRuntimeConfigSnapshot,
    setRuntimeConfigSnapshot,
 @@ -105,6 +107,37 @@ describe("mcp-grant-store", () => {
-     expect(resolveMcpLoopbackClientGrant(params)).toBeUndefined();
+     expect(resolveClient(params)).toBeUndefined();
    });
  
 +  it("keeps sandbox custody host-only and tied to the exact live capture", async () => {

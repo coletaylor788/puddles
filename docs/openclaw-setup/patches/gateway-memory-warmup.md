@@ -45,4 +45,9 @@ explicit files in this patch.
 
 No native warmupOnGatewayStart. Preserve native plugin-services startup before orphan scanning; existing managed embeddings warmup runs after both and before channel readiness. Do not restore the older parallel orphan scan.
 
+When warmup is disabled, channel preparation keeps the native pre-service
+scheduling order. Only an enabled warmup waits for services, publishes its
+lifetime owner, and gates actual channel startup on readiness. A close during
+service startup does not create an unowned warmup.
+
 Composition is qualified separately from installed runtime behavior. The registered regressions remain required.

@@ -19,6 +19,8 @@ so a restricted caller can repair the request without access to `agents_list`.
 `taskName` and `label` name a run; they do not select an agent profile. Setting
 `subagents.requireAgentId=false` explicitly opts into same-agent cron children.
 Normal interactive request defaults remain unchanged.
+Native requester-specific guidance stays in the tool description. The older
+static `agentId` field description is removed, matching the native 11.5 contract.
 
 ACP starts an external coding harness instead of a native OpenClaw child.
 A distinct configured ACP default remains a valid cron target. If the default

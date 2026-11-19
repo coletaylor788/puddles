@@ -743,27 +743,22 @@ index 138111096..9e82d2168 100644
  export function resolveSubagentSpawnTargetConfig(
    cfg: OpenClawConfig,
 diff --git a/src/agents/tools/sessions-spawn-tool.test.ts b/src/agents/tools/sessions-spawn-tool.test.ts
-index 360d5a436..9022012f8 100644
+index 360d5a436..39eea7186 100644
 --- a/src/agents/tools/sessions-spawn-tool.test.ts
 +++ b/src/agents/tools/sessions-spawn-tool.test.ts
-@@ -819,6 +819,16 @@ describe("sessions_spawn tool", () => {
+@@ -819,6 +819,11 @@ describe("sessions_spawn tool", () => {
        lightContext: true,
      };
      const tool = makeTool(structuredClone(caller));
 +    expect(tool.parameters).toMatchObject({
 +      properties: {
 +        taskName: { description: expect.stringContaining("does not select an agent profile") },
-+        agentId: {
-+          description: expect.stringContaining(
-+            "ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile",
-+          ),
-+        },
 +      },
 +    });
      const { result, token } = await captureSessionDecisionWork(() =>
        tool.execute("native", {
          ...request,
-@@ -955,9 +965,10 @@ describe("sessions_spawn tool", () => {
+@@ -955,9 +960,10 @@ describe("sessions_spawn tool", () => {
        "requester does not allow apply_patch",
      ],
    ] satisfies Array<[SpawnOptions, string]>)(
@@ -775,7 +770,7 @@ index 360d5a436..9022012f8 100644
        const result = await makeTool(policy).execute("acp-policy", {
          runtime: "acp",
          task: "inspect",
-@@ -968,7 +979,10 @@ describe("sessions_spawn tool", () => {
+@@ -968,7 +974,10 @@ describe("sessions_spawn tool", () => {
          role: "codex",
          error: expect.stringContaining(error),
        });
@@ -788,7 +783,7 @@ index 360d5a436..9022012f8 100644
    );
  
 diff --git a/src/agents/tools/sessions-spawn-tool.ts b/src/agents/tools/sessions-spawn-tool.ts
-index cc9e7a5b4..63aa5125a 100644
+index cc9e7a5b4..fdf7eef16 100644
 --- a/src/agents/tools/sessions-spawn-tool.ts
 +++ b/src/agents/tools/sessions-spawn-tool.ts
 @@ -18,12 +18,6 @@ import {
@@ -813,21 +808,7 @@ index cc9e7a5b4..63aa5125a 100644
        }),
      ),
      label: Type.Optional(
-@@ -158,7 +152,12 @@ function buildSessionsSpawnToolSchema(params: {
-       params.acpAvailable ? SESSIONS_SPAWN_RUNTIMES : (["subagent"] as const),
-       { description: 'Runtime; visible=true and managed worktrees require "subagent".' },
-     ),
--    agentId: Type.Optional(Type.String()),
-+    agentId: Type.Optional(
-+      Type.String({
-+        description:
-+          "Target agent profile. Native scheduled/cron callers require it by default. ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile; same-profile omission requires policy to allow it.",
-+      }),
-+    ),
-     model: Type.Optional(Type.String()),
-     runTimeoutSeconds: Type.Optional(
-       Type.Integer({
-@@ -527,26 +526,6 @@ export function createSessionsSpawnTool(
+@@ -527,26 +521,6 @@ export function createSessionsSpawnTool(
              }),
            });
          }
@@ -855,18 +836,10 @@ index cc9e7a5b4..63aa5125a 100644
            throw new Error("lightContext is only supported for runtime='subagent'.");
          }
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
-index 946c28afc..3417cf6a7 100644
+index 946c28afc..f7b0a16bf 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
-@@ -193,6 +193,7 @@
-       "inputSchema": {
-         "properties": {
-           "agentId": {
-+            "description": "Target agent profile. Native scheduled/cron callers require it by default. ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile; same-profile omission requires policy to allow it.",
-             "type": "string"
-           },
-           "attachAs": {
-@@ -398,7 +399,7 @@
+@@ -398,7 +398,7 @@
              "type": "string"
            },
            "taskName": {
@@ -876,18 +849,10 @@ index 946c28afc..3417cf6a7 100644
            },
            "thinking": {
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
-index 2f06614c7..a15b0f2ae 100644
+index 2f06614c7..ec4cf3126 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
-@@ -201,6 +201,7 @@
-     "inputSchema": {
-       "properties": {
-         "agentId": {
-+          "description": "Target agent profile. Native scheduled/cron callers require it by default. ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile; same-profile omission requires policy to allow it.",
-           "type": "string"
-         },
-         "attachAs": {
-@@ -405,7 +406,7 @@
+@@ -405,7 +405,7 @@
            "type": "string"
          },
          "taskName": {
@@ -896,3 +861,71 @@ index 2f06614c7..a15b0f2ae 100644
            "type": "string"
          },
          "thinking": {
+diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff
+index 2d7bd2cea..2fcad6641 100644
+--- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff
++++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff
+@@ -1,5 +1,5 @@
+---- telegram-direct-codex-message-tool.md	sha256=387fa082166d3a8a46e7a6bc3357a75ef2eb32c65bb18a008c35c077b515da4b
+-+++ discord-group-codex-message-tool.md	sha256=5860d02221557771f436444b90fa3f88ef7ece8318982998a097d39eaa266ea4
++--- telegram-direct-codex-message-tool.md	sha256=1b18a92e52b4e716c954178980e9090fe02b59854f84063f4192038cf1e68b30
+++++ discord-group-codex-message-tool.md	sha256=ca4f5ddb99d14f2bdc2d65485e358f4d2e9824db5379f4b6bfd7b739bb76efc8
+ @@ -1,1 +1,1 @@
+ -# Telegram Direct Codex Message Tool Turn
+ +# Discord Group Codex Message Tool Turn
+@@ -34,10 +34,10 @@
+ +    "chars": 972,
+ +    "roughTokens": 243
+ @@ -262,2 +262,2 @@
+--    "chars": 84685,
+--    "roughTokens": 21172
+-+    "chars": 85319,
+-+    "roughTokens": 21330
++-    "chars": 84719,
++-    "roughTokens": 21180
+++    "chars": 85353,
+++    "roughTokens": 21339
+ @@ -266,2 +266,2 @@
+ -    "chars": 3490,
+ -    "roughTokens": 873
+@@ -49,10 +49,10 @@
+ +    "chars": 29106,
+ +    "roughTokens": 7277
+ @@ -278,2 +278,2 @@
+--    "chars": 112188,
+--    "roughTokens": 28047
+-+    "chars": 114427,
+-+    "roughTokens": 28607
++-    "chars": 112222,
++-    "roughTokens": 28056
+++    "chars": 114461,
+++    "roughTokens": 28616
+ @@ -282,2 +282,2 @@
+ -    "chars": 879,
+ -    "roughTokens": 220
+diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
+index 5fc4ee594..d4195efac 100644
+--- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
++++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
+@@ -259,8 +259,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
+     "roughTokens": 0
+   },
+   "dynamicToolsJson": {
+-    "chars": 84685,
+-    "roughTokens": 21172
++    "chars": 84719,
++    "roughTokens": 21180
+   },
+   "openClawDeveloperInstructions": {
+     "chars": 3490,
+@@ -275,8 +275,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
+     "roughTokens": 6876
+   },
+   "totalWithDynamicToolsJson": {
+-    "chars": 112188,
+-    "roughTokens": 28047
++    "chars": 112222,
++    "roughTokens": 28056
+   },
+   "userInputText": {
+     "chars": 879,
