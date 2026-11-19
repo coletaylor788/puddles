@@ -294,15 +294,18 @@ index 04ecaafee..9cf331f3a 100644
      store: z
 diff --git a/src/gateway/server-memory-warmup.test.ts b/src/gateway/server-memory-warmup.test.ts
 new file mode 100644
-index 000000000..df640f440
+index 000000000..4cef82034
 --- /dev/null
 +++ b/src/gateway/server-memory-warmup.test.ts
-@@ -0,0 +1,230 @@
+@@ -0,0 +1,236 @@
 +import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 +import type { AcquireConfiguredProviderLocalService } from "../agents/provider-local-service-target.js";
 +import type { OpenClawConfig } from "../config/types.openclaw.js";
 +import type { EmbeddingProviderCreateOptions } from "../plugins/embedding-provider-types.js";
-+import { createGatewayMemoryWarmup } from "./server-memory-warmup.js";
++import {
++  createGatewayMemoryWarmup,
++  isGatewayMemoryWarmupConfigured,
++} from "./server-memory-warmup.js";
 +
 +const mocks = vi.hoisted(() => ({
 +  acquire: vi.fn<AcquireConfiguredProviderLocalService>(),
@@ -387,9 +390,11 @@ index 000000000..df640f440
 +  });
 +
 +  it("does nothing unless explicitly enabled, including disabled agents", () => {
++    expect(isGatewayMemoryWarmupConfigured(config(false))).toBe(false);
 +    expect(createGatewayMemoryWarmup(config(false))).toBeNull();
 +    const disabled = config();
 +    disabled.memory!.search!.enabled = false;
++    expect(isGatewayMemoryWarmupConfigured(disabled)).toBe(false);
 +    expect(createGatewayMemoryWarmup(disabled)).toBeNull();
 +    expect(mocks.create).not.toHaveBeenCalled();
 +  });
@@ -402,6 +407,7 @@ index 000000000..df640f440
 +        skipped: { memory: { search: { local: { warmupOnGatewayStart: false } } } },
 +      },
 +    };
++    expect(isGatewayMemoryWarmupConfigured(configured)).toBe(true);
 +    const owner = createGatewayMemoryWarmup(configured)!;
 +    await owner.ready;
 +    expect(mocks.create).toHaveBeenCalledOnce();
@@ -530,10 +536,10 @@ index 000000000..df640f440
 +});
 diff --git a/src/gateway/server-memory-warmup.ts b/src/gateway/server-memory-warmup.ts
 new file mode 100644
-index 000000000..bd85f52a2
+index 000000000..ec77dc032
 --- /dev/null
 +++ b/src/gateway/server-memory-warmup.ts
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,151 @@
 +import { listAgentIds, resolveAgentConfig, resolveAgentDir } from "../agents/agent-scope.js";
 +import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 +import type {
@@ -548,11 +554,8 @@ index 000000000..bd85f52a2
 +export const GATEWAY_MEMORY_WARMUP_TIMEOUT_MS = 90_000;
 +const PROBES = ["A small red boat floats on a lake.", "A quiet library contains history books."];
 +
-+export function createGatewayMemoryWarmup(config: OpenClawConfig): {
-+  ready: Promise<void>;
-+  stop: () => Promise<void>;
-+} | null {
-+  const selected = listAgentIds(config).flatMap((agentId) => {
++function resolveGatewayMemoryWarmupSelections(config: OpenClawConfig) {
++  return listAgentIds(config).flatMap((agentId) => {
 +    const enabled =
 +      resolveAgentConfig(config, agentId)?.memory?.search?.local?.warmupOnGatewayStart ??
 +      config.memory?.search?.local?.warmupOnGatewayStart;
@@ -560,6 +563,17 @@ index 000000000..bd85f52a2
 +    const memory = resolveMemorySearchConfig(config, agentId);
 +    return memory?.local.warmupOnGatewayStart ? [{ agentId, memory }] : [];
 +  });
++}
++
++export function isGatewayMemoryWarmupConfigured(config: OpenClawConfig): boolean {
++  return resolveGatewayMemoryWarmupSelections(config).length > 0;
++}
++
++export function createGatewayMemoryWarmup(config: OpenClawConfig): {
++  ready: Promise<void>;
++  stop: () => Promise<void>;
++} | null {
++  const selected = resolveGatewayMemoryWarmupSelections(config);
 +  if (selected.length === 0) return null;
 +  const controller = new AbortController();
 +  const timer = setTimeout(
@@ -678,22 +692,26 @@ index 000000000..bd85f52a2
 +  };
 +}
 diff --git a/src/gateway/server-startup-post-attach.test.ts b/src/gateway/server-startup-post-attach.test.ts
-index 3f76a337a..8ebcd67b8 100644
+index 3f76a337a..a7927a479 100644
 --- a/src/gateway/server-startup-post-attach.test.ts
 +++ b/src/gateway/server-startup-post-attach.test.ts
-@@ -62,6 +62,11 @@ import {
+@@ -62,6 +62,15 @@ import {
  } from "./server-startup-readiness.test-support.js";
  import { transcriptSidecarMocks } from "./server-startup-transcripts.test-support.js";
  
 +const memoryWarmup = vi.hoisted(() =>
 +  vi.fn<typeof import("./server-memory-warmup.js").createGatewayMemoryWarmup>(() => null),
 +);
-+vi.mock("./server-memory-warmup.js", () => ({ createGatewayMemoryWarmup: memoryWarmup }));
++const memoryWarmupConfigured = vi.hoisted(() => vi.fn(() => false));
++vi.mock("./server-memory-warmup.js", () => ({
++  createGatewayMemoryWarmup: memoryWarmup,
++  isGatewayMemoryWarmupConfigured: memoryWarmupConfigured,
++}));
 +
  const { postAttachMocks: hoisted } = await vi.hoisted(
    () => import("./server-startup-post-attach.mocks.test-support.js"),
  );
-@@ -125,6 +130,10 @@ function createSidecarParams(
+@@ -125,6 +134,10 @@ function createSidecarParams(
      logHooks: params.logHooks,
      logChannels: params.logChannels,
      ...overrides,
@@ -704,15 +722,16 @@ index 3f76a337a..8ebcd67b8 100644
      onPostReadySidecars: composeTrackedPublisher(
        publishedPostReadySidecars,
        overrides.onPostReadySidecars,
-@@ -337,6 +346,7 @@ describe("startGatewayPostAttachRuntime", () => {
+@@ -337,6 +350,8 @@ describe("startGatewayPostAttachRuntime", () => {
      hoisted.prewarmConfigDrivenReplyRuntime.mockReset();
      hoisted.prewarmConfigDrivenReplyRuntime.mockResolvedValue(undefined);
      hoisted.scheduleGatewayHandlerPrewarm.mockClear();
 +    memoryWarmup.mockReset().mockReturnValue(null);
++    memoryWarmupConfigured.mockReset().mockReturnValue(false);
    });
  
    afterEach(async () => {
-@@ -402,6 +412,30 @@ describe("startGatewayPostAttachRuntime", () => {
+@@ -402,6 +417,78 @@ describe("startGatewayPostAttachRuntime", () => {
      },
    });
  
@@ -721,6 +740,7 @@ index 3f76a337a..8ebcd67b8 100644
 +    async (fail) => {
 +      const deferred = createDeferred<void>();
 +      const warmup = { ready: deferred.promise, stop: vi.fn(async () => {}) };
++      memoryWarmupConfigured.mockReturnValueOnce(true);
 +      memoryWarmup.mockReturnValueOnce(warmup);
 +      const startChannels = vi.fn(async () => {});
 +      const starting = startGatewaySidecars({ startChannels });
@@ -740,6 +760,53 @@ index 3f76a337a..8ebcd67b8 100644
 +    },
 +  );
 +
++  it("does not launch configured memory warmup before service custody or after close", async () => {
++    const services = createDeferred<void>();
++    let closing = false;
++    memoryWarmupConfigured.mockReturnValueOnce(true);
++    hoisted.startPluginServices.mockImplementationOnce(async () => {
++      await services.promise;
++      return null;
++    });
++    const startChannels = vi.fn(async () => {});
++    const starting = startGatewaySidecars({
++      startChannels,
++      shouldCreatePostReadySidecars: () => !closing,
++      shouldStartChannels: () => !closing,
++      shouldStartPluginServices: () => !closing,
++    });
++    await vi.waitFor(() => expect(hoisted.startPluginServices).toHaveBeenCalledOnce());
++    expect(memoryWarmup).not.toHaveBeenCalled();
++    closing = true;
++    services.resolve();
++    await starting;
++    expect(memoryWarmup).not.toHaveBeenCalled();
++    expect(startChannels).not.toHaveBeenCalled();
++  });
++
++  it("constructs configured memory warmup only after services and gates channels on ready", async () => {
++    const services = createDeferred<void>();
++    const ready = createDeferred<void>();
++    const warmup = { ready: ready.promise, stop: vi.fn(async () => {}) };
++    memoryWarmupConfigured.mockReturnValueOnce(true);
++    memoryWarmup.mockReturnValueOnce(warmup);
++    hoisted.startPluginServices.mockImplementationOnce(async () => {
++      await services.promise;
++      return null;
++    });
++    const startChannels = vi.fn(async () => {});
++    const starting = startGatewaySidecars({ startChannels });
++    await vi.waitFor(() => expect(hoisted.startPluginServices).toHaveBeenCalledOnce());
++    expect(memoryWarmup).not.toHaveBeenCalled();
++    services.resolve();
++    await vi.waitFor(() => expect(memoryWarmup).toHaveBeenCalledOnce());
++    expect(publishedGatewayLifetimeSidecars).toContain(warmup);
++    expect(startChannels).not.toHaveBeenCalled();
++    ready.resolve();
++    await starting;
++    await vi.waitFor(() => expect(startChannels).toHaveBeenCalledOnce());
++  });
++
    it("reports internal hook load failures without copying the error into the summary", async () => {
      const log = { info: vi.fn<(message: string) => void>(), warn: vi.fn() };
      const logHooks = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -756,7 +823,7 @@ index 8bd05deda..1bc7bf1c1 100644
                    shouldStartPluginServices: () =>
                      params.isClosing?.() !== true && params.shouldStartPluginServices?.() !== false,
 diff --git a/src/gateway/server-startup-sidecars.ts b/src/gateway/server-startup-sidecars.ts
-index 6bf62f5f3..12a91272b 100644
+index 6bf62f5f3..69e6c73b5 100644
 --- a/src/gateway/server-startup-sidecars.ts
 +++ b/src/gateway/server-startup-sidecars.ts
 @@ -65,6 +65,7 @@ export async function startGatewaySidecars(params: {
@@ -767,7 +834,7 @@ index 6bf62f5f3..12a91272b 100644
    shouldCreatePostReadySidecars?: () => boolean;
    logHooks: {
      info: (msg: string) => void;
-@@ -186,26 +187,6 @@ export async function startGatewaySidecars(params: {
+@@ -186,26 +187,33 @@ export async function startGatewaySidecars(params: {
    await measureStartup(params.startupTrace, "sidecars.chat-metadata", async () => {
      await params.refreshChatMetadata?.();
    });
@@ -791,47 +858,59 @@ index 6bf62f5f3..12a91272b 100644
 -    )
 -    .catch((err: unknown) => params.logChannels.error(`channel startup failed: ${String(err)}`));
 -
++  const memoryWarmup = await import("./server-memory-warmup.js");
++  const memoryConfig = getModelRuntimeConfig();
++  const warmupConfigured = memoryWarmup.isGatewayMemoryWarmupConfigured(memoryConfig);
++  const scheduleChannels = () => {
++    void params
++      .trackStartupWork(() =>
++        measureStartup(params.startupTrace, "sidecars.channels", async () => {
++          const shouldStartChannels = params.shouldStartChannels?.() !== false;
++          const channelStart = skipChannels
++            ? measureStartup(params.startupTrace, "sidecars.channel-skip", () =>
++                params.logChannels.info(
++                  "skipping channel start (OPENCLAW_SKIP_CHANNELS=1 or OPENCLAW_SKIP_PROVIDERS=1)",
++                ),
++              )
++            : shouldStartChannels
++              ? measureStartup(params.startupTrace, "sidecars.channel-start", params.startChannels)
++              : Promise.resolve();
++          await channelStart;
++        }),
++      )
++      .catch((err: unknown) => params.logChannels.error(`channel startup failed: ${String(err)}`));
++  };
++  // Default startup retains native scheduling. Only an explicitly configured
++  // required warmup holds channel admission behind local embedding readiness.
++  if (!warmupConfigured) {
++    scheduleChannels();
++  }
    // The startup producer is joined on shutdown; services publish their own cleanup handle.
    await measureStartup(params.startupTrace, "sidecars.plugin-services", async () => {
      try {
-@@ -227,6 +208,40 @@ export async function startGatewaySidecars(params: {
+@@ -227,6 +235,25 @@ export async function startGatewaySidecars(params: {
        params.log.warn(`plugin services failed to start: ${String(err)}`);
      }
    });
-+  await measureStartup(params.startupTrace, "sidecars.local-memory", async () => {
-+    const { createGatewayMemoryWarmup } = await import("./server-memory-warmup.js");
-+    const warmup = withPluginRuntimeRegistryScope(params.pluginRegistry, () =>
-+      createGatewayMemoryWarmup(getModelRuntimeConfig()),
-+    );
-+    if (!warmup) {
-+      return;
++  if (warmupConfigured) {
++    if (params.shouldCreatePostReadySidecars?.() !== false) {
++      await measureStartup(params.startupTrace, "sidecars.local-memory", async () => {
++        const warmup = withPluginRuntimeRegistryScope(params.pluginRegistry, () =>
++          memoryWarmup.createGatewayMemoryWarmup(memoryConfig),
++        );
++        if (!warmup) {
++          throw new Error("Gateway local memory warmup configuration changed during startup");
++        }
++        if (params.shouldCreatePostReadySidecars?.() === false) {
++          await warmup.stop();
++          throw new Error("Gateway local memory warmup has no active lifetime owner");
++        }
++        params.onGatewayLifetimeSidecars(warmup);
++        await warmup.ready;
++      });
++      scheduleChannels();
 +    }
-+    if (params.shouldCreatePostReadySidecars?.() === false) {
-+      await warmup.stop();
-+      throw new Error("Gateway local memory warmup has no active lifetime owner");
-+    }
-+    params.onGatewayLifetimeSidecars(warmup);
-+    await warmup.ready;
-+  });
-+  // Accounts prepare independently; the startup owner releases their existing
-+  // start gate after retained inputs acquire ordinary queue custody.
-+  void params
-+    .trackStartupWork(() =>
-+      measureStartup(params.startupTrace, "sidecars.channels", async () => {
-+        const shouldStartChannels = params.shouldStartChannels?.() !== false;
-+        const channelStart = skipChannels
-+          ? measureStartup(params.startupTrace, "sidecars.channel-skip", () =>
-+              params.logChannels.info(
-+                "skipping channel start (OPENCLAW_SKIP_CHANNELS=1 or OPENCLAW_SKIP_PROVIDERS=1)",
-+              ),
-+            )
-+          : shouldStartChannels
-+            ? measureStartup(params.startupTrace, "sidecars.channel-start", params.startChannels)
-+            : Promise.resolve();
-+        await channelStart;
-+      }),
-+    )
-+    .catch((err: unknown) => params.logChannels.error(`channel startup failed: ${String(err)}`));
++  }
    const shouldDispatchGatewayStartupInternalHook =
      internalHooksConfigured || (await hasGatewayStartupInternalHookListeners());
    if (params.shouldCreatePostReadySidecars?.() === false) {

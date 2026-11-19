@@ -494,10 +494,10 @@ index 5cdf29ab7..b181f529c 100644
        assert.equal(response.behavior, "deny");
        result({ cancelledDecision: response });
 diff --git a/extensions/anthropic/cli-runtime.test.ts b/extensions/anthropic/cli-runtime.test.ts
-index 481d5476f..b8cb7a2bf 100644
+index 0bb28c4f7..055570278 100644
 --- a/extensions/anthropic/cli-runtime.test.ts
 +++ b/extensions/anthropic/cli-runtime.test.ts
-@@ -1051,3 +1051,26 @@ it("fails the native turn with the original retention error before acknowledging
+@@ -1052,3 +1052,26 @@ it("fails the native turn with the original retention error before acknowledging
    expect(JSON.stringify(output)).not.toContain("compact_boundary");
    expect(liveSession.current()).toBeUndefined();
  });
@@ -971,7 +971,7 @@ index 4b17ce3a4..0907cebef 100644
  
  describe("CLI MCP capture authority", () => {
 diff --git a/src/agents/cli-runner/execute-plugin.test.ts b/src/agents/cli-runner/execute-plugin.test.ts
-index 70d695606..f541d4159 100644
+index 70d695606..a0bf39c57 100644
 --- a/src/agents/cli-runner/execute-plugin.test.ts
 +++ b/src/agents/cli-runner/execute-plugin.test.ts
 @@ -1,3 +1,11 @@
@@ -996,7 +996,7 @@ index 70d695606..f541d4159 100644
        context.params.sessionKey = "main";
        const revoke = setCallerAuthority(context);
        context.params.runtimePolicySessionKey =
-@@ -898,6 +909,125 @@ describe("plugin-owned CLI execution host boundary", () => {
+@@ -898,6 +909,134 @@ describe("plugin-owned CLI execution host boundary", () => {
        message: { content: [{ text: "Here is the answer so far" }] },
      });
    });
@@ -1010,31 +1010,40 @@ index 70d695606..f541d4159 100644
 +      });
 +      context.backendResolved.config.nativePermissionMode = "defer";
 +      context.params.approvalReviewerDeviceId = "admitted-reviewer";
-+      mockCallGatewayTool.mockResolvedValue({ id: "outside", decision: "allow-once" });
-+      await runPlugin(context, async function* (execution) {
-+        const request = {
-+          toolName: "Write",
-+          toolCallId: "write-1",
-+          toolInput: {
-+            file_path: "/outside/file.txt",
-+            content: "fixture",
-+            approvalReviewerDeviceIds: ["tool-selected-reviewer"],
-+          },
-+        };
-+        await expect(
-+          execution.requestToolPermission({ ...request, phase: "pre-tool" }),
-+        ).resolves.toMatchObject({ behavior: "allow" });
-+        expect(mockCallGatewayTool).not.toHaveBeenCalled();
-+        await expect(
-+          execution.requestToolPermission({ ...request, phase: "permission" }),
-+        ).resolves.toMatchObject({ behavior: "allow" });
-+        expect(mockCallGatewayTool).toHaveBeenCalledOnce();
-+        expect(mockCallGatewayTool.mock.calls[0]?.[2]).toMatchObject({
-+          allowedDecisions: ["allow-once", "deny"],
-+          approvalReviewerDeviceIds: ["admitted-reviewer"],
-+        });
-+        yield SUCCESS_RESULT;
++      const approvalOwners: Array<string | undefined> = [];
++      mockCallGatewayTool.mockImplementation(async () => {
++        approvalOwners.push(getGatewayToolCallerIdentity()?.approvalOwnerPluginId);
++        return { id: "outside", decision: "allow-once" };
 +      });
++      await withGatewayToolCallerIdentity(
++        { agentId: "main", sessionKey: "agent:main:main" },
++        () =>
++          runPlugin(context, async function* (execution) {
++            const request = {
++              toolName: "Write",
++              toolCallId: "write-1",
++              toolInput: {
++                file_path: "/outside/file.txt",
++                content: "fixture",
++                approvalReviewerDeviceIds: ["tool-selected-reviewer"],
++              },
++            };
++            await expect(
++              execution.requestToolPermission({ ...request, phase: "pre-tool" }),
++            ).resolves.toMatchObject({ behavior: "allow" });
++            expect(mockCallGatewayTool).not.toHaveBeenCalled();
++            await expect(
++              execution.requestToolPermission({ ...request, phase: "permission" }),
++            ).resolves.toMatchObject({ behavior: "allow" });
++            expect(mockCallGatewayTool).toHaveBeenCalledOnce();
++            expect(mockCallGatewayTool.mock.calls[0]?.[2]).toMatchObject({
++              allowedDecisions: ["allow-once", "deny"],
++            });
++            expect(mockCallGatewayTool.mock.calls[0]?.[2]).not.toHaveProperty("approvalReviewerDeviceIds");
++            expect(approvalOwners).toEqual(["claude-cli"]);
++            yield SUCCESS_RESULT;
++          }),
++      );
 +    },
 +  );
 +
@@ -1379,10 +1388,18 @@ index 013fe3a6b..db0651be3 100644
      }
    }
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index b1d12a31c..2d3d506bd 100644
+index 45e9a4382..82d5fc39d 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
-@@ -136,6 +136,7 @@ import {
+@@ -121,6 +121,7 @@ import {
+ } from "../cli-session.js";
+ import { readCodeModeSkill } from "../code-mode-skills.js";
+ import { resetContextWindowCacheForTest } from "../context.test-support.js";
++import { applyEmbeddedAttemptToolsAllow } from "../embedded-agent-runner/run/attempt-tool-construction-plan.js";
+ import { createContextEngineLogicalTurnLease } from "../harness/context-engine-logical-turn.js";
+ import { claimPendingAgentQuestionAnswerFromCaller } from "../harness/gateway-question.js";
+ import { withQuestionGateway } from "../harness/gateway-question.test-support.js";
+@@ -136,6 +137,7 @@ import {
    captureRoutingDecisionWork,
    createModelRoutingTestAdmission,
  } from "../test-helpers/model-routing-decision-e2e-fixtures.js";
@@ -1390,7 +1407,7 @@ index b1d12a31c..2d3d506bd 100644
  import type { SystemAgentToolOptions } from "../tools/system-agent-tool.js";
  import { prepareCliBundleMcpCaptureAttempt, prepareCliBundleMcpConfig } from "./bundle-mcp.js";
  import { prepareClaudeCliSkillsPlugin } from "./claude-skills-plugin.js";
-@@ -4619,5 +4620,103 @@ describe("prepareCliRunContext", () => {
+@@ -4623,5 +4625,103 @@ describe("prepareCliRunContext", () => {
        }
      });
    });
@@ -1858,7 +1875,7 @@ index e3917da53..40ed3fd28 100644
      sessionId,
      storePath,
 diff --git a/src/commands/doctor-claude-cli.ts b/src/commands/doctor-claude-cli.ts
-index 947c2e59d..588d9a705 100644
+index 947c2e59d..bf1c6df8c 100644
 --- a/src/commands/doctor-claude-cli.ts
 +++ b/src/commands/doctor-claude-cli.ts
 @@ -13,6 +13,7 @@ import {

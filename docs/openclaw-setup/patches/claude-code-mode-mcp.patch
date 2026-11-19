@@ -197,7 +197,7 @@ index 947fc07cf..55bdce1a3 100644
        Boolean(projectNativeToolAuthority),
        run,
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index b6437f558..31f99db24 100644
+index b6437f558..db5abd8b6 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
 @@ -39,6 +39,7 @@ import {
@@ -301,7 +301,25 @@ index b6437f558..31f99db24 100644
    });
  
    it("lazily rebuilds an unsafe modern skills snapshot for a non-sandbox CLI run", async () => {
-@@ -4184,6 +4228,12 @@ describe("prepareCliRunContext", () => {
+@@ -4155,6 +4199,9 @@ describe("prepareCliRunContext", () => {
+     const skill = createWeatherSkillFixture(dir, true);
+     const preparedExecutionCleanup = vi.fn(async () => undefined);
+     const revokeMcpLoopbackClientGrant = vi.fn(() => true);
++    const mintMcpLoopbackClientGrant = vi.fn((params: Parameters<typeof mintClientGrant>[0]) =>
++      createTestMcpLoopbackClientGrant(params),
++    );
+     setCliBackendForPrepareTest({
+       id: "claude-cli",
+       pluginId: "anthropic",
+@@ -4164,6 +4211,7 @@ describe("prepareCliRunContext", () => {
+     setCliRunnerPrepareTestDeps({
+       prepareClaudeCliSkillsPlugin,
+       getActiveMcpLoopbackRuntime: vi.fn(createLoopbackRuntime),
++      mintMcpLoopbackClientGrant,
+       revokeMcpLoopbackClientGrant,
+     });
+ 
+@@ -4184,6 +4232,12 @@ describe("prepareCliRunContext", () => {
      expect(manifest).toMatchObject({ name: "openclaw-skills", skills: "./skills" });
      const skillPath = path.join(pluginDir, "skills", "weather", "SKILL.md");
      expect(fs.readFileSync(skillPath, "utf8")).toContain("Read forecast data before replying.");
@@ -314,7 +332,7 @@ index b6437f558..31f99db24 100644
  
      const releaseSkills = context.preparedBackend.claimLiveSessionResources?.();
      expect(releaseSkills).toEqual(expect.any(Function));
-@@ -4217,6 +4267,47 @@ describe("prepareCliRunContext", () => {
+@@ -4217,6 +4271,47 @@ describe("prepareCliRunContext", () => {
      expect(fs.existsSync(pluginDir)).toBe(false);
    });
  
@@ -347,7 +365,7 @@ index b6437f558..31f99db24 100644
 +    });
 +
 +    expect(prepareSkillsPlugin).toHaveBeenCalledOnce();
-+    expect(context.claudeSkillsPluginArgs).toEqual([]);
++    expect(context.claudeSkillsPlugin.args).toEqual([]);
 +    expect(context.systemPrompt).toContain(skill.snapshot.prompt);
 +    const codeModeSkills = mintMcpLoopbackClientGrant.mock.calls[0]?.[0]?.codeModeSkills;
 +    expect(codeModeSkills).toHaveLength(1);
@@ -1745,7 +1763,7 @@ index edbaa50ff..64ac0b258 100644
      this.#grantConfigScopes.clear();
    }
 diff --git a/src/gateway/mcp-http.test.ts b/src/gateway/mcp-http.test.ts
-index 3450ad93f..ba47fa3f4 100644
+index 3450ad93f..a6cd41edc 100644
 --- a/src/gateway/mcp-http.test.ts
 +++ b/src/gateway/mcp-http.test.ts
 @@ -19,8 +19,10 @@ import {
@@ -2358,7 +2376,7 @@ index 3450ad93f..ba47fa3f4 100644
 +            senderId: "verified-sender",
 +            senderIsOwner: identity === "owner",
 +          }
-+        : undefined;
++        : { senderIsOwner: false };
 +      expect(identityCalls.filter((call) => call.toolName === "fixture")).toHaveLength(2);
 +      for (const call of identityCalls.filter((entry) => entry.toolName === "fixture")) {
 +        expect(call.ctx?.requester).toEqual(expectedRequester);

@@ -96,7 +96,7 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(manifest.testProjects["src/agents/subagents/spawn/acp-spawn.test.ts"]).toBe("infra");
     expect(manifest.testProjects["src/agents/subagents/spawn/subagent-spawn.test.ts"]).toBe("infra");
     expect(manifest.testProjects["src/config/dead-config-keys.test.ts"]).toBe("runtime-config");
-    expect(manifest.testProjects["src/skills/workshop/review-undo.test.ts"]).toBe("unit");
+    expect(manifest.testProjects["src/skills/workshop/review-outcome.test.ts"]).toBe("unit");
     expect(manifest.testProjects["src/commands/doctor/shared/legacy-config-migrations.runtime.skills.test.ts"]).toBe("unit-fast");
     for (const test of suite.patches.flatMap((patch) => patch.tests)) {
       expect(manifest.testProjects[test], test).toMatch(/^[a-z][a-z0-9-]*$/);

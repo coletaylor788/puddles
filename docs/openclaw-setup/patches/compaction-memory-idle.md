@@ -49,3 +49,8 @@ native preflight, token freshness and session leases, and admits detached work
 only for the existing idle path. Snapshot planning uses its capture time so a
 delayed save retains the original day. Native memory audience and persistence
 capabilities remain host-only through grant creation and HTTP tool resolution.
+
+The MCP tool preview keeps the executing agent and its session together. The
+captured source session still selects inherited tool policy, but does not replace
+the execution owner. Forwarding the native memory trigger keeps Code Mode controls
+out of persistence-only memory turns.

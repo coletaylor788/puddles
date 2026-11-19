@@ -1211,7 +1211,7 @@ index 55bdce1a3..ef6089a20 100644
      signal: admittedParams.abortSignal,
      context,
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 31f99db24..b1d12a31c 100644
+index db5abd8b6..45e9a4382 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
 @@ -38,8 +38,8 @@ import {
@@ -6079,7 +6079,7 @@ index 22430756d..7543e4666 100644
            softThresholdTokens: z.number().int().nonnegative().optional(),
            /**
 diff --git a/src/gateway/mcp-grant-store.test.ts b/src/gateway/mcp-grant-store.test.ts
-index 2abcde436..aa2eb7776 100644
+index 2abcde436..0b4a00299 100644
 --- a/src/gateway/mcp-grant-store.test.ts
 +++ b/src/gateway/mcp-grant-store.test.ts
 @@ -76,6 +76,35 @@ describe("mcp-grant-store", () => {
@@ -6105,20 +6105,34 @@ index 2abcde436..aa2eb7776 100644
 +    expect(grant.context).not.toHaveProperty("memoryFlushTools");
 +    expect(() => structuredClone(grant)).not.toThrow();
 +    const params = grantParams(grant.token, "memory-capture");
-+    expect(activateMcpLoopbackClientGrantCapture(params)).toBeTruthy();
-+    const resolved = resolveMcpLoopbackClientGrant(params);
++    expect(activateCapture(params)).toBeTruthy();
++    const resolved = resolveClient(params);
 +    expect(resolved?.memoryAudience).toBe(memoryAudience);
 +    expect(resolved?.memoryFlushTools).toBe(memoryFlushTools);
 +    expect(resolved?.isCurrent()).toBe(true);
-+    revokeMcpLoopbackClientGrant(grant.token);
++    revokeClient(grant.token);
 +    expect(resolved?.isCurrent()).toBe(false);
-+    expect(resolveMcpLoopbackClientGrant(params)).toBeUndefined();
++    expect(resolveClient(params)).toBeUndefined();
 +  });
 +
    it("requires a non-empty sessionKey", () => {
      expect(() => attach("  ")).toThrow();
    });
-@@ -357,6 +386,8 @@ describe("mcp-grant-store", () => {
+@@ -316,6 +345,13 @@ describe("mcp-grant-store", () => {
+       admittedRunContext: nextAdmission,
+       abortSignal: nextController.signal,
+       skillLibraryAuthoring,
++      memoryAudience: { kind: "owner-private", agentId: "main" },
++      memoryFlushTools: {
++        flushId: "next-cycle",
++        ownerPluginId: "memory-fixture",
++        persistenceToolNames: ["memory_store"],
++        recordPersistenceToolSuccess: () => {},
++      },
+       toolAuth,
+     });
+     expect(activateCapture(grantParams(stable.token, "stale-capture"))).toBeTruthy();
+@@ -357,6 +393,8 @@ describe("mcp-grant-store", () => {
        toolAuth,
      });
      expect(transferred?.skillLibraryAuthoring).toBe(skillLibraryAuthoring);
@@ -6172,18 +6186,64 @@ index e73498c45..99f5da099 100644
      ...(grant.bundledTools ? { bundledTools: grant.bundledTools } : {}),
      isCurrent,
  
+diff --git a/src/gateway/mcp-http.code-mode.test.ts b/src/gateway/mcp-http.code-mode.test.ts
+index 2c1f2f319..c42348957 100644
+--- a/src/gateway/mcp-http.code-mode.test.ts
++++ b/src/gateway/mcp-http.code-mode.test.ts
+@@ -21,7 +21,11 @@ afterEach(async () => {
+   await resetCodeModeTestState();
+ });
+ 
+-function surface(policyEnabled: boolean, sessionKey = "agent:main:current") {
++function surface(
++  policyEnabled: boolean,
++  sessionKey = "agent:main:current",
++  trigger?: "memory",
++) {
+   const config: OpenClawConfig = {
+     agents: {
+       ownership: "explicit",
+@@ -44,6 +48,7 @@ function surface(policyEnabled: boolean, sessionKey = "agent:main:current") {
+       runtimePolicySessionKey: "agent:worker:policy",
+       toolsAllow: ["probe"],
+       senderIsOwner: false,
++      trigger,
+     },
+     tools,
+     executeTool: async ({ toolName, toolCallId, input, signal, onUpdate }) => {
+@@ -124,6 +129,12 @@ describe("MCP Code Mode delegated policy", () => {
+     },
+   );
+ 
++  it("keeps persistence-only memory runs out of Code Mode controls", () => {
++    const current = surface(true, "agent:main:memory-writer", "memory");
++    expect(current.enabled).toBe(false);
++    expect(current.tools.map((tool) => tool.name)).toEqual(["probe"]);
++  });
++
+   it("keeps parked execution bound to the current conversation and joins it on cleanup", async () => {
+     const current = surface(true);
+     const exec = current.tools.find((tool) => tool.name === "code_exec")!;
 diff --git a/src/gateway/mcp-http.code-mode.ts b/src/gateway/mcp-http.code-mode.ts
-index af9f8c27c..c1361039b 100644
+index af9f8c27c..5db356802 100644
 --- a/src/gateway/mcp-http.code-mode.ts
 +++ b/src/gateway/mcp-http.code-mode.ts
-@@ -27,6 +27,7 @@ export function createMcpCodeModeToolSurface(params: {
-     agentId: context.agentId,
+@@ -1,6 +1,7 @@
+ import { resolveCodeModeConfig } from "../agents/code-mode-runtime.js";
+ import type { CodeModeSkill } from "../agents/code-mode-skills.js";
+ import { createAgentHarnessToolSurfaceRuntimeCore } from "../agents/harness/tool-surface-bridge.js";
++import type { EmbeddedRunTrigger } from "../agents/run-trigger.js";
+ import type { ToolSearchCatalogToolExecutor } from "../agents/tool-search-types.js";
+ import type { OpenClawConfig } from "../config/types.openclaw.js";
+ import type { McpLoopbackRequestContext } from "./mcp-grant-store.js";
+@@ -28,6 +29,7 @@ export function createMcpCodeModeToolSurface(params: {
      sessionId: context.sessionId,
      sessionKey: context.sessionKey,
-+    runtimePolicySessionKey: context.runtimePolicySessionKey,
      runId: context.runId,
++    trigger: context.trigger as EmbeddedRunTrigger | undefined,
      modelProvider: context.modelProvider,
      modelId: context.modelId,
+     modelToolsEnabled: params.tools.length > 0,
 diff --git a/src/gateway/mcp-http.memory-audience.test.ts b/src/gateway/mcp-http.memory-audience.test.ts
 index 34a8a17eb..1de16faaa 100644
 --- a/src/gateway/mcp-http.memory-audience.test.ts
