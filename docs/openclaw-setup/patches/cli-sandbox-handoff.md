@@ -107,7 +107,9 @@ network disabled and a read-only root. The final focused suite passes 106
 checks across three test files. Real Claude also passes hidden/visible child execution, parent-result delivery
 and resumed tool containment with the existing native subscription. The full
 composed release suite remains a separate release gate. See the prototype
-plan for the exact limits, including follow-on announcement teardown.
+plan for the exact limits. The follow-on announcement teardown gap is now
+closed by a rerun that waits for durable delivery and the parent-visible
+resumed result before shutdown.
 
 Visible children inherit the requester's tool cap. A spawn-only requester
 correctly yields a visible child with no coding tools; sandbox admission must
