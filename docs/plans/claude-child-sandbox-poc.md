@@ -1,7 +1,7 @@
 # Claude child sandbox prototype
 
-Status: DEV prototype passed; no production release
-Issue: Local prototype; no release submission
+Status: DEV prototype passed; production rollout approved under Phase 2
+Issue: https://github.com/coletaylor788/puddles/issues/377
 Last updated: 2026-11-20
 
 ## Human section
@@ -14,7 +14,7 @@ This prototype changes the same maintained patch at hidden child creation, visib
 
 ### Status
 
-**Approval:** DEV approved. **Approval reference:** The requester asked on November 20 to prototype the existing PR-based patch with just the child check removed, as a narrow expansion of the same patch. This authorizes isolated local/DEV implementation and testing. Production changes and release qualification are outside this prototype.
+**Approval:** Production approved for the tested three-condition expansion. The requester first authorized the isolated prototype on November 20, then approved adding these guard exceptions to the patch and rolling it out. The [Phase 2 plan](realtime-cli-steering-and-results.md) owns combined release qualification and shipping.
 
 The prototype passes on the existing composed 11.5 source. The unchanged candidate reproduced the refusal. With only three Claude-specific admission exceptions, real Claude spawned hidden and visible children, executed their tools in Docker, returned their results to the parent and resumed a child with containment intact. No production service or configuration changed.
 
@@ -38,7 +38,7 @@ The prototype passes on the existing composed 11.5 source. The unchanged candida
 ### Architecture and decisions
 
 - Existing `cli-sandbox-handoff.patch` owns the expansion; no additional patch or production protocol.
-- Exact provider exemption is experimental. The prototype must not be interpreted as general third-party CLI approval.
+- The provider exemption is limited to bundled Claude. It does not authorize other CLI providers.
 - Child and current sandbox/tool authority remain owned by existing runtime code.
 
 ### Implementation
@@ -61,7 +61,7 @@ Limits: this proves the selected Docker/Claude configuration, not all backend or
 
 ### Rollout and rollback
 
-Local prototype only. No production service, configuration or credential changes. Dispose only test-owned processes, containers and scratch state; retain candidate patch and compact evidence.
+The completed isolated prototype made no production service, configuration or credential changes. Test-owned processes, containers and scratch state are cleaned; compact evidence is retained. The approved expansion now follows the Phase 2 installed build, ci-dev and ci-prod lifecycle.
 
 ### Review log
 
@@ -73,3 +73,5 @@ Retained independent reviewer found no concrete containment escape in the narrow
 - [x] Baseline and positive runtime proof, including real Claude.
 - [x] Negative sandbox checks.
 - [x] Retained review and cleanup.
+- [x] Obtain production approval and integrate into the Phase 2 patch.
+- [ ] Complete combined release qualification under the Phase 2 plan.

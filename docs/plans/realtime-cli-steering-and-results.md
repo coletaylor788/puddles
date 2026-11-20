@@ -1,8 +1,8 @@
 # Realtime delegation through the configured agent runtime
 
-Status: Original scope approved; admission extension proposed
+Status: Production approved; combined candidate qualification in progress
 Issue: https://github.com/coletaylor788/puddles/issues/377
-Last updated: 2026-11-19
+Last updated: 2026-11-20
 
 ## Human section
 
@@ -128,19 +128,18 @@ permissions, sandboxing, stored sessions and ordinary text behavior intact.
 Use deterministic recordings plus real subscription CLI and voice qualification;
 report physical device acceptance separately.
 
-#### Proposed extension: sandboxed delegated CLI admission
+#### Approved extension: sandboxed delegated CLI admission
 
-**Approval: Proposed.** This is a separate extension to the existing
-[CLI sandbox handoff](../openclaw-setup/patches/cli-sandbox-handoff.md), not part
-of the approved routing repair. Implementation requires requester approval.
+**Approval: Production approved.** On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.” This extends the existing
+[CLI sandbox handoff](../openclaw-setup/patches/cli-sandbox-handoff.md).
 
 The installed voice path now completes the steered foreground command. Its next
 research child is rejected by native sandboxed CLI admission. That guard also
 applies to ordinary text chat, existed in 11.4, and remains in 11.5 and 11.6.
-The current handoff patch deliberately preserves it. Updating to 11.6 or changing
+The original handoff patch preserved it. Updating to 11.6 or changing
 the fixture cannot establish the requested delegated CLI behavior.
 
-Propose admitting only a trusted bundled Claude backend whose file and shell
+Admit only the trusted bundled Claude backend whose file and shell
 effects use the existing MCP tools and child-owned Docker sandbox. The CLI stays
 on the host for account access and inference, as it does for the supported main
 session. Exact tool-selection fields alone are not proof of containment.
@@ -175,30 +174,31 @@ then refusal for missing Docker, native-tool overrides, revoked grants and any
 unmediated CLI file or shell path. Verify workspace confinement, exact tool
 selection, child cleanup and ordinary main-session behavior. Finally rerun the
 real CLI Talk scenario through reader yield and proactive completion. The
-current failure is evidence for this proposal, not proof that the extension is
-implemented or safe to enable.
+isolated [prototype](claude-child-sandbox-poc.md) proves the selected Docker/Claude
+path, including real child delivery and resume. Combined release qualification
+and the wider authority-loss matrix remain release gates.
 
 ### Status
 
-**Approval: Production approved for the original scope.** On 2026-11-18 the
+**Approval: Production approved for the complete scope.** On 2026-11-18 the
 requester approved the combined 11.5 upgrade, four removals, upstream-based Talk
 repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
+On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-The approved implementation is reviewed. DEV passes the installed, subscription
-and boundary checks; real Talk completes its steered command, then native
-admission rejects the reader child. The failed transaction is closed and
-production remains on Phase 1. **Additional child-admission scope: Proposed**,
-awaiting separate requester approval and implementation proof. Full Talk, TEST,
-PROD and physical-call acceptance remain open. No admission code or candidate
-change accompanies this proposal.
+The original implementation and isolated child expansion are reviewed. R10 DEV
+passed installed, subscription and boundary checks but stopped at the reader
+admission guard; that transaction is closed. The prototype now passes hidden
+and visible children, sandbox effects, resume and durable parent delivery. The
+three exceptions are integrated into the existing patch. Full Talk, TEST, PROD
+and physical-call acceptance remain open; the production rollout is in progress.
 
 ## Agent section
 
 ### State
 
-Original Phase 2 scope is production approved; the admission extension is
-Proposed. Public base `fc295c9e8a0c2545181c62809783534c8f68a4e4`; approved native
+Original Phase 2 scope and the three Claude admission exceptions are production
+approved. Public base `fc295c9e8a0c2545181c62809783534c8f68a4e4`; approved native
 pin 11.5 `e13cf15ece9bbd969b7362927c315362c90c97ff`. This replaces the deferred
 outline in [the upgrade plan](voice-consultation-through-agent-turn.md).
 
@@ -206,7 +206,7 @@ DEV `gh-44621348881-1` is terminal failed with target and source cleanup complet
 The canonical transcript proves successful `steer_DONE`, followed by native
 refusal of the sandboxed reader child. Earlier startup and fixture issues have
 been repaired; they are not the current blocker. Preserve the existing runtime,
-configuration and seals while the new authority scope is reviewed.
+configuration and old seals; build a new sealed candidate for the approved expansion.
 
 ### Scope and acceptance criteria
 
@@ -252,9 +252,12 @@ admission regressions pass, confirming the refusal is deliberate.
 The 11.5 and 11.6 `subagent-spawn-child-plan.ts` files share exact Git blob
 `48dc48175daaea6d6561646ea1f6f87264055d4f`; review confirms the same refusal in
 11.4. The newer release does not provide the proposed path. Keep the approved
-11.5 pin. Required positive, negative and installed proofs for any approved
-admission extension are listed in the Human design; none are claimed complete.
-This documentation-only update runs no runtime tests or candidate lifecycle.
+11.5 pin. The isolated expansion passes 106 focused tests, six manifest checks,
+and real Gateway/MCP/Docker containment checks. Real Claude proves hidden and
+visible child tools, resume and parent-visible delivery; all three runs settle
+and clean up before shutdown. The maintained patch reproduces the tested source
+exactly. See the [prototype evidence](claude-child-sandbox-poc.md) for limitations.
+The combined installed release suite and complete Talk scenario still must pass.
 
 ### Rollout and rollback
 
@@ -263,6 +266,14 @@ normal CI gates. Yield after dispatch. CI owns deployment, recovery, exact merge
 and eligible cleanup. No manual production changes or older-harness rollback.
 
 ### Review log
+
+2026-11-20: Retained independent reviewer found no findings in the narrow
+expansion or final delivery proof. Requester approved production rollout. Only
+three provider conditions change runtime admission; other CLI providers and
+cron keep their guards. Updated regression expectations and manifest entries
+accompany the same patch. Retained review confirms exact integration of all
+four source/test files and preservation of the composed baseline. Combined
+candidate qualification is pending.
 
 2026-11-19: The parent and retained reviewer reviewed the additional admission
 boundary as a proposal. Final tool confinement and child-owned Docker/grant
@@ -281,5 +292,7 @@ Local links, structure and whitespace checked. Runtime acceptance remains open.
 
 - [x] Inspect stable delta and choose patch dispositions.
 - [x] Record production approval and the extension-only FaceTime boundary.
-- [ ] Obtain separate approval for the proposed delegated admission extension.
-- [ ] Implement any approved extension and qualify the combined candidate through CI.
+- [x] Obtain separate production approval for the three Claude admission exceptions.
+- [x] Integrate the tested expansion into the existing handoff patch.
+- [ ] Qualify the combined candidate through DEV, TEST and PROD.
+- [ ] Record physical FaceTime and audible-delivery acceptance.
