@@ -9,7 +9,8 @@ policy and MCP integrations remain. No additional node or delivery layer.
 
 Prepare only for effective coding selections. Fail closed on missing required
 sandbox or unmarked mutation bridges. Retain full native projected roots and
-owner disposal. Preserve native delegated/cron admission restrictions.
+owner disposal. Preserve delegated admission restrictions for other CLI providers
+and all existing cron restrictions.
 
 Adapted from upstream PR #163238 head
 3033c7d66ef3f2b500abe406e0e4ca4666eb15ff. All 13 accessible review-comment versions
@@ -58,7 +59,7 @@ These are derived from the exact target APIs, not new upstream feature requests.
 3. **Reuse current mutation authority.** Stable `src/gateway/tool-resolution-authority.ts` distinguishes preparation cancellation from invocation lifetime. Carry the exact invocation assertion rather than a one-time config/owner check or captured request abort alone. Stable `src/infra/fs-safe-remove.ts:106` already supports the required removal callback and its own path pinning.
 4. **Preserve the current grant/Code Mode path.** The existing Claude Code Mode patch adds host skill readers, exact grant fields and single before-tool-hook preparation. New sandbox plumbing must not spread away tool metadata, bypass the native preparer, add a second hook, resurrect a stale cached tool, or widen `toolsAllow`. Direct and nested calls must reach the same sandbox-bound tools and current authority.
 5. **Preserve backend preparation cleanup.** `src/agents/cli-runner/prepare.ts` uses `sequenceCliCleanups`, `cleanupPreparedResources`, and a preparation-failure cleanup catch. Integrate the owner into that existing chain, including failures before grant minting or backend preparation finishes. Do not let a later cleanup assignment overwrite sandbox disposal.
-6. **Keep admission changes scoped.** The November 20 requester authorization permits the isolated Claude child prototype described below. Only bundled Claude is exempted at hidden spawn, visible spawn and execution-time admission. Other CLI backends and cron retain their existing refusal. Existing sandbox preparation, native-tool restriction and MCP authority checks remain required.
+6. **Keep admission changes scoped.** The November 20 requester authorization permits production rollout of the tested three Claude child exceptions described below. Only bundled Claude is exempted at hidden spawn, visible spawn and execution-time admission. Other CLI backends and cron retain their existing refusal. Existing sandbox preparation, native-tool restriction and MCP authority checks remain required.
 7. **Keep builtin compatibility while failing closed for unmarked bridges.** Changes to shared bridge interfaces touch Docker/Podman, remote shell, OpenShell and MXC even though the configured backend is Docker. Preserve existing root/path/rename/removal semantics and wrapper capability propagation. A minimal adapter is preferable to replacing native implementations.
 
 ## Native 11.5 adaptation
@@ -86,12 +87,14 @@ Use installed build, ci-dev and ci-prod. CI owns tests, deployment, recovery,
 source merge and cleanup. Retire the patch when a stable release supplies the
 same guarantees and passes the retained behavior tests.
 
-## Authorized Claude child prototype
+## Approved Claude child expansion
 
-The requester explicitly authorized an isolated prototype on November 20 using
-this existing patch plus a narrow child-admission exception. See the
-[prototype plan](../../plans/claude-child-sandbox-poc.md). This supersedes the
-older proposal-only status for DEV testing; it does not authorize production.
+The requester authorized the isolated prototype on November 20 and then
+approved adding the tested three exceptions to this patch and rolling it out.
+See the [prototype evidence](../../plans/claude-child-sandbox-poc.md) and
+[Phase 2 release plan](../../plans/realtime-cli-steering-and-results.md).
+Production approval covers the narrow expansion; combined CI qualification
+remains required.
 
 The only new production conditions exempt `claude-cli` from the hidden-child,
 visible-child and execution-time refusal. Existing delegated tool policy,
