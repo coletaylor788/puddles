@@ -2408,3 +2408,135 @@ index 20127f534..8113df36b 100644
  export { prepareOomScoreAdjustedSpawn, spawnOomScoreAdjusted } from "../process/linux-oom-score.js";
  export type { OomScoreAdjustedSpawn, OomWrapOptions } from "../process/linux-oom-score.js";
  export { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
+diff --git a/src/agents/command/attempt-execution.sandbox-cli.test-support.ts b/src/agents/command/attempt-execution.sandbox-cli.test-support.ts
+index e1fe14d45..5cc83b73a 100644
+--- a/src/agents/command/attempt-execution.sandbox-cli.test-support.ts
++++ b/src/agents/command/attempt-execution.sandbox-cli.test-support.ts
+@@ -1,7 +1,6 @@
+ import { expect, it, type Mock } from "vitest";
+ import type { SessionEntry } from "../../config/sessions/types.js";
+ import type { OpenClawConfig } from "../../config/types.openclaw.js";
+-import { AgentHarnessPreflightError } from "../harness/errors.js";
+ import {
+   makeCliResult,
+   makeSessionEntry,
+@@ -82,14 +81,15 @@ export function registerSandboxedDelegatedCliTests(harness: SandboxedCliHarness)
+       entry: { spawnedBy: parent, sandbox: "required" as const },
+       cfg: sandboxedCliConfig({ cliModel: true }),
+     },
+-  ])("refuses host CLI launch for a sandboxed $name", async (testCase) => {
+-    const run = attempt(testCase);
+-    await expect(run).rejects.toBeInstanceOf(AgentHarnessPreflightError);
+-    await expect(run).rejects.toThrow(/claude-cli runs on the host and cannot honor the sandbox/);
+-    expect(harness.runCliAgentMock).not.toHaveBeenCalled();
+-    expect(harness.executePreparedCliRunMock).not.toHaveBeenCalled();
+-    expect(harness.runEmbeddedAgentMock).not.toHaveBeenCalled();
+-  });
++  ])(
++    "routes mediated Claude through the existing runner for a sandboxed $name",
++    async (testCase) => {
++      harness.runCliAgentMock.mockResolvedValueOnce(makeCliResult("cli response"));
++      await attempt(testCase);
++      expect(harness.runCliAgentMock).toHaveBeenCalledOnce();
++      expect(harness.runEmbeddedAgentMock).not.toHaveBeenCalled();
++    },
++  );
+ 
+   it.each([
+     {
+diff --git a/src/agents/command/attempt-sandbox-cli-admission.ts b/src/agents/command/attempt-sandbox-cli-admission.ts
+index 7fbd4dffb..1dd1d0363 100644
+--- a/src/agents/command/attempt-sandbox-cli-admission.ts
++++ b/src/agents/command/attempt-sandbox-cli-admission.ts
+@@ -5,20 +5,9 @@ import { AgentHarnessPreflightError } from "../harness/errors.js";
+ import { resolveSandboxRuntimeStatus } from "../sandbox/runtime-status.js";
+ 
+ /**
+- * Sandboxed delegated children never dispatch to host-executed CLI backends.
+- *
+- * A CLI backend spawns a local AI CLI on the gateway host; its native tools run
+- * with the gateway OS user outside any configured sandbox. Spawn admission
+- * fails closed once the resolved child model is known, but fallback candidates
+- * and post-spawn runtime overrides can still land on a CLI backend when the
+- * run starts, so the run seam owns the invariant: refuse the CLI candidate for
+- * any session with spawn provenance and whose sandbox classification (the
+- * configured sandbox mode covering this session key, or a creation-stamped
+- * `sandbox: "required"`) claims containment. Recovery is configuration: pick an
+- * API-backed child model, or change the agent's sandbox policy explicitly.
+- * Direct operator-chosen CLI runs on a non-delegated, unsandboxed session stay
+- * permitted, mirroring the cron seam guard
+- * (`assertCronCandidateSandboxPlacement`).
++ * Reject sandboxed delegated children on unsupported host CLI backends.
++ * Bundled Claude delegates coding tools to the existing sandbox-bound MCP path.
++ * Keep the run-time guard for other CLI fallback and runtime override candidates.
+  */
+ export function assertSandboxedDelegatedChildNotCli(params: {
+   useCliExecution: boolean;
+@@ -28,7 +17,8 @@ export function assertSandboxedDelegatedChildNotCli(params: {
+   sessionAgentId: string;
+   sessionEntry: SessionEntry | undefined;
+ }): void {
+-  if (!params.useCliExecution) {
++  // Bundled Claude uses the existing sandbox-bound MCP coding tools.
++  if (!params.useCliExecution || params.cliExecutionProvider === "claude-cli") {
+     return;
+   }
+   // Spawn provenance only: hidden children carry a subagent key and spawnedBy;
+diff --git a/src/agents/subagents/spawn/subagent-spawn-child-plan.ts b/src/agents/subagents/spawn/subagent-spawn-child-plan.ts
+index 48dc48175..ecc72fa63 100644
+--- a/src/agents/subagents/spawn/subagent-spawn-child-plan.ts
++++ b/src/agents/subagents/spawn/subagent-spawn-child-plan.ts
+@@ -203,12 +203,8 @@ export async function resolveSubagentChildPlan(params: {
+     };
+   }
+   const { resolvedModel } = modelPlan;
+-  // A sandbox-classified child must not dispatch to a host-executed CLI backend:
+-  // the CLI runs as the Gateway OS user outside the configured container while
+-  // the session would still be reported sandboxed. The spawn sandbox gate above
+-  // decides before model resolution, so re-check admission once the runtime is
+-  // knowable, mirroring the cron seam guard. The run seam enforces the same
+-  // invariant for fallback candidates and post-spawn runtime overrides.
++  // Keep unsupported CLI backends out of sandboxed children after model resolution.
++  // Bundled Claude reaches the existing sandbox-bound MCP coding tools instead.
+   if (childRuntimeSandboxed) {
+     const { useCliExecution, cliExecutionProvider } = resolveRunEntryCliRuntime({
+       config: params.cfg,
+@@ -217,7 +213,8 @@ export async function resolveSubagentChildPlan(params: {
+       agentId: params.targetAgentId,
+       authProfileId: modelPlan.initialSessionPatch.authProfileOverride,
+     });
+-    if (useCliExecution) {
++    // The existing CLI sandbox handoff mediates bundled Claude coding tools.
++    if (useCliExecution && cliExecutionProvider !== "claude-cli") {
+       return rejectSubagentSpawnRequest(
+         "forbidden",
+         `This spawn targets a sandboxed child, but model "${resolvedModel}" runs on host-executed CLI backend "${cliExecutionProvider}" and cannot honor the sandbox. Choose a sandbox-compatible (embedded/API) model for the child, or change the agent's sandbox policy explicitly.`,
+diff --git a/src/agents/tools/sessions-spawn-visible.ts b/src/agents/tools/sessions-spawn-visible.ts
+index b34c619db..6eba36aab 100644
+--- a/src/agents/tools/sessions-spawn-visible.ts
++++ b/src/agents/tools/sessions-spawn-visible.ts
+@@ -345,12 +345,8 @@ export async function maybeSpawnVisibleSession(params: {
+     childModel: resolvedModel,
+   });
+   const { authProfileOverride } = initialSessionPatch;
+-  // A sandbox-classified visible child must not dispatch to a host-executed CLI
+-  // backend: the CLI runs as the Gateway OS user outside the configured sandbox
+-  // while the child session would still be reported sandboxed. The admission
+-  // above only sees the config-derived classification; re-check once the child
+-  // model is resolved, mirroring the cron seam guard. The run seam enforces the
+-  // same invariant for fallback candidates and post-spawn runtime overrides.
++  // Keep unsupported CLI backends out of sandboxed children after model resolution.
++  // Bundled Claude reaches the existing sandbox-bound MCP coding tools instead.
+   if (childRuntimeSandboxed) {
+     const { useCliExecution, cliExecutionProvider } = resolveRunEntryCliRuntime({
+       config: cfg,
+@@ -359,7 +355,8 @@ export async function maybeSpawnVisibleSession(params: {
+       agentId: targetAgentId,
+       authProfileId: authProfileOverride,
+     });
+-    if (useCliExecution) {
++    // The existing CLI sandbox handoff mediates bundled Claude coding tools.
++    if (useCliExecution && cliExecutionProvider !== "claude-cli") {
+       return {
+         status: "forbidden",
+         error: `This spawn targets a sandboxed child, but model "${resolvedModel}" runs on host-executed CLI backend "${cliExecutionProvider}" and cannot honor the sandbox. Choose a sandbox-compatible (embedded/API) model for the child, or change the agent's sandbox policy explicitly.`,

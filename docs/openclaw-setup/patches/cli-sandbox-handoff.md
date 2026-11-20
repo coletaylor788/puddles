@@ -58,7 +58,7 @@ These are derived from the exact target APIs, not new upstream feature requests.
 3. **Reuse current mutation authority.** Stable `src/gateway/tool-resolution-authority.ts` distinguishes preparation cancellation from invocation lifetime. Carry the exact invocation assertion rather than a one-time config/owner check or captured request abort alone. Stable `src/infra/fs-safe-remove.ts:106` already supports the required removal callback and its own path pinning.
 4. **Preserve the current grant/Code Mode path.** The existing Claude Code Mode patch adds host skill readers, exact grant fields and single before-tool-hook preparation. New sandbox plumbing must not spread away tool metadata, bypass the native preparer, add a second hook, resurrect a stale cached tool, or widen `toolsAllow`. Direct and nested calls must reach the same sandbox-bound tools and current authority.
 5. **Preserve backend preparation cleanup.** `src/agents/cli-runner/prepare.ts` uses `sequenceCliCleanups`, `cleanupPreparedResources`, and a preparation-failure cleanup catch. Integrate the owner into that existing chain, including failures before grant minting or backend preparation finishes. Do not let a later cleanup assignment overwrite sandbox disposal.
-6. **Do not broaden admission.** Native delegated CLI and cron sandbox admission checks are separate from this missing context handoff. Existing approved removals and the remaining retained patch behaviors stay accepted. Native refusal remains truthful where that caller cannot reach the supported runner.
+6. **Keep admission changes scoped.** The November 20 requester authorization permits the isolated Claude child prototype described below. Only bundled Claude is exempted at hidden spawn, visible spawn and execution-time admission. Other CLI backends and cron retain their existing refusal. Existing sandbox preparation, native-tool restriction and MCP authority checks remain required.
 7. **Keep builtin compatibility while failing closed for unmarked bridges.** Changes to shared bridge interfaces touch Docker/Podman, remote shell, OpenShell and MXC even though the configured backend is Docker. Preserve existing root/path/rename/removal semantics and wrapper capability propagation. A minimal adapter is preferable to replacing native implementations.
 
 ## Native 11.5 adaptation
@@ -86,12 +86,30 @@ Use installed build, ci-dev and ci-prod. CI owns tests, deployment, recovery,
 source merge and cleanup. Retire the patch when a stable release supplies the
 same guarantees and passes the retained behavior tests.
 
-## Proposed delegated admission extension
+## Authorized Claude child prototype
 
-The [Phase 2 proposal](../../plans/realtime-cli-steering-and-results.md#proposed-extension-sandboxed-delegated-cli-admission)
-now describes a separate, unapproved extension for trusted bundled Claude
-children. The existing no-broaden-admission obligation above still applies.
-No patch hunk or admission behavior changes with that proposal. Its required
-boundary is final native-tool confinement plus a live child-owned Docker lease
-and MCP grant, rechecked on execution and selection changes. Cron and stock
-Copilot admission remain outside the proposed extension.
+The requester explicitly authorized an isolated prototype on November 20 using
+this existing patch plus a narrow child-admission exception. See the
+[prototype plan](../../plans/claude-child-sandbox-poc.md). This supersedes the
+older proposal-only status for DEV testing; it does not authorize production.
+
+The only new production conditions exempt `claude-cli` from the hidden-child,
+visible-child and execution-time refusal. Existing delegated tool policy,
+prepared sandbox custody, MCP grants and native cleanup perform the work.
+Other CLI providers and cron retain their guards. No node execution mode,
+new tool bridge or child-specific sandbox implementation is added.
+
+The deterministic Gateway/Docker prototype passes hidden and visible child
+work, constrained file-only child tools, resume, background process polling,
+outside read/write and symlink refusal, host-exec override refusal, and missing
+sandbox-image failure without a host fallback. The selected containers have
+network disabled and a read-only root. The final focused suite passes 106
+checks across three test files. Real Claude also passes hidden/visible child execution, parent-result delivery
+and resumed tool containment with the existing native subscription. The full
+composed release suite remains a separate release gate. See the prototype
+plan for the exact limits, including follow-on announcement teardown.
+
+Visible children inherit the requester's tool cap. A spawn-only requester
+correctly yields a visible child with no coding tools; sandbox admission must
+not bypass that policy. The positive fixture explicitly permits those tools
+on the parent and child.

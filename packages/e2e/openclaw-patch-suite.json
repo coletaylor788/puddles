@@ -257,7 +257,8 @@
     "src/agents/subagents/registry/subagent-registry.persistence.test.ts": "infra",
     "src/agents/subagents/registry/subagent-yielded-run-settlement.integration.test.ts": "agents-support",
     "src/agents/tool-surface-plan.test.ts": "unit-fast",
-    "src/skills/workshop/review-outcome.test.ts": "unit"
+    "src/skills/workshop/review-outcome.test.ts": "unit",
+    "src/agents/command/attempt-execution.cli.test.ts": "agents-support"
   },
   "patches": [
     {
@@ -575,7 +576,9 @@
         "extensions/openshell/src/openshell-mirror-fs-bridge.test.ts",
         "src/agents/sandbox/mcp-grant-mutation-fence.test.ts",
         "extensions/openshell/src/backend.exec-workdir.test.ts",
-        "src/agents/sandbox/host-bridge-mutation-fence.test.ts"
+        "src/agents/sandbox/host-bridge-mutation-fence.test.ts",
+        "src/agents/subagents/spawn/subagent-spawn-child-plan.sandbox-cli.test.ts",
+        "src/agents/command/attempt-execution.cli.test.ts"
       ]
     }
   ],
@@ -661,7 +664,8 @@
     "src/agents/system-prompt.test.ts",
     "src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts",
     "src/agents/agent-tools.create-openclaw-coding-tools.test.ts",
-    "extensions/copilot/src/attempt-transcript-journal.test.ts"
+    "extensions/copilot/src/attempt-transcript-journal.test.ts",
+    "src/agents/command/attempt-execution.cli.test.ts"
   ],
   "candidateTests": [
     "tests/candidate.gmail-approval.test.ts",
