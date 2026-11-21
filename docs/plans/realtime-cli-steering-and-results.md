@@ -187,15 +187,15 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-The child expansion and both Talk completion corrections pass DEV, including
-same-task steering, proactive reader results, conversation persistence and
-close/reopen. Native completion ownership is preserved. The first production
-pipeline stopped in the full suite before any target deployment: two private
-test mappings were stale, and an installed direct-chat scenario expected forced
-recovery after explicit `NO_REPLY`. Native 11.5 accepts that authored silence;
-the corrected scenario verifies no extra model turn and a normal user follow-up.
-These are qualification-only corrections. TEST, PROD and physical-call acceptance
-remain open.
+The combined candidate passes DEV, including native steering, sandboxed reader
+yield, proactive results, history and close/reopen. Production qualification
+stopped in the local full suite before target deployment. The latest repairs
+keep Python scratch settings out of native socket paths and align the synthetic
+model-error scenario with the exact native 11.5 messages. Both failures reproduce
+before repair; focused tests and all 15 installed scenarios pass afterward,
+with retained review clear and artifact integrity preserved.
+These are test-harness corrections. Runtime patches and sandbox behavior remain
+unchanged. Full-suite CI, TEST/PROD and physical voice acceptance remain open.
 
 ## Agent section
 
@@ -240,6 +240,28 @@ Keep empty-output/error handling intact and test authored silence followed by a
 visible answer to a new user request. No OpenClaw source or runtime patch changes
 for these full-suite corrections. Evidence is retained under
 `/private/tmp/phase2-full-suite-repair-20261121`.
+
+
+R16 candidate `784ebad8ebed55919d5b951eb8e688f5da5f7192a5f2a0e15ee7adcaf71b2a00`
+passed DEV `gh-44927925297-1` at `1795281979418`; source closure completed at
+`1795282027647`. Production `gh-44946216181-1` failed its local application suite
+before target deployment; source queue closed at `1795293114592`, transfer
+`already-clean`.
+
+R17 qualification repair preserves caller TMPDIR/TMP/TEMP for native tests while
+Python retains its owned scratch. The long-path native lifecycle test reproduces
+EINVAL before repair (13 passed, one failed) and passes all 14 afterward. Both
+new environment cases fail before repair; the complete Python harness file passes
+all nine tests afterward. The synthetic model-error scenario expected obsolete
+copy. Public native output is `LLM request rejected: Synthetic model failure`;
+the companion emits `No answer was returned. Ask again if you still need one.`
+Both are supported by unchanged pinned native error/terminal-reply code and tests.
+Exact alternatives preserve one request, one delivery and consumed-script checks.
+Both provider fixtures pass with one request, one send and zero tool calls.
+Retained review has no findings. Evidence: `/private/tmp/phase2-suite-paths-20261121`.
+No runtime source or patch changed. All 15 installed scenarios pass, including
+companion restart and quiet completion; process cleanup and unchanged artifact
+integrity checks pass. Fresh DEV and full-suite CI remain required.
 
 ### Scope and acceptance criteria
 

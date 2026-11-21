@@ -69,8 +69,7 @@ export default [
   {
     id: "model-error",
     steps: [{ incoming: [{ text: "Exercise a model failure." }], responses: [{ error: "Synthetic model failure" }], expect: {
-      sends: [["LLM request failed: provider rejected the request schema or tool payload.", "Agent couldn't generate a response. Please try again."]],
-      sendsExclude: ["Synthetic model failure"],
+      sends: [["LLM request rejected: Synthetic model failure", "No answer was returned. Ask again if you still need one."]],
     } }],
   },
   reply("fresh-state-reuses-guid", "This run must not inherit the prior replay cursor."),
