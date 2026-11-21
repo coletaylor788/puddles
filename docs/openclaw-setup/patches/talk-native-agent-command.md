@@ -17,6 +17,14 @@ Talk's machine thinking preference is normalized without changing explicit user
 commands. Private reply metadata stays attached without changing serialized
 payloads.
 
+A successful native CLI yield settles the command acknowledgement and preserves
+the existing promoted requester-final attachment. Previously the adapter only
+claimed visible non-yielded completion, so it revoked that attachment before the
+resumed parent answer could reach voice. The correction retains terminal-write
+draining, abort/error refusal, receipt identity and current-voice checks. The
+regression covers current and stale non-embedded yields alongside embedded runs;
+it fails on the previous adapter and passes after the correction.
+
 The .5 port preserves its new transcript custody rule: generated consult input
 is hidden and excluded from later context. The regression targets are registered
 in the cumulative patch suite. Local and installed acceptance must prove a real
