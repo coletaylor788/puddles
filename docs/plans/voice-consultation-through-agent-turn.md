@@ -691,9 +691,12 @@ allowed. Pinned `docs/concepts/messages.md` and `docs/channels/groups.md` docume
 `agents.defaults.silentReply.group: "allow"` for unaddressed group requests.
 The two quiet-group scenarios now opt into that native setting through a
 strictly group-only fixture option. Unexpected model requests still fail, and
-the direct-chat continuation case still requires a visible reply. Production
-configuration is unchanged. This behavior was already documented in the native
-v2026.9.6 release notes; the tests must state their intended policy explicitly.
+the direct-chat continuation case at that earlier pin still required a visible
+reply. Production configuration was unchanged. The group policy was already
+documented in native v2026.9.6. Phase 2's pinned 11.5 accepts authored `NO_REPLY`
+for ordinary direct chat; its installed scenario now verifies that silence causes
+no extra model request, followed by a visible answer to a new user request.
+Empty-output and result-required completion remain separate contracts.
 
 
 ### Companion compatibility checks after installed message acceptance

@@ -187,13 +187,15 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-The child expansion is reviewed and passes installed execution, including child
-completion and the resumed parent answer. The existing Talk patch now corrects
-yield settlement and selects the command's final answer instead of combining
-it with earlier CLI answers. The latest DEV run exposed that second defect when
-an answer arrived before Claude consumed a refinement. Both repairs retain native
-completion ownership. Complete Talk, TEST and PROD qualification and physical-call
-acceptance remain open.
+The child expansion and both Talk completion corrections pass DEV, including
+same-task steering, proactive reader results, conversation persistence and
+close/reopen. Native completion ownership is preserved. The first production
+pipeline stopped in the full suite before any target deployment: two private
+test mappings were stale, and an installed direct-chat scenario expected forced
+recovery after explicit `NO_REPLY`. Native 11.5 accepts that authored silence;
+the corrected scenario verifies no extra model turn and a normal user follow-up.
+These are qualification-only corrections. TEST, PROD and physical-call acceptance
+remain open.
 
 ## Agent section
 
@@ -221,6 +223,23 @@ only the corrected answer. Use that existing metadata for speech, with the
 payload projection retained only for runtimes lacking a terminal snapshot.
 Silent or empty snapshots must not revive earlier answers. No browser/runtime
 configuration or sandbox admission change is part of this correction.
+
+R15 DEV `gh-44923882182-1` passed the complete installed Talk scenario, with
+terminal `phase=complete`, `child=null`, and source cleanup closed. Production
+workflow `gh-44925645068-1` stopped in the development-host full suite; it created
+no target transaction. Its source queue closed at `1795279410705` and transfer
+cleanup reported `already-clean`.
+
+The public compaction mappings were correct. The companion repeated two targets
+under `agents-support` instead of native `infra`, causing collection failure.
+The installed `direct-silent-continuation` reproduction completed the authored
+silent turn, then waited for an obsolete automatic retry. Pinned 11.5
+`reply-completion.ts`, `required-reply.cases.ts` and embedded `payloads.ts` accept
+ordinary direct-chat `NO_REPLY`; only result-required completion demands content.
+Keep empty-output/error handling intact and test authored silence followed by a
+visible answer to a new user request. No OpenClaw source or runtime patch changes
+for these full-suite corrections. Evidence is retained under
+`/private/tmp/phase2-full-suite-repair-20261121`.
 
 ### Scope and acceptance criteria
 
@@ -262,6 +281,14 @@ shrinks to removing an obsolete diagnostic because native tool construction now
 supports the configured sandboxed grant. Neither change adds custom routing.
 
 ### Validation
+
+The full-suite corrections reproduce both failures before repair. Corrected
+discovery collects all 307 mapped targets across 34 native projects. Both
+compaction files pass, 24 tests in 45.79 seconds. The installed direct-chat
+scenario passes on the unchanged application with exactly two model requests,
+one send and no tools: authored silence first, then a new user's visible reply.
+Retained review has no findings. These focused results do not replace the next
+full-suite CI run, TEST or PROD acceptance.
 
 The terminal-answer regression first fails all three added cases on the previous
 source. The correction passes 51 focused tests across Talk projection, the real
