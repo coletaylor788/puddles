@@ -1275,10 +1275,18 @@ index 7dff9a57b..7e596d6d3 100644
    };
  }
 diff --git a/src/test-utils/ports.test.ts b/src/test-utils/ports.test.ts
-index 165ae28c2..6a4052c2c 100644
+index 165ae28..5aa5b3a 100644
 --- a/src/test-utils/ports.test.ts
 +++ b/src/test-utils/ports.test.ts
-@@ -35,6 +35,16 @@ vi.mock("node:os", async (importOriginal) => ({
+@@ -7,6 +7,7 @@ const host = vi.hoisted(() => ({
+   platform: vi.fn(() => "linux"),
+   range: "32768\t60999\n",
+   reads: vi.fn((): string => host.range),
++  sysctl: vi.fn((): string => `${host.range.trim()} ${host.range.trim()}`),
+   rejectPort: vi.fn<(...args: [number]) => string | undefined>(() => undefined),
+ }));
+ 
+@@ -35,6 +36,16 @@ vi.mock("node:os", async (importOriginal) => ({
    ...(await importOriginal<typeof import("node:os")>()),
    platform: host.platform,
  }));
@@ -1295,6 +1303,52 @@ index 165ae28c2..6a4052c2c 100644
  vi.mock("node:fs", async (importOriginal) => {
    const actual = await importOriginal<typeof import("node:fs")>();
    return {
+@@ -114,15 +125,15 @@ it.each([
+     first ??= port;
+     return denial >= 0 && port === first + denial ? "EACCES" : undefined;
+   });
+-  for (let worker = 0; worker < (os === "linux" ? 64 : 2); worker++) {
++  for (let worker = 0; worker < (os === "linux" || os === "darwin" ? 64 : 2); worker++) {
+     const port = await withEnvAsync({ VITEST_WORKER_ID: String(worker) }, () =>
+       allocate(defaultOffsets, fallback),
+     );
+     expectBlock(
+       port,
+       defaultOffsets,
+-      os === "linux" ? [20000, 65000] : undefined,
+-      os === "linux" ? [1024, 65535] : [30000, 64999],
++      os === "linux" || os === "darwin" ? [20000, 65000] : undefined,
++      os === "linux" || os === "darwin" ? [1024, 65535] : [30000, 64999],
+     );
+     if (worker < 2) {
+       for (const offset of defaultOffsets) {
+@@ -170,7 +181,7 @@ it.each([
+   const result = allocate(fallback ? fallbackOffsets : [0, 1], fallback);
+   if (fallback) {
+     const port = await result;
+-    if (os === "linux") {
++    if (os === "linux" || os === "darwin") {
+       expectBlock(port, fallbackOffsets, [32768, 60999]);
+     } else {
+       expect(port).toBe(44000 + (process.pid % 10000));
+@@ -207,3 +218,17 @@ it.each([
+   await expect(allocate(denied ? fallbackOffsets : undefined, denied)).rejects.toThrow(error);
+   expect(host.rejectPort).not.toHaveBeenCalled();
+ });
++
++
++it("excludes both macOS ephemeral port ranges", async () => {
++  host.platform.mockReturnValue("darwin");
++  host.sysctl.mockReturnValueOnce("30000\n40000\n45000\n60000\n");
++  expectBlock(await allocate(), defaultOffsets, [30000, 60000]);
++});
++
++it("refuses macOS port allocation when the kernel range cannot be read", async () => {
++  host.platform.mockReturnValue("darwin");
++  host.sysctl.mockImplementationOnce(() => { throw new Error("sysctl denied"); });
++  await expect(allocate()).rejects.toThrow("failed to read macOS ephemeral TCP port range");
++  expect(host.rejectPort).not.toHaveBeenCalled();
++});
 diff --git a/src/test-utils/ports.ts b/src/test-utils/ports.ts
 index 408ef98cc..000530d94 100644
 --- a/src/test-utils/ports.ts
