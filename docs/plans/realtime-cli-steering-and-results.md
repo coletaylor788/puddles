@@ -187,19 +187,19 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-The previous candidate passes DEV, including native steering, sandboxed reader
-yield, proactive results, history and close/reopen. Production qualification
-stopped in the source-host full suite before transfer or deployment. The source
-transaction is closed and cleanup is complete.
+The rebuilt candidate passes all required repository checks, twelve installed
+DEV checks, real Claude subscription qualification and the sandbox boundaries.
+DEV then fails in Talk provider readiness: the selected OpenAI voice provider
+reports that it is not configured. Target and source cleanup are complete.
+Production has not received this feature.
 
-The next candidate repairs the existing memory-snapshot patch so each new
-snapshot session acquires native admission before starting its CLI run. The
-remaining corrections adapt regression fixtures to native 11.5 lifecycle,
-metadata and supported historical database behavior. The three child exceptions,
-tool containment and Talk routing remain unchanged. Focused source and installed
-checks pass. All mapped source groups have completed, with the discovered
-fixture failures passing focused repair checks. Rebuilt-candidate DEV, the full
-CI suite, TEST/PROD and physical voice acceptance remain open.
+Local create/offer/close/reopen checks pass with the full Claude and Docker
+configuration. A real installed Claude turn against the existing loopback
+scripted provider also completes once and reopens successfully. The failure's
+initial-create versus reopen stage is still unresolved. The next candidate adds
+bounded phase and registration diagnostics to the existing qualifier only;
+there is no runtime repair or readiness bypass. Full CI, TEST/PROD and physical
+voice acceptance remain open.
 
 ## Agent section
 
@@ -305,6 +305,18 @@ supervisor 52); this is not an all-green unmodified run. The final child-wakeup
 and tool-hook integration group passes all 61 cases. CI must rerun the entire
 suite against the frozen candidate. Source disk reserve blocked a repository rehearsal check; only closed,
 owner-verified generated artifacts are being retired before retrying it.
+
+R18 candidate `77a6156826b54766782d1c530f6cc36af1d104eb13a3fa3a08fc65662ebe7b84`
+failed DEV `gh-44959167291-1` at `dev-tests`, after all twelve installed checks
+and real subscription/boundary qualification passed. The target is failed,
+complete and child-null; source queue closed at `1795302944851` and transfer
+cleanup is `cleaned`. The Talk error does not distinguish initial creation from
+reopen. R19 changes only qualification diagnostics: bounded provider registration
+mode, broker presence, session/observation counts and voice stage, preserving the
+original exception and native cleanup. Ten fixture unit checks pass. Local
+ordinary and full-config reopen checks pass; real CLI loopback Talk produces
+exactly one answer from one primary request and then reopens (44.8 seconds).
+These are diagnostic observations, not a proven fix for the DEV failure.
 
 ### Scope and acceptance criteria
 
