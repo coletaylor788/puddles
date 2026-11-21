@@ -133,9 +133,10 @@ report physical device acceptance separately.
 **Approval: Production approved.** On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.” This extends the existing
 [CLI sandbox handoff](../openclaw-setup/patches/cli-sandbox-handoff.md).
 
-The installed voice path now completes the steered foreground command. Its next
-research child is rejected by native sandboxed CLI admission. That guard also
-applies to ordinary text chat, existed in 11.4, and remains in 11.5 and 11.6.
+Earlier installed voice qualification completed the steered foreground command,
+then rejected its research child at native sandboxed CLI admission. That guard
+also applied to ordinary text chat and existed in the inspected 11.4, 11.5 and
+11.6 source. The approved exceptions now admit the selected Claude child path.
 The original handoff patch preserved it. Updating to 11.6 or changing
 the fixture cannot establish the requested delegated CLI behavior.
 
@@ -186,12 +187,12 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-The original implementation and isolated child expansion are reviewed. R10 DEV
-passed installed, subscription and boundary checks but stopped at the reader
-admission guard; that transaction is closed. The prototype now passes hidden
-and visible children, sandbox effects, resume and durable parent delivery. The
-three exceptions are integrated into the existing patch. Full Talk, TEST, PROD
-and physical-call acceptance remain open; the production rollout is in progress.
+The child expansion is reviewed and passes installed execution: DEV now reaches
+child completion and the resumed parent answer. Voice delivery exposed a yield
+settlement bug in the existing Talk adapter. Its reviewed correction passes
+focused tests and preserves the native completion owner. The next combined
+candidate must pass complete Talk, TEST and PROD qualification. Physical-call
+acceptance remains open.
 
 ## Agent section
 
@@ -202,11 +203,13 @@ approved. Public base `fc295c9e8a0c2545181c62809783534c8f68a4e4`; approved nativ
 pin 11.5 `e13cf15ece9bbd969b7362927c315362c90c97ff`. This replaces the deferred
 outline in [the upgrade plan](voice-consultation-through-agent-turn.md).
 
-DEV `gh-44621348881-1` is terminal failed with target and source cleanup complete.
-The canonical transcript proves successful `steer_DONE`, followed by native
-refusal of the sandboxed reader child. Earlier startup and fixture issues have
-been repaired; they are not the current blocker. Preserve the existing runtime,
-configuration and old seals; build a new sealed candidate for the approved expansion.
+DEV `gh-44801823538-1` is terminal failed with `phase=complete`, `child=null`,
+source queue closure and transfer cleanup. Installed checks and real subscription/
+sandbox qualification pass. Talk admits the reader, yields and receives its
+result; the resumed parent produces the exact final. The voice append times out
+because the Talk command adapter rejects yielded settlement and revokes its
+promoted requester-final attachment. Correct that adapter within the approved
+Talk patch, preserve the three sandbox exceptions and build a new sealed candidate.
 
 ### Scope and acceptance criteria
 
@@ -232,6 +235,12 @@ not held PR #347. Resolve the open evidence gaps and additional integration
 items listed above. Port retained behavior to native interfaces;
 retain meaningful regressions independently of deleted patch registrations.
 
+The Talk command adapter now recognizes an authoritative successful yield as
+settlement of its acknowledgement. This releases only the provisional binding;
+the existing promoted native attachment owns later child-result speech. Terminal
+write draining, abort/error checks, receipt identity and current-voice checks
+remain. No new delivery mechanism or sandbox change accompanies this repair.
+
 #### Upgrade compatibility
 
 Native 11.5 Cron replaces the retired heartbeat tool path. Remove the now-unused
@@ -243,11 +252,15 @@ supports the configured sandboxed grant. Neither change adds custom routing.
 
 ### Validation
 
-Combined source composition, core and extension typechecks, and focused native
-FaceTime/Talk/sandbox checks pass. R10 DEV passes installed, subscription and
-boundary qualification. Real Talk proves successful foreground steering but not
-the blocked child/yield/proactive-result sequence. Four native sandboxed-child
-admission regressions pass, confirming the refusal is deliberate.
+R12 DEV passes all twelve installed checks and real Claude subscription and
+boundary qualification. Native transcripts prove foreground steering, accepted
+reader execution, yield, successful child completion and the resumed parent
+answer. The remaining failure is the voice callback after yield. A regression
+without an embedded run reproduces that failure on the old adapter. The repair
+passes all eighteen focused requester-final and Gateway CLI-routing checks, plus
+core types. The changed requester-final file takes 8.93 seconds wall time; the
+Gateway file takes 37.88 seconds because it exercises the real Gateway command
+composition. Installed voice acceptance remains pending.
 
 The 11.5 and 11.6 `subagent-spawn-child-plan.ts` files share exact Git blob
 `48dc48175daaea6d6561646ea1f6f87264055d4f`; review confirms the same refusal in
@@ -273,7 +286,10 @@ three provider conditions change runtime admission; other CLI providers and
 cron keep their guards. Updated regression expectations and manifest entries
 accompany the same patch. Retained review confirms exact integration of all
 four source/test files and preservation of the composed baseline. Combined
-candidate qualification is pending.
+candidate qualification is pending. R12 subsequently exposed the CLI-yield
+completion claim defect; retained review cleared its correction within the
+existing Talk adapter. Red-to-green proof covers the non-embedded current owner
+and preserves stale-owner refusal. The isolated sandbox expansion is unchanged.
 
 2026-11-19: The parent and retained reviewer reviewed the additional admission
 boundary as a proposal. Final tool confinement and child-owned Docker/grant
