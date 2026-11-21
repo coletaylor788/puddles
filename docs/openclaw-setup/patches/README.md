@@ -5,8 +5,8 @@ runner applies them in a detached worktree, builds the real runtime, runs the
 cumulative regressions, and rehearses the installed package. It never modifies
 the configured source checkout or patches installed distribution chunks.
 
-The selected stable release is OpenClaw 2026.11.4 at
-`d843d6af39a42cd3c30084edbeabeece732fd93a`. It requires Node 24.16.0 or later
+The selected stable release is OpenClaw 2026.11.5 at
+`e13cf15ece9bbd969b7362927c315362c90c97ff`. It requires Node 24.16.0 or later
 on 24.x, or Node 26.1.0 or later. Earlier runtimes can truncate SQLite text.
 Use the same exact Node binary for packaging, installed rehearsal, and the
 activated gateway. Keep the previous interpreter available for rollback.
@@ -27,27 +27,22 @@ patch inventory and application commands do not authorize a new or changed patch
 |---|---|
 | `file-lock-stale-reclaim-guard.patch` | Guard stale file-lock recovery |
 | `subagent-cross-agent-spawn-fix.patch` | Explicit targeting and inherited tools |
-| `skill-workshop-sandbox-fix.patch` | Preserve configured sandbox Workshop access while using native immediate saves, history, and undo |
+| `skill-workshop-sandbox-fix.patch` | Remove the obsolete sandbox Workshop diagnostic; native access, saves, history and undo remain unchanged |
 | `imessage-message-part-coalescing.patch` | Selective text, link, and image coalescing |
 | `browser-userdata-dir-fix.patch` | Browser data directory and singleton cleanup |
-| `native-heartbeat-response.patch` | Native structured completion and notification for built-in heartbeat turns |
 | `stopped-state-migration-sdk.patch` | Expose maintained stopped config repair, cron partition migration, and targeted writes |
 | `managed-local-service-lifecycle.patch` | Join gateway-owned service groups before stopped-state changes |
 | `gateway-memory-warmup.patch` | Prepare and retain managed local embeddings before readiness |
 | `harness-tool-work-owner.patch` | Bind tool callbacks to their current harness attempt across reused connections |
-| `talk-conversation-progress.patch` | Keep Live conversational while work runs and forward silent public progress |
-| `talk-overlap-recovery.patch` | Keep Talk connected when the active harness cannot accept a follow-up |
 | `core-declaration-portability.patch` | Name portable core declaration exports for tools, sessions, databases, and plugin records |
-| `shared-conversation-context.patch` | Supply native shared history to a persistent harness before each ordinary turn |
 | `untrusted-agent-results.patch` | Enclose configured source agent findings at model-facing boundaries |
 | `claude-native-agent-profiles.patch` | Preserve Claude workspace permissions and one-time escalation with explicit per-agent profiles |
-| `talk-request-recovery.patch` | Report each voice request accurately and permit fresh requests after failure |
-| `facetime-talk-client.patch` | Let FaceTime inherit native Talk configuration, history, controls, and accepted-work lifetime |
+| `talk-native-agent-command.patch` | Route Talk consultation through the normal agent command, based on upstream PR #199379 |
+| `facetime-talk-client.patch` | Attach the FaceTime extension to main through existing native Talk client methods |
 | `wiki-get-mutation-metadata.patch` | Expose complete citation and claim metadata for preserving wiki updates |
 | `code-mode-additive-surface.patch` | Keep direct tools alongside contained scripting through the bundled QuickJS executor |
 | `claude-code-mode-mcp.patch` | Connect native Claude MCP calls to the shared contained runtime and existing execution policy |
 | `claude-configured-mcp.patch` | Carry permitted configured MCP tools through the restricted CLI host bridge and support exact MCP grants in native workspace profiles |
-| `copilot-configured-mcp.patch` | Connect configured MCP tools to the Copilot host tool bridge with role policy and owned cleanup |
 | [`cli-sandbox-handoff.patch`](cli-sandbox-handoff.md) | Bind native sandbox ownership and mutation authority to managed CLI coding tools |
 
 Each patch has a neighboring document explaining its behavior and history.
@@ -470,3 +465,13 @@ cancellation coverage. The remaining overlap patch retains the exact closed-offe
 context-engine regression. Remove the obsolete `talk.realtime.confirmationPolicy`
 leaf through a reviewed configuration transition; the old `standard` value maps
 to native behavior. A former `high-impact` selection needs its own behavior review.
+
+## Retired configured MCP wrapper
+
+The 11.5 audit removed `copilot-configured-mcp`. After returning Copilot to its
+stock implementation, the patch contained only an unused core helper, an SDK
+forwarder and tests for that helper. Copilot constructs tools through native host
+capabilities. Claude calls native MCP acquisition and materialization directly.
+No maintained runtime or qualifier calls the added helper. Native MCP and stock
+Copilot bridge tests remain in the ordinary cumulative inventory. This removal
+does not claim that stock Copilot provides the old configured-MCP parity.

@@ -1,7 +1,7 @@
 # CLI tools in the native OpenClaw sandbox
 
 Managed CLI turns call OpenClaw file and shell tools through its MCP bridge.
-Stable v2026.11.4 lacks the prepared sandbox at this boundary. This patch binds
+Stable v2026.11.5 lacks the prepared sandbox at this boundary. This patch binds
 the existing native workspace/sandbox owner to the host-only MCP grant and coding
 tool factory. The Gateway and CLI remain on the host; native Docker supplies
 file and shell containment. Existing exec/process handles, background completion,
@@ -9,7 +9,8 @@ policy and MCP integrations remain. No additional node or delivery layer.
 
 Prepare only for effective coding selections. Fail closed on missing required
 sandbox or unmarked mutation bridges. Retain full native projected roots and
-owner disposal. Preserve native delegated/cron admission restrictions.
+owner disposal. Preserve delegated admission restrictions for other CLI providers
+and all existing cron restrictions.
 
 Adapted from upstream PR #163238 head
 3033c7d66ef3f2b500abe406e0e4ca4666eb15ff. All 13 accessible review-comment versions
@@ -45,7 +46,7 @@ Repeated labels, security summaries and checklist entries in the edited comment 
 | CLI/cron end-to-end proof gap | Keep open until locally qualified. Upstream explicitly did not run live CLI or cron. Use an actual prepared Gateway and CLI protocol route for direct/nested tool execution, then real configured Claude qualification where required. For cron/delegated paths, first check stable admission: a deliberate native sandbox-CLI rejection must remain a refusal unless changing it is explicitly within scope. Do not claim this patch makes a rejected path work. |
 | OpenShell service and Windows MXC process-container proof absent | Disclose as platform validation limits, not proof of a Docker failure. Test shared changed backend/bridge contracts. Do not advertise those platforms as installed-qualified from a Linux filesystem or stubbed OpenShell control-plane run. |
 | Automated stored-data/model migration warning in intermediate review | Dismiss as a false positive for this patch's transient callback/capability fields. No changed on-disk format is present in the reviewed upstream diff. Preserve existing jobs/configuration through behavior tests; do not invent a schema migration. If the actual port adds persisted fields, reassess. |
-| Current-main merge conflict / fresh integrated review | Translate to our actual target: port against exact stable plus the accepted 35-patch composition, not an unrelated current-main merge. Preserve stable ownership APIs and all prior overlay behavior. Strict full composition, source/export review, relevant runtime/test types and installed proofs remain mandatory. |
+| Current-main merge conflict / fresh integrated review | Translate to our actual target: port against exact stable plus the accepted patch composition, not an unrelated current-main merge. Preserve stable ownership APIs and all prior overlay behavior. Strict full composition, source/export review, relevant runtime/test types and installed proofs remain mandatory. |
 | Upstream security-sensitive approval and review bot commands | Informational upstream workflow only. Do not post commands, request upstream merges, or use upstream bot status as local authorization. Current requester approval applies to the one handoff patch. |
 | Labels, numeric review ratings and earlier `needs proof` status | Historical summaries, not extra requirements. Their concrete defect/proof content is covered above. The latest review accepts scoped production-boundary evidence but still rejects the two removal regressions. |
 
@@ -58,8 +59,21 @@ These are derived from the exact target APIs, not new upstream feature requests.
 3. **Reuse current mutation authority.** Stable `src/gateway/tool-resolution-authority.ts` distinguishes preparation cancellation from invocation lifetime. Carry the exact invocation assertion rather than a one-time config/owner check or captured request abort alone. Stable `src/infra/fs-safe-remove.ts:106` already supports the required removal callback and its own path pinning.
 4. **Preserve the current grant/Code Mode path.** The existing Claude Code Mode patch adds host skill readers, exact grant fields and single before-tool-hook preparation. New sandbox plumbing must not spread away tool metadata, bypass the native preparer, add a second hook, resurrect a stale cached tool, or widen `toolsAllow`. Direct and nested calls must reach the same sandbox-bound tools and current authority.
 5. **Preserve backend preparation cleanup.** `src/agents/cli-runner/prepare.ts` uses `sequenceCliCleanups`, `cleanupPreparedResources`, and a preparation-failure cleanup catch. Integrate the owner into that existing chain, including failures before grant minting or backend preparation finishes. Do not let a later cleanup assignment overwrite sandbox disposal.
-6. **Do not broaden admission.** Native delegated CLI and cron sandbox admission checks are separate from this missing context handoff. Existing approved removals and the remaining 35 patch behaviors stay accepted. Native refusal remains truthful where that caller cannot reach the supported runner; Phase 2 remains untouched.
+6. **Keep admission changes scoped.** The November 20 requester authorization permits production rollout of the tested three Claude child exceptions described below. Only bundled Claude is exempted at hidden spawn, visible spawn and execution-time admission. Other CLI backends and cron retain their existing refusal. Existing sandbox preparation, native-tool restriction and MCP authority checks remain required.
 7. **Keep builtin compatibility while failing closed for unmarked bridges.** Changes to shared bridge interfaces touch Docker/Podman, remote shell, OpenShell and MXC even though the configured backend is Docker. Preserve existing root/path/rename/removal semantics and wrapper capability propagation. A minimal adapter is preferable to replacing native implementations.
+
+## Native 11.5 adaptation
+
+The port follows the native combined write/create operation, which now creates
+parent directories itself. It passes the same captured assertion through that
+operation rather than restoring a separate mkdir stage. The remote shell handle
+type now lives with its bridge. Prepared sandbox custody still stays on the
+host and is released through the native CLI resource stack.
+
+The test-only host bridge now checks the callback after parent preparation and
+immediately before each filesystem effect. Its dedicated regression is registered
+with the native agents-support project. This fixture behavior does not establish
+installed Docker containment.
 
 ## Qualification and retirement
 
@@ -72,3 +86,35 @@ do not constitute deployed Windows or OpenShell service qualification.
 Use installed build, ci-dev and ci-prod. CI owns tests, deployment, recovery,
 source merge and cleanup. Retire the patch when a stable release supplies the
 same guarantees and passes the retained behavior tests.
+
+## Approved Claude child expansion
+
+The requester authorized the isolated prototype on November 20 and then
+approved adding the tested three exceptions to this patch and rolling it out.
+See the [prototype evidence](../../plans/claude-child-sandbox-poc.md) and
+[Phase 2 release plan](../../plans/realtime-cli-steering-and-results.md).
+Production approval covers the narrow expansion; combined CI qualification
+remains required.
+
+The only new production conditions exempt `claude-cli` from the hidden-child,
+visible-child and execution-time refusal. Existing delegated tool policy,
+prepared sandbox custody, MCP grants and native cleanup perform the work.
+Other CLI providers and cron retain their guards. No node execution mode,
+new tool bridge or child-specific sandbox implementation is added.
+
+The deterministic Gateway/Docker prototype passes hidden and visible child
+work, constrained file-only child tools, resume, background process polling,
+outside read/write and symlink refusal, host-exec override refusal, and missing
+sandbox-image failure without a host fallback. The selected containers have
+network disabled and a read-only root. The final focused suite passes 106
+checks across three test files. Real Claude also passes hidden/visible child execution, parent-result delivery
+and resumed tool containment with the existing native subscription. The full
+composed release suite remains a separate release gate. See the prototype
+plan for the exact limits. The follow-on announcement teardown gap is now
+closed by a rerun that waits for durable delivery and the parent-visible
+resumed result before shutdown.
+
+Visible children inherit the requester's tool cap. A spawn-only requester
+correctly yields a visible child with no coding tools; sandbox admission must
+not bypass that policy. The positive fixture explicitly permits those tools
+on the parent and child.

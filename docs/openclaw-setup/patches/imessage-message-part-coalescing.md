@@ -1,6 +1,6 @@
 # Selective iMessage message-part coalescing
 
-**Status:** Source ported to OpenClaw 2026.11.4. Composed runtime qualification is pending.
+**Status:** Source ported to OpenClaw 2026.11.5. Composed runtime qualification is pending.
 
 ## Symptom
 
@@ -15,7 +15,7 @@ Without coalescing, the first row starts an agent turn before the payload
 arrives. The reply therefore lacks the link or image, and the payload starts a
 second turn after the fact.
 
-OpenClaw 2026.11.4 keeps a generic text-only debounce in
+OpenClaw 2026.11.5 keeps a generic text-only debounce in
 `monitor/monitor-provider.ts`, but its retired-config migration explicitly
 deletes `coalesceSameSenderDms`. That debounce does not provide the selective
 text, link, and media grouping described here. This patch retains a Puddles
@@ -223,7 +223,7 @@ openclaw config unset channels.imessage.coalesceSameSenderDms
 No message data or persistent state migration is involved.
 
 
-## v2026.11.4 audit
+## v2026.11.5 audit
 
 Native text debounce does not group text/link/media parts; retired option still removed natively. Preserve durable queue/claim ownership. Root package delta is reduced to iMessage bundle inclusion only; discard unrelated native metadata/script/dependency changes carried in old patch. Preserve native .4 package identities.
 

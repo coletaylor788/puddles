@@ -20,7 +20,7 @@ Idle maintenance forwards the admitted persisted native session binding into the
 
 Snapshot restoration requires a resolved session-store path. The caller uses the same native store resolver as ordinary memory saves, honoring either an explicit path or the configured default while keeping a distinct internal session identity.
 
-On v2026.11.4, retained input enters native memory-flush preparation. Native plan
+On v2026.11.5, retained input enters native memory-flush preparation. Native plan
 selection, memory audience delegation, tool projection and release remain the
 owners. The retained job records the source session incarnation and compaction
 count and session restrictions. Its saver reads the canonical source through the
@@ -43,3 +43,14 @@ child-visible context, and follow its existing transfer and revocation rules.
 Compatibility qualification is in progress. A composed core type check passes;
 focused native tests, complete patch composition and installed qualification are
 still required before release.
+
+The 11.5 port schedules idle work from the native reply finalizer. It retains
+native preflight, token freshness and session leases, and admits detached work
+only for the existing idle path. Snapshot planning uses its capture time so a
+delayed save retains the original day. Native memory audience and persistence
+capabilities remain host-only through grant creation and HTTP tool resolution.
+
+The MCP tool preview keeps the executing agent and its session together. The
+captured source session still selects inherited tool policy, but does not replace
+the execution owner. Forwarding the native memory trigger keeps Code Mode controls
+out of persistence-only memory turns.

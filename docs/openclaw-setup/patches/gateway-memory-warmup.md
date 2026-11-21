@@ -30,7 +30,7 @@ shared deadline, vector validation, startup ordering, restart acquisition,
 lease cleanup, managed transport confinement, and embedding-only native
 residency.
 
-The 2026.11.3 port uses the current memory schema, the gateway's existing
+The 2026.11.5 port uses the current memory schema, the gateway's existing
 sidecar lifetime owner, and the relocated llama.cpp embedding preparation and
 inspection modules. Provider acquisition still forwards readiness phases to
 the search deadline owner. The startup warmup does not extend that deadline.
@@ -41,8 +41,13 @@ reapplying it. Its runtime warmup owner and complete gateway fixture remain
 explicit files in this patch.
 
 
-## v2026.11.4 audit
+## v2026.11.5 audit
 
-No native warmupOnGatewayStart. Preserve .4 plugin-services startup before orphan scanning; existing managed embeddings warmup runs after both and before channel readiness. Do not restore the older parallel orphan scan.
+No native warmupOnGatewayStart. Preserve native plugin-services startup before orphan scanning; existing managed embeddings warmup runs after both and before channel readiness. Do not restore the older parallel orphan scan.
+
+When warmup is disabled, channel preparation keeps the native pre-service
+scheduling order. Only an enabled warmup waits for services, publishes its
+lifetime owner, and gates actual channel startup on readiness. A close during
+service startup does not create an unowned warmup.
 
 Composition is qualified separately from installed runtime behavior. The registered regressions remain required.

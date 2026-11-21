@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { expect, it } from "vitest";
 
-it("keeps installed Talk listening across unsupported overlapping requests", () => {
+it("preserves native Talk conversation, steering, completion, and explicit failures", () => {
   const candidate = process.env.OPENCLAW_CANDIDATE;
   expect(candidate, "OPENCLAW_CANDIDATE is required").toBeTruthy();
   const result = spawnSync(process.execPath, [

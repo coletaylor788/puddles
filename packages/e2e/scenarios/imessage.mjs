@@ -53,11 +53,18 @@ export default [
   },
   {
     id: "direct-silent-continuation",
-    steps: [{
-      incoming: [{ text: "A direct turn requires a visible answer." }],
-      responses: [{ text: "NO_REPLY" }, { text: "Recovered visible answer." }],
-      expect: { sends: ["Recovered visible answer."] },
-    }],
+    steps: [
+      {
+        incoming: [{ text: "Stay silent for this synthetic direct message." }],
+        responses: [{ text: "NO_REPLY" }],
+        expect: { sends: [], quietMs: 1800 },
+      },
+      {
+        incoming: [{ text: "Now answer this follow-up." }],
+        responses: [{ text: "Visible follow-up answer." }],
+        expect: { sends: ["Visible follow-up answer."], promptIncludes: ["Now answer this follow-up."] },
+      },
+    ],
   },
   {
     id: "model-error",

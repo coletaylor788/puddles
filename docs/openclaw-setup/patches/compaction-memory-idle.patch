@@ -1,6 +1,6 @@
 diff --git a/extensions/anthropic/cli-compaction-snapshot.test.ts b/extensions/anthropic/cli-compaction-snapshot.test.ts
 new file mode 100644
-index 00000000..1f025e43
+index 000000000..1f025e439
 --- /dev/null
 +++ b/extensions/anthropic/cli-compaction-snapshot.test.ts
 @@ -0,0 +1,137 @@
@@ -143,7 +143,7 @@ index 00000000..1f025e43
 +});
 diff --git a/extensions/anthropic/cli-compaction-snapshot.ts b/extensions/anthropic/cli-compaction-snapshot.ts
 new file mode 100644
-index 00000000..c420db9d
+index 000000000..c420db9d2
 --- /dev/null
 +++ b/extensions/anthropic/cli-compaction-snapshot.ts
 @@ -0,0 +1,215 @@
@@ -362,11 +362,11 @@ index 00000000..c420db9d
 +  if (!entries.length) throw new Error("Native compaction history is empty");
 +  return entries;
 +}
-diff --git a/extensions/anthropic/cli-runtime.test-support.ts b/extensions/anthropic/cli-runtime.test-support.ts
-index c1c421c6..9e735220 100644
---- a/extensions/anthropic/cli-runtime.test-support.ts
-+++ b/extensions/anthropic/cli-runtime.test-support.ts
-@@ -12,7 +12,7 @@ export const CLAUDE_PROTOCOL_FIXTURE = String.raw`
+diff --git a/extensions/anthropic/cli-runtime.protocol.test-support.ts b/extensions/anthropic/cli-runtime.protocol.test-support.ts
+index 795602ad8..5cdf29ab7 100644
+--- a/extensions/anthropic/cli-runtime.protocol.test-support.ts
++++ b/extensions/anthropic/cli-runtime.protocol.test-support.ts
+@@ -2,7 +2,7 @@ export const CLAUDE_PROTOCOL_FIXTURE = String.raw`
  import assert from "node:assert/strict";
  import { createInterface } from "node:readline";
  import { once } from "node:events";
@@ -375,9 +375,9 @@ index c1c421c6..9e735220 100644
  import { createHash } from "node:crypto";
  import { spawn } from "node:child_process";
  import path from "node:path";
-@@ -100,6 +100,18 @@ for await (const line of createInterface({ input: process.stdin })) {
-     turn++;
+@@ -116,6 +116,18 @@ for await (const line of createInterface({ input: process.stdin })) {
      user = message.message.content;
+     synthetic = message.isSynthetic === true;
      writeFileSync("user.received", user);
 +    if (scenario === "compaction") {
 +      mkdirSync("projects/synthetic", { recursive: true });
@@ -391,32 +391,32 @@ index c1c421c6..9e735220 100644
 +        input: { hook_event_name: "PreCompact", session_id: "native-1", transcript_path: transcript, trigger: "manual" } });
 +      continue;
 +    }
-     if (scenario === "credential-tree") {
-       send({ type: "system", subtype: "fixture_credential", pid: process.pid, ...credentialProof });
-       continue;
-@@ -371,6 +383,9 @@ for await (const line of createInterface({ input: process.stdin })) {
-         send({ type: "command_lifecycle", state: "started", command_uuid: pendingInputUuid });
-         result({ matchedInputUuid: pendingInputUuid, priorResponses });
+     if (scenario === "revoked-prompt") {
+       ready("prompt.ready");
+       while (!existsSync("prompt.release")) await delay(5);
+@@ -353,6 +365,9 @@ for await (const line of createInterface({ input: process.stdin })) {
+         continue;
        }
+       ready("turn.ready");
 +    } else if (id === "compact") {
 +      send({ type: "system", subtype: "compact_boundary" });
 +      result({ compacted: true });
-     } else if (id === "late-approval") {
-       lateDecision = response;
-       if (turn === 2) result({ lateDecision });
+     } else if (id === "admitted-rerun") {
+       assert.equal(response.hookSpecificOutput?.additionalContext, privateContext);
+       ready("turn.ready");
 diff --git a/extensions/anthropic/cli-runtime.test.ts b/extensions/anthropic/cli-runtime.test.ts
-index 74a7be91..79e325c0 100644
+index c30b3c12e..0bb28c4f7 100644
 --- a/extensions/anthropic/cli-runtime.test.ts
 +++ b/extensions/anthropic/cli-runtime.test.ts
-@@ -21,6 +21,7 @@ import {
-   receipts,
- } from "./cli-runtime.protocol-test-harness.js";
- import { resultDetail } from "./cli-runtime.test-support.js";
+@@ -15,6 +15,7 @@ import {
+   type FixtureReceiptChannel,
+ } from "openclaw/plugin-sdk/test-fixtures";
+ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 +import { resolveClaudeCliExecutionArgs } from "./cli-shared.js";
- import { executeClaudeCli } from "./cli.runtime.js";
- 
- async function fixtureReadyBeforeSettlement(
-@@ -70,6 +71,35 @@ async function waitForProcessExit(pids: number[], signal: AbortSignal): Promise<
+ import { CLAUDE_PROTOCOL_FIXTURE } from "./cli-runtime.protocol.test-support.js";
+ import {
+   collectClaudeCli,
+@@ -171,6 +172,35 @@ async function fixtureReadyBeforeSettlement(
  }
  
  describe("Claude native stdio boundary", () => {
@@ -452,9 +452,9 @@ index 74a7be91..79e325c0 100644
    it.for([
      { scenario: "shutdown-ignore", name: "native parent and child ignore EOF and SIGTERM" },
      { scenario: "shutdown-eof", name: "native parent exits immediately on EOF" },
-@@ -944,3 +974,54 @@ describe("Claude native stdio boundary", () => {
-     },
-   );
+@@ -971,3 +1001,54 @@ describe("Claude native stdio boundary", () => {
+     expect(detail.privateContext).toBeUndefined();
+   });
  });
 +
 +it("waits for native transcript retention before acknowledging PreCompact, without waiting for memory inference", async () => {
@@ -508,11 +508,11 @@ index 74a7be91..79e325c0 100644
 +  expect(liveSession.current()).toBeUndefined();
 +});
 diff --git a/extensions/anthropic/cli-shared.test.ts b/extensions/anthropic/cli-shared.test.ts
-index 5b331790..1104310e 100644
+index 461192c82..13b53702b 100644
 --- a/extensions/anthropic/cli-shared.test.ts
 +++ b/extensions/anthropic/cli-shared.test.ts
-@@ -194,7 +194,68 @@ describe("resolveClaudeCliExecutionArgs", () => {
-     }
+@@ -191,7 +191,68 @@ describe("resolveClaudeCliExecutionArgs", () => {
+     );
    });
  
 -  it("keeps per-agent exec policy for normal runs and omits only the injected mode for compaction", () => {
@@ -581,7 +581,7 @@ index 5b331790..1104310e 100644
      const forAgent = (
        globalMode: "ask" | "full",
        agentMode: "ask" | "full",
-@@ -203,6 +264,7 @@ describe("resolveClaudeCliExecutionArgs", () => {
+@@ -200,6 +261,7 @@ describe("resolveClaudeCliExecutionArgs", () => {
        executionArgs({
          agentId: "worker",
          controlOperation,
@@ -589,7 +589,7 @@ index 5b331790..1104310e 100644
          config: {
            tools: { exec: { mode: globalMode } },
            agents: { entries: { worker: { tools: { exec: { mode: agentMode } } } } },
-@@ -226,8 +288,15 @@ describe("resolveClaudeCliExecutionArgs", () => {
+@@ -223,8 +285,15 @@ describe("resolveClaudeCliExecutionArgs", () => {
        expect(executionArgs(context)).toEqual(
          expect.arrayContaining(["--permission-mode", "bypassPermissions"]),
        );
@@ -606,7 +606,7 @@ index 5b331790..1104310e 100644
        expect(compactArgs).not.toContain("bypassPermissions");
      },
    );
-@@ -236,13 +305,19 @@ describe("resolveClaudeCliExecutionArgs", () => {
+@@ -233,13 +302,19 @@ describe("resolveClaudeCliExecutionArgs", () => {
      "--permission-mode acceptEdits",
      "--permission-mode=acceptEdits",
      "--permission-mode bypassPermissions",
@@ -630,7 +630,7 @@ index 5b331790..1104310e 100644
  
    it("keeps the real resumed manual-compaction command enabled", () => {
 diff --git a/extensions/anthropic/cli-shared.ts b/extensions/anthropic/cli-shared.ts
-index 510021de..fa14e635 100644
+index 6964ffb70..817e49c88 100644
 --- a/extensions/anthropic/cli-shared.ts
 +++ b/extensions/anthropic/cli-shared.ts
 @@ -437,10 +437,36 @@ function resolveClaudeCliRestrictedExecutionArgs(
@@ -671,7 +671,7 @@ index 510021de..fa14e635 100644
    const baseArgs = context.hostOwnedTools?.includes("exec")
      ? [
 diff --git a/extensions/anthropic/cli.runtime.ts b/extensions/anthropic/cli.runtime.ts
-index 2474cdbe..0c309e0f 100644
+index def46a3dc..e4f8e4892 100644
 --- a/extensions/anthropic/cli.runtime.ts
 +++ b/extensions/anthropic/cli.runtime.ts
 @@ -10,6 +10,7 @@ import type {
@@ -682,7 +682,7 @@ index 2474cdbe..0c309e0f 100644
  import { hasClaudeRawToolInvocation } from "./cli-output.js";
  import type { ClaudeCliSecretInput } from "./cli-process.js";
  import { prepareClaudeCliTransportArgs } from "./cli-runtime-args.js";
-@@ -174,6 +175,20 @@ async function handleRequest(
+@@ -208,6 +209,20 @@ async function handleRequest(
        ? { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext } }
        : {};
    }
@@ -703,19 +703,19 @@ index 2474cdbe..0c309e0f 100644
    if (request.callback_id === "PreToolUse" && input.hook_event_name === "PreToolUse") {
      if (
        turn &&
-@@ -655,6 +670,7 @@ export async function* executeClaudeCli(
+@@ -659,6 +674,7 @@ export async function* executeClaudeCli(
              hooks: {
                UserPromptSubmit: [{ hookCallbackIds: ["UserPromptSubmit"] }],
                PreToolUse: [{ hookCallbackIds: ["PreToolUse"] }],
-+            PreCompact: [{ hookCallbackIds: ["PreCompact"] }],
++              PreCompact: [{ hookCallbackIds: ["PreCompact"] }],
              },
            },
            onMessage: (message) => acceptMessage(session, message),
 diff --git a/src/agents/cli-runner.spawn.test.ts b/src/agents/cli-runner.spawn.test.ts
-index 1aab236d..532c9da4 100644
+index e00ef1077..bf384f701 100644
 --- a/src/agents/cli-runner.spawn.test.ts
 +++ b/src/agents/cli-runner.spawn.test.ts
-@@ -166,6 +166,22 @@ async function createCliPackageFixture(version: string): Promise<{
+@@ -143,6 +143,22 @@ async function createCliPackageFixture(version: string): Promise<{
  }
  
  describe("runCliAgent spawn path", () => {
@@ -735,14 +735,14 @@ index 1aab236d..532c9da4 100644
 +    );
 +  });
 +
-   it("hydrates a session-key-owned agent workspace image before spawning the CLI", async () => {
-     const stateDir = tempDirs.make("openclaw-cli-agent-image-");
-     const workspaceDir = path.join(stateDir, "workspace-arthur");
+   it("streams a node-placed Claude resume through the normal JSONL parser", async ({
+     onTestFinished,
+   }) => {
 diff --git a/src/agents/cli-runner.ts b/src/agents/cli-runner.ts
-index 4f6d88d2..1087aec2 100644
+index ab0739dca..90640eabd 100644
 --- a/src/agents/cli-runner.ts
 +++ b/src/agents/cli-runner.ts
-@@ -93,7 +93,7 @@ export async function isCliBindingFlushed(
+@@ -87,7 +87,7 @@ export async function isCliBindingFlushed(
    sessionId: string | undefined,
    provider: string | undefined,
    workspaceDir?: string,
@@ -751,7 +751,7 @@ index 4f6d88d2..1087aec2 100644
  ): Promise<boolean> {
    if (!provider || !isClaudeCliBackend(provider)) {
      return true;
-@@ -110,7 +110,13 @@ export async function isCliBindingFlushed(
+@@ -104,7 +104,13 @@ export async function isCliBindingFlushed(
      if (delayMs > 0) {
        await sleep(delayMs);
      }
@@ -766,7 +766,7 @@ index 4f6d88d2..1087aec2 100644
        return true;
      }
    }
-@@ -352,7 +358,11 @@ async function runPreparedCliAgentOwned(
+@@ -335,7 +341,11 @@ async function runPreparedCliAgentOwned(
        sessionBindingDisabled ||
        !isAgentRunDirectAbortReason(error) ||
        !isClaudeCliBackend(params.provider) ||
@@ -779,7 +779,7 @@ index 4f6d88d2..1087aec2 100644
      ) {
        return;
      }
-@@ -585,7 +595,12 @@ async function runPreparedCliAgentOwned(
+@@ -576,7 +586,12 @@ async function runPreparedCliAgentOwned(
                effectiveCliSessionId,
                params.provider,
                context.cwd ?? context.workspaceDir,
@@ -791,21 +791,21 @@ index 4f6d88d2..1087aec2 100644
 +                  context.preparedBackend.backend.env?.CLAUDE_CONFIG_DIR,
 +              },
              );
-         const assistantTranscript = await persistCliAssistantTranscript({
-           runParams: params,
+         // Claude saves each narration and the final answer as its own native row. Keep only the
+         // final message here, keyed to its native row, so imported history shows each row once.
 diff --git a/src/agents/cli-runner/execute-events.ts b/src/agents/cli-runner/execute-events.ts
-index 739b11d9..01328204 100644
+index e795fd910..c2ec2faab 100644
 --- a/src/agents/cli-runner/execute-events.ts
 +++ b/src/agents/cli-runner/execute-events.ts
-@@ -2,6 +2,7 @@ import { projectAgentToolActivity } from "../../infra/agent-activity-events.js";
+@@ -5,6 +5,7 @@ import { projectAgentToolActivity } from "../../infra/agent-activity-events.js";
  import { emitAgentEvent, type AgentEventStream } from "../../infra/agent-events.js";
  import { emitTrustedDiagnosticEvent } from "../../infra/diagnostic-events.js";
  import { markToolExecutionLivenessDiagnosticEvent } from "../../infra/diagnostic-tool-execution-liveness.js";
 +import { createSubsystemLogger } from "../../logging/subsystem.js";
  import { projectProgressCardChannelUpdate } from "../../session-cards/progress-card-channel-summary.js";
  import { isAgentPlanProgressToolName } from "../../session-cards/progress-card-input.js";
- import { registerListener } from "../../shared/listeners.js";
-@@ -19,6 +20,7 @@ import { isClaudeForegroundAgentToolName } from "../cli-output-records.js";
+ import { projectAgentActivityItem } from "../agent-activity-presentation.js";
+@@ -26,6 +27,7 @@ import { isClaudeForegroundAgentToolName } from "../cli-output-records.js";
  import type { ToolSummaryTrace } from "../embedded-agent-runner/types.js";
  import { extractToolErrorMessage, prepareToolResult } from "../embedded-agent-tool-results.js";
  import { runAgentHarnessAfterToolCallHook } from "../harness/hook-helpers.js";
@@ -813,7 +813,7 @@ index 739b11d9..01328204 100644
  import { applyPluginTextReplacements } from "../plugin-text-transforms.js";
  import { resolveCliToolTerminalReason } from "../run-termination.js";
  import { cliAssistantItemId } from "./assistant-identity.js";
-@@ -349,6 +351,46 @@ export function createCliEventHandlers(params: {
+@@ -410,6 +412,46 @@ export function createCliEventHandlers(params: {
    };
    const emitCliCompaction = (event: CliCompactionDelta) => {
      observedCliActivity = true;
@@ -861,10 +861,10 @@ index 739b11d9..01328204 100644
      // between phase boundaries, so an end event must always clear the flag,
      // even for a failed compaction (`completed: false`).
 diff --git a/src/agents/cli-runner/execute-plugin.test.ts b/src/agents/cli-runner/execute-plugin.test.ts
-index 648dfa8c..23bdbb72 100644
+index b7147f8ba..70d695606 100644
 --- a/src/agents/cli-runner/execute-plugin.test.ts
 +++ b/src/agents/cli-runner/execute-plugin.test.ts
-@@ -28,6 +28,10 @@ vi.mock("../tools/gateway.js", () => ({
+@@ -29,6 +29,10 @@ vi.mock("../tools/gateway.js", () => ({
    callGatewayTool: vi.fn(),
  }));
  
@@ -875,7 +875,7 @@ index 648dfa8c..23bdbb72 100644
  const mockCallGatewayTool = vi.mocked(callGatewayTool);
  const activeSessions = new Set<CliBackendLiveSessionHandle>();
  
-@@ -89,11 +93,31 @@ afterEach(() => {
+@@ -136,6 +140,7 @@ afterEach(() => {
    activeSessions.clear();
    closePluginTestAdmissions();
    mockCallGatewayTool.mockReset();
@@ -883,6 +883,8 @@ index 648dfa8c..23bdbb72 100644
    vi.restoreAllMocks();
    vi.useRealTimers();
  });
+@@ -162,6 +167,25 @@ function historyWriter(overrides: Partial<CliExecutionHistoryWriter>): CliExecut
+ }
  
  describe("plugin-owned CLI execution host boundary", () => {
 +  it("denies native tools during compaction even when the source agent could use them", async () => {
@@ -905,9 +907,9 @@ index 648dfa8c..23bdbb72 100644
 +  });
 +
    it("streams plugin events through the canonical host output boundary", async () => {
-     // Exercise stream translation independently of cold policy-worker startup time.
      vi.useFakeTimers({ toFake: ["Date"] });
-@@ -1010,3 +1034,52 @@ describe("plugin-owned CLI ask_user timeout", () => {
+     const { context } = await createExecution();
+@@ -954,3 +978,52 @@ describe("plugin-owned CLI ask_user timeout", () => {
      });
    });
  });
@@ -961,10 +963,10 @@ index 648dfa8c..23bdbb72 100644
 +  },
 +);
 diff --git a/src/agents/cli-runner/execute-plugin.ts b/src/agents/cli-runner/execute-plugin.ts
-index 8c594a39..dcf6b423 100644
+index e5091993e..c3bcb83d3 100644
 --- a/src/agents/cli-runner/execute-plugin.ts
 +++ b/src/agents/cli-runner/execute-plugin.ts
-@@ -28,6 +28,7 @@ import type { CliTerminalInterruption } from "../cli-output-contracts.js";
+@@ -32,6 +32,7 @@ import type { CliTerminalInterruption } from "../cli-output-contracts.js";
  import { resolveExecDefaultsAsync } from "../exec-defaults.js";
  import { FailoverError, isSignalTimeoutReason } from "../failover-error.js";
  import { withAgentQuestionAnswerAuthority } from "../harness/host-private-capabilities.js";
@@ -972,7 +974,7 @@ index 8c594a39..dcf6b423 100644
  import { runStructuredInput } from "../harness/structured-input-execution.js";
  import { compileStructuredInputQuestions } from "../harness/structured-input.js";
  import { resolveExecToolConfig } from "../lazy-exec-tool.js";
-@@ -84,6 +85,10 @@ async function createPluginToolPermissionHandler(params: {
+@@ -87,6 +88,10 @@ async function createPluginToolPermissionHandler(params: {
        return denyTool("OpenClaw denied native tool use: the admitted run is no longer active.");
      }
  
@@ -983,8 +985,8 @@ index 8c594a39..dcf6b423 100644
      const toolName = request.toolName.trim();
      if (!toolName) {
        return denyTool("OpenClaw denied an unnamed native tool.");
-@@ -611,8 +616,53 @@ export async function executePluginOwnedProcess(params: {
-         assertCurrent,
+@@ -596,8 +601,53 @@ export async function executePluginOwnedProcess(params: {
+           : {}),
          timeoutMs: run.timeoutMs,
          ...(run.executionMode ? { executionMode: run.executionMode } : {}),
 -        ...(run.cliToolAvailability ? { toolAvailability: run.cliToolAvailability } : {}),
@@ -1035,14 +1037,14 @@ index 8c594a39..dcf6b423 100644
 +              },
 +            }
 +          : {}),
-         ...(detachReplyBackend
-           ? {
-               registerMessageInjection: (injection: CliBackendMessageInjection) => {
+         registerTurnStatus: (status: CliBackendTurnStatus) => {
+           assertCurrent();
+           const registration: ReplyBackendTurnStatus = bindCliTurnStatus(
 diff --git a/src/agents/cli-runner/execute.supervisor-capture.test.ts b/src/agents/cli-runner/execute.supervisor-capture.test.ts
-index b63fbe57..327e6a59 100644
+index d25ea65f6..0cc375156 100644
 --- a/src/agents/cli-runner/execute.supervisor-capture.test.ts
 +++ b/src/agents/cli-runner/execute.supervisor-capture.test.ts
-@@ -28,6 +28,7 @@ import {
+@@ -29,6 +29,7 @@ import {
    startDiagnosticRunActivityTracking,
  } from "../../logging/diagnostic-run-activity.js";
  import type {
@@ -1050,21 +1052,7 @@ index b63fbe57..327e6a59 100644
    CliBackendParseJsonlEvent,
    CliBackendParsedJsonlEvent,
  } from "../../plugins/cli-backend.types.js";
-@@ -53,7 +54,13 @@ import {
-   supervisorSpawnMock,
-   wrapPreparedCliRunWithTestAdmission,
- } from "./execute.test-support.js";
-+import { resolveCliExecutionTarget } from "./execution-target.js";
- import { captureCliRunStartTime, type PreparedCliRunContext } from "./types.js";
-+
-+const snapshotHook = vi.hoisted(() => vi.fn(async (_params: unknown) => {}));
-+vi.mock("../harness/prompt-compaction-hook-helpers.js", () => ({
-+  runAgentHarnessBeforeCompactionHook: snapshotHook,
-+}));
- const executePreparedCliRun = wrapPreparedCliRunWithTestAdmission(executePreparedCliRunImpl);
- vi.mock("../../process/supervisor/adapters/child.js", () => ({ createChildAdapter: vi.fn() })); // Gateway unit coverage owns quiet-admission timing. These integration cases only
- // need to drain calls already in flight, so skip the repeated 250 ms quiet window.
-@@ -223,6 +230,7 @@ beforeEach(() => {
+@@ -274,6 +275,7 @@ beforeEach(() => {
    vi.unstubAllEnvs();
    resetAgentEventsForTest();
    resetDiagnosticEventsForTest();
@@ -1072,76 +1060,11 @@ index b63fbe57..327e6a59 100644
    supervisorSpawnMock.mockReset(); // These contexts bypass preparation, which normally loads the provider owner.
    // Unknown CLI errors must not materialize bundled plugins inside this fixture.
    const registry = createEmptyPluginRegistry();
-@@ -495,6 +503,64 @@ describe("executePreparedCliRun supervisor output capture", () => {
-     });
-   });
- 
-+  it.each([true, false])(
-+    "uses Claude's callback transport for compaction and validates its acknowledgement (%s)",
-+    async (acknowledged) => {
-+      const context = buildPreparedCliRunContext({ output: "jsonl", provider: "claude-cli" });
-+      context.preparedBackend.backend.command = "/bin/sh";
-+      context.params.prompt = "/compact";
-+      context.params.controlOperation = "compact";
-+      context.params.config = {
-+        agents: { defaults: { compaction: { memoryFlush: { compactionHooks: ["claude-cli"] } } } },
-+      };
-+      context.backendResolved.manualCompaction = {
-+        input: "arg",
-+        buildPrompt: () => "/compact",
-+        validateOutput: (output) =>
-+          output.includes('"subtype":"compact_boundary"')
-+            ? { ok: true }
-+            : { ok: false, reason: "native compaction was not acknowledged" },
-+      };
-+      const entries = [{ type: "message", message: { role: "user", content: "synthetic fact" } }];
-+      const execute = vi.fn(async function* (execution: CliBackendExecuteContext) {
-+        expect(execution.prompt).toBe("/compact");
-+        expect(execution.args).not.toContain("/compact");
-+        expect(execution.toolAvailability).toEqual({ native: [], openClaw: [] });
-+        expect(await execution.requestToolPermission({ toolName: "Bash", toolInput: {} })).toEqual({
-+          behavior: "deny",
-+          message: "Native tools are unavailable during compaction.",
-+        });
-+        expect(execution.retainCompactionSnapshot).toBeDefined();
-+        await execution.retainCompactionSnapshot!(entries);
-+        if (acknowledged) {
-+          yield { type: "system", subtype: "compact_boundary" };
-+        }
-+        yield { type: "result", subtype: "success", result: "", session_id: "session-1" };
-+      });
-+      context.executionTarget = resolveCliExecutionTarget({
-+        params: context.params,
-+        backendId: context.backendResolved.id,
-+        execute,
-+      });
-+      const result = executePreparedCliRun(context);
-+      if (acknowledged) {
-+        await expect(result).resolves.toMatchObject({ text: "", rawText: "" });
-+      } else {
-+        await expect(result).rejects.toThrow("native compaction was not acknowledged");
-+      }
-+      expect(execute).toHaveBeenCalledOnce();
-+      expect(snapshotHook).toHaveBeenCalledExactlyOnceWith(
-+        expect.objectContaining({
-+          ctx: expect.objectContaining({
-+            memorySaveHarnessId: "claude-cli",
-+            memorySaveEntries: entries,
-+          }),
-+        }),
-+      );
-+      expect(supervisorSpawnMock).not.toHaveBeenCalled();
-+    },
-+  );
-+
-   it("passes native compaction as an argument and requires backend acknowledgement", async () => {
-     const raw = jsonl({ type: "system", subtype: "compacting" });
-     mockOutput([raw]);
 diff --git a/src/agents/cli-runner/execute.ts b/src/agents/cli-runner/execute.ts
-index 5a2236c3..b0fcb29f 100644
+index e7a9cf01d..85ae56908 100644
 --- a/src/agents/cli-runner/execute.ts
 +++ b/src/agents/cli-runner/execute.ts
-@@ -235,7 +235,11 @@ export async function executePreparedCliRun(
+@@ -206,7 +206,11 @@ export async function executePreparedCliRun(
      params.controlOperation === "compact" && context.backendResolved.manualCompaction
        ? { ...backend, input: context.backendResolved.manualCompaction.input }
        : backend;
@@ -1154,7 +1077,7 @@ index 5a2236c3..b0fcb29f 100644
    const baseArgs = useResume ? (backend.resumeArgs ?? backend.args ?? []) : (backend.args ?? []);
    const resolvedArgs = useResume
      ? baseArgs.map((entry) => entry.replaceAll("{sessionId}", resolvedSessionId ?? ""))
-@@ -495,6 +499,7 @@ export async function executePreparedCliRun(
+@@ -444,6 +448,7 @@ export async function executePreparedCliRun(
                    fastAutoOnSeconds: params.fastModeAutoOnSeconds,
                  }).enabled,
            executionMode: params.executionMode ?? "agent",
@@ -1163,10 +1086,10 @@ index 5a2236c3..b0fcb29f 100644
            // not exist on the node, and auto-approval must not cross that boundary.
            toolAvailability:
 diff --git a/src/agents/cli-runner/execution-target.ts b/src/agents/cli-runner/execution-target.ts
-index 94c6297a..db34bb4c 100644
+index d87d0d91a..237c16eaa 100644
 --- a/src/agents/cli-runner/execution-target.ts
 +++ b/src/agents/cli-runner/execution-target.ts
-@@ -87,7 +87,10 @@ export function resolveCliExecutionTarget(context: {
+@@ -93,7 +93,10 @@ export function resolveCliExecutionTarget(context: {
        placement: { nodeId, ...(entry.execCwd?.trim() ? { cwd: entry.execCwd.trim() } : {}) },
      };
    }
@@ -1179,13 +1102,21 @@ index 94c6297a..db34bb4c 100644
      : { kind: "process" };
  }
 diff --git a/src/agents/cli-runner/mcp-grant-context.test.ts b/src/agents/cli-runner/mcp-grant-context.test.ts
-index ca2bb50b..7a57d8ae 100644
+index 7f694ff16..00d25f2be 100644
 --- a/src/agents/cli-runner/mcp-grant-context.test.ts
 +++ b/src/agents/cli-runner/mcp-grant-context.test.ts
-@@ -36,6 +36,28 @@ function buildGrant(
+@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
+ import {
+   buildCliMcpDelegationCapabilityBinding,
+   buildCliMcpGrantContext,
++  finalizeCliMcpGrant,
+ } from "./mcp-grant-context.js";
+ import type { RunCliAgentParams } from "./types.js";
+ 
+@@ -33,6 +34,28 @@ function buildGrant(
  }
  
- describe("buildCliMcpGrantContext source-reply authority", () => {
+ describe("buildCliMcpGrantContext", () => {
 +  it("carries a host memory target and source policy without granting native tools", () => {
 +    const conversationToolPolicy = { deny: ["write"] };
 +    const grant = buildGrant({
@@ -1208,14 +1139,36 @@ index ca2bb50b..7a57d8ae 100644
 +    ).toBeUndefined();
 +  });
 +
-   it("snapshots only the resolved logical model into the loopback grant", () => {
-     const requesterModel = {
-       provider: "selected-provider",
+   it("snapshots policy and logical model fields without copying private metadata", () => {
+     const elevated = {
+       enabled: false,
+@@ -115,3 +138,21 @@ describe("buildCliMcpGrantContext", () => {
+     expect(buildGrant({}, "full")).not.toHaveProperty("delegationCapability");
+   });
+ });
++
++it("retains memory persistence only in the host grant, outside serialized context", () => {
++  const memoryFlushTools: NonNullable<RunCliAgentParams["memoryFlushTools"]> = {
++    flushId: "retained-part",
++    ownerPluginId: "memory-fixture",
++    persistenceToolNames: ["save_fixture_memory"],
++    recordPersistenceToolSuccess: () => undefined,
++  };
++  const grant = finalizeCliMcpGrant(
++    buildGrant({ trigger: "memory" }),
++    ["save_fixture_memory"],
++    false,
++    { memoryFlushTools },
++  );
++  expect(grant?.memoryFlushTools).toBe(memoryFlushTools);
++  expect(grant?.context).not.toHaveProperty("memoryFlushTools");
++  expect(JSON.stringify(grant?.context)).not.toContain("retained-part");
++});
 diff --git a/src/agents/cli-runner/mcp-grant-context.ts b/src/agents/cli-runner/mcp-grant-context.ts
-index bec289bd..d4e90210 100644
+index 7ce80fbda..85ebeed1d 100644
 --- a/src/agents/cli-runner/mcp-grant-context.ts
 +++ b/src/agents/cli-runner/mcp-grant-context.ts
-@@ -29,6 +29,8 @@ export function finalizeCliMcpGrant(
+@@ -32,6 +32,8 @@ export function finalizeCliMcpGrant(
      | "abortSignal"
      | "toolAuthorityFingerprint"
      | "replyOperation"
@@ -1224,17 +1177,17 @@ index bec289bd..d4e90210 100644
    > = {},
  ) {
    if (!context) {
-@@ -49,6 +51,8 @@ export function finalizeCliMcpGrant(
-     ...(cronRequesterGrantIssuer ? { cronRequesterGrantIssuer } : {}),
-     ...(cronAuthorityCheck ? { cronAuthorityCheck } : {}),
+@@ -55,6 +57,8 @@ export function finalizeCliMcpGrant(
+     ...(withCronManagementToolConstruction ? { withCronManagementToolConstruction } : {}),
      admittedRunContext: source.admittedRunContext,
+     toolPolicyConfig: source.config,
 +    memoryAudience: source.memoryAudience,
 +    memoryFlushTools: source.memoryFlushTools,
      messageActionTurnCapability: source.messageActionTurnCapability,
      abortSignal: source.abortSignal,
      assertCurrent: source.assertCurrent,
 @@ -212,6 +216,10 @@ export function buildCliMcpGrantContext(params: {
-         }
+       ? { inputProvenance: params.run.inputProvenance }
        : {}),
      runtimePolicySessionKey,
 +    conversationRoutePeerId: params.run.conversationRoutePeerId,
@@ -1244,37 +1197,8 @@ index bec289bd..d4e90210 100644
      ...(params.runtimePolicyAgentId ? { runtimePolicyAgentId: params.runtimePolicyAgentId } : {}),
      agentId: params.agentId,
      sessionId: normalizeOptionalString(params.run.sessionId),
-diff --git a/src/agents/cli-runner/prepare-mcp.test-support.ts b/src/agents/cli-runner/prepare-mcp.test-support.ts
-index 396c91ce..d4b9c535 100644
---- a/src/agents/cli-runner/prepare-mcp.test-support.ts
-+++ b/src/agents/cli-runner/prepare-mcp.test-support.ts
-@@ -152,6 +152,7 @@ export function registerCliMcpPreparationTests({
-         requester: { channel: "telegram", senderId: "canonical-sender" },
-         clientCaps: ["tool-events", "inline-widgets"],
-         pinnedWidgetAuthoring: true,
-+        conversationRoutePeerId: undefined,
-         conversationToolPolicy: undefined,
-         currentChannelId: "telegram:-100123:topic:42",
-         currentThreadTs: "42",
-@@ -194,12 +195,16 @@ export function registerCliMcpPreparationTests({
-         groupChannel: "ops",
-         groupSpace: "workspace-a",
-         gatewayUiCommandTarget: undefined,
-+        initialTurnTainted: undefined,
-+        memoryFlushWritePath: undefined,
-         modelHasVision: undefined,
-         replyToMode: undefined,
-         spawnedBy: "agent:main:telegram:group:parent",
-       },
-       runtimeOwnerToken: "loopback-owner-token",
-       admittedRunContext: context.params.admittedRunContext,
-+      memoryAudience: undefined,
-+      memoryFlushTools: undefined,
-       sessionEventSourcePolicy: {
-         toolsAllow: undefined,
-         settings: { permissionMode: undefined, toolOverrides: undefined },
 diff --git a/src/agents/cli-runner/prepare-mcp.ts b/src/agents/cli-runner/prepare-mcp.ts
-index f04f02d6..94928bbd 100644
+index 55bdce1a3..ef6089a20 100644
 --- a/src/agents/cli-runner/prepare-mcp.ts
 +++ b/src/agents/cli-runner/prepare-mcp.ts
 @@ -90,6 +90,8 @@ export async function prepareCliMcpToolProjection(
@@ -1287,9 +1211,19 @@ index f04f02d6..94928bbd 100644
      signal: admittedParams.abortSignal,
      context,
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 5e2f22d8..a59769a7 100644
+index db5abd8b6..45e9a4382 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
+@@ -38,8 +38,8 @@ import {
+   registerContextEngineInRegistry,
+ } from "../../context-engine/registry.js";
+ import type { ContextEngine } from "../../context-engine/types.js";
+-import type { resolveMcpLoopbackScopedTools as resolveLoopbackTools } from "../../gateway/mcp-http.runtime.js";
+ import type { mintMcpLoopbackClientGrant as mintClientGrant } from "../../gateway/mcp-grant-store.js";
++import type { resolveMcpLoopbackScopedTools as resolveLoopbackTools } from "../../gateway/mcp-http.runtime.js";
+ import { setActiveNodeContexts } from "../../infra/active-node-context.js";
+ import { labelRuntimeContextText } from "../../llm/types.js";
+ import { CliBackendAuthProfilePreparationError } from "../../plugins/cli-backend-errors.js";
 @@ -188,6 +188,7 @@ const ensureSandboxWorkspaceForSessionMock = vi.hoisted(() =>
  );
  vi.mock("../../config/config.js", async () => ({
@@ -1298,142 +1232,11 @@ index 5e2f22d8..a59769a7 100644
    resolveGatewayPort: (await import("../../config/paths.js")).resolveGatewayPort,
  }));
  
-@@ -563,6 +564,72 @@ describe("prepareCliRunContext", () => {
-     clearRuntimeConfigSnapshot();
-   });
- 
-+  it("restricts internal memory saving to mediated read and append-only write", async () => {
-+    const project = vi.fn(() => ({
-+      agentId: "main",
-+      tools: [
-+        {
-+          name: "read",
-+          description: "read",
-+          parameters: { type: "object", properties: {} },
-+          execute: vi.fn(),
-+        },
-+        {
-+          name: "write",
-+          description: "append",
-+          parameters: { type: "object", properties: {} },
-+          execute: vi.fn(),
-+        },
-+      ],
-+    }));
-+    setCliRunnerPrepareTestDeps({
-+      resolveMcpLoopbackScopedTools: project,
-+      resolveMcpLoopbackPolicyTools: project,
-+      getActiveMcpLoopbackRuntime: vi.fn(() => ({
-+        port: 31783,
-+        ownerToken: "test-owner",
-+        nonOwnerToken: "test-non-owner",
-+      })),
-+    });
-+    setRawCliBackendForPrepareTest({
-+      id: "native-cli",
-+      pluginId: "native-plugin",
-+      bundleMcp: true,
-+      bundleMcpMode: "claude-config-file",
-+      nativeToolMode: "selectable",
-+      toolAvailabilityEnforcement: "execution-args",
-+      resolveExecutionArgs: ({ baseArgs }) => baseArgs,
-+      config: createJsonlStdinBackendConfig("native-cli"),
-+    });
-+    const context = await fixture.prepare({
-+      provider: "native-cli",
-+      model: "test-model",
-+      config: {},
-+      trigger: "memory",
-+      memoryFlushWritePath: "memory/2026-01-01.md",
-+      initialTurnTainted: true,
-+      runtimePolicySessionKey: "agent:main:source",
-+      conversationToolPolicy: { deny: ["exec"] },
-+      sessionManager: SessionManager.fromEntries([], fixture.session.dir),
-+    });
-+    expect(context.params.cliToolAvailability).toEqual({ native: [], openClaw: ["read", "write"] });
-+    expect(project).toHaveBeenCalledWith(
-+      expect.objectContaining({
-+        context: expect.objectContaining({
-+          trigger: "memory",
-+          memoryFlushWritePath: "memory/2026-01-01.md",
-+          runtimePolicySessionKey: "agent:main:source",
-+          initialTurnTainted: true,
-+          conversationToolPolicy: { deny: ["exec"] },
-+        }),
-+      }),
-+    );
-+  });
-+
-+  it("refuses memory saving without host-owned persistence", async () => {
-+    await expect(fixture.prepare({ trigger: "memory" })).rejects.toThrow("host-owned persistence");
-+  });
-+
-   it.each(["process", "plugin"] as const)(
-     "carries silent heartbeat outcome in late %s user input without rebinding",
-     async (targetKind) => {
-@@ -4051,6 +4118,57 @@ describe("prepareCliRunContext", () => {
-     expect(orphanCheck).not.toHaveBeenCalled();
-   });
- 
-+  it("retains a cold dedicated-directory binding and checks its orphaned tools", async () => {
-+    const { dir } = fixture.session;
-+    const taskDir = path.join(dir, "task");
-+    fs.mkdirSync(taskDir, { recursive: true });
-+    setRawCliBackendForPrepareTest({
-+      id: "claude-cli",
-+      pluginId: "anthropic",
-+      bundleMcp: false,
-+      config: {
-+        command: "claude",
-+        env: { CLAUDE_CONFIG_DIR: path.join(dir, "dedicated-login") },
-+        args: ["--print"],
-+        resumeArgs: ["--resume", "{sessionId}"],
-+        output: "jsonl",
-+        input: "stdin",
-+        sessionMode: "existing",
-+      },
-+    });
-+    const transcriptCheck = vi.fn(async () => true);
-+    const orphanCheck = vi.fn(async () => false);
-+    setCliRunnerPrepareTestDeps({
-+      claudeCliSessionTranscriptHasContent: transcriptCheck,
-+      claudeCliSessionTranscriptHasOrphanedToolUse: orphanCheck,
-+    });
-+
-+    const context = await fixture.prepare({
-+      sessionKey: "agent:main:telegram:direct:peer",
-+      cwd: taskDir,
-+      prompt: "follow-up",
-+      provider: "claude-cli",
-+      model: "opus",
-+      cliSessionBinding: { sessionId: "live-claude-sid", cwdHash: hashCliSessionText(taskDir) },
-+      cliSessionId: "live-claude-sid",
-+    });
-+
-+    expect(transcriptCheck).toHaveBeenCalledWith({
-+      sessionId: "live-claude-sid",
-+      workspaceDir: taskDir,
-+      configDir: path.join(dir, "dedicated-login"),
-+    });
-+    expect(orphanCheck).toHaveBeenCalledWith({
-+      sessionId: "live-claude-sid",
-+      workspaceDir: taskDir,
-+      configDir: path.join(dir, "dedicated-login"),
-+    });
-+    expect(context.reusableCliSession).toEqual({
-+      mode: "reuse",
-+      sessionId: "live-claude-sid",
-+    });
-+  });
-+
-   it.each(["prepared", "admitted"] as const)(
-     "stops CLI skill preparation before sandbox materialization when %s authority is revoked",
-     async (phase) => {
 diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index f13b35b5..2d08924d 100644
+index 01ce8611d..74195c508 100644
 --- a/src/agents/cli-runner/prepare.ts
 +++ b/src/agents/cli-runner/prepare.ts
-@@ -354,6 +354,34 @@ async function prepareCliRunContextWithinReadFence(
+@@ -359,6 +359,34 @@ async function prepareCliRunContextWithinReadFence(
        `CLI backend "${backendResolved.id}" cannot enforce this run's tool cap. Upgrade its plugin and retry; if current, ask its maintainer to add exact-cap support. OpenClaw did not start the run.`,
      );
    }
@@ -1468,7 +1271,7 @@ index f13b35b5..2d08924d 100644
    const sideQuestionDisablesNativeTools =
      isSideQuestion && backendResolved.sideQuestionToolMode === "disabled";
    const requestedNoNativeTools = params.cliToolAvailability?.native.length === 0;
-@@ -1515,6 +1543,8 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1560,6 +1588,8 @@ async function prepareCliRunContextWithinReadFence(
          ? undefined
          : await loadCliSessionPromptContext({
              ...params,
@@ -1477,7 +1280,7 @@ index f13b35b5..2d08924d 100644
              allowRawTranscriptReseed,
              rawTranscriptReseedReason,
              nativeSessionId: reusableCliSessionId,
-@@ -1603,7 +1633,10 @@ async function prepareCliRunContextWithinReadFence(
+@@ -1649,7 +1679,10 @@ async function prepareCliRunContextWithinReadFence(
        ? buildCliSessionHistoryPrompt({
            messages: sessionPromptContext?.reseedMessages ?? [],
            prompt: historyPromptCurrentTurn,
@@ -1488,12 +1291,12 @@ index f13b35b5..2d08924d 100644
 +              : autoReseedHistoryChars,
          })
        : undefined;
-     const systemPromptWithReplacements = skipsTurnPreparation
+     systemPrompt = skipsTurnPreparation
 diff --git a/src/agents/cli-runner/session-history.test.ts b/src/agents/cli-runner/session-history.test.ts
-index 64e1efab..e84c9fb7 100644
+index c20d73a6a..febe1776a 100644
 --- a/src/agents/cli-runner/session-history.test.ts
 +++ b/src/agents/cli-runner/session-history.test.ts
-@@ -1036,3 +1036,24 @@ describe("buildCliSessionHistoryPrompt", () => {
+@@ -956,3 +956,24 @@ describe("buildCliSessionHistoryPrompt", () => {
      expect(prompt).not.toContain("[OpenClaw reseed history truncated; older turns dropped]");
    });
  });
@@ -1519,10 +1322,10 @@ index 64e1efab..e84c9fb7 100644
 +  expect(ordinary.reseedMessages).toHaveLength(MAX_CLI_SESSION_HISTORY_MESSAGES);
 +});
 diff --git a/src/agents/cli-runner/session-history.ts b/src/agents/cli-runner/session-history.ts
-index 3d350311..61f0d706 100644
+index b294f4147..9ce634a18 100644
 --- a/src/agents/cli-runner/session-history.ts
 +++ b/src/agents/cli-runner/session-history.ts
-@@ -58,6 +58,8 @@ const CLI_DURABLE_CONTEXT_OMISSION = "[Session notes truncated; earlier notes ma
+@@ -55,6 +55,8 @@ const CLI_DURABLE_CONTEXT_OMISSION = "[Session notes truncated; earlier notes ma
  const MAX_CLI_SESSION_UNSEEN_TURNS = 8;
  
  type CliSessionHistoryParams = {
@@ -1531,7 +1334,7 @@ index 3d350311..61f0d706 100644
    abortSignal?: AbortSignal;
    sessionManager?: SessionManager;
    sessionTarget?: SessionTranscriptRuntimeTarget;
-@@ -240,7 +242,11 @@ export function buildCliSessionHistoryPrompt(params: {
+@@ -213,7 +215,11 @@ export function buildCliSessionHistoryPrompt(params: {
    ].join("\n");
  }
  
@@ -1544,7 +1347,7 @@ index 3d350311..61f0d706 100644
    const branch = sessionManager.getBranch();
    const boundaryIndex = branch.findLastIndex(
      (entry) => entry.type === "reset" || (!hooks && entry.type === "compaction"),
-@@ -263,6 +269,12 @@ function loadCliMemoryEntries(sessionManager: SessionManager, hooks = false): Se
+@@ -236,6 +242,12 @@ function loadCliMemoryEntries(sessionManager: SessionManager, hooks = false): Se
      );
      entries = branch.filter((entry) => contextEntries.has(entry));
    }
@@ -1557,7 +1360,7 @@ index 3d350311..61f0d706 100644
    const limit = hooks ? MAX_CLI_SESSION_HISTORY_MESSAGES : MAX_CLI_SESSION_HISTORY_EVENTS;
    const selected: SessionEntry[] = [];
    let bytes = 0;
-@@ -304,10 +316,11 @@ async function loadCliSessionEntries({
+@@ -277,10 +289,11 @@ async function loadCliSessionEntries({
    sessionManager,
    sessionTarget,
    abortSignal,
@@ -1570,7 +1373,7 @@ index 3d350311..61f0d706 100644
    }
    if (!sessionTarget) {
      return [];
-@@ -673,9 +686,13 @@ export async function loadCliSessionPromptContext(
+@@ -735,9 +748,13 @@ export async function loadCliSessionPromptContext(
      (message) =>
        message.role === "user" || message.role === "assistant" || message.role === "toolResult",
    );
@@ -1585,13 +1388,13 @@ index 3d350311..61f0d706 100644
 +      ? [summary, ...history.slice(-(MAX_CLI_SESSION_HISTORY_MESSAGES - 1))]
 +      : history.slice(-MAX_CLI_SESSION_HISTORY_MESSAGES);
    // Bound the tail before projecting renderer fields; full replay records are unnecessary.
-   const reseedMessages = selected.map((message) => {
+   const reseedMessages = selected.map((message): CliSessionReseedMessage => {
      const timestamp = timestampMsToIsoString(message.timestamp);
 diff --git a/src/agents/cli-runner/types.ts b/src/agents/cli-runner/types.ts
-index 6003e885..0354768a 100644
+index 5cfe4fe2d..956272ea7 100644
 --- a/src/agents/cli-runner/types.ts
 +++ b/src/agents/cli-runner/types.ts
-@@ -77,6 +77,14 @@ export type RunCliAgentParams = {
+@@ -72,6 +72,14 @@ export type RunCliAgentParams = Pick<
    sessionTarget?: SessionTranscriptRuntimeTarget;
    /** Session identity used only for sandbox and tool-policy resolution. */
    runtimePolicySessionKey?: string;
@@ -1604,13 +1407,13 @@ index 6003e885..0354768a 100644
 +  memoryFlushTools?: import("../agent-tools.memory-flush.types.js").MemoryFlushToolRunContext;
 +  initialTurnTainted?: boolean;
    sessionEntry?: SessionEntry;
-   trigger?: EmbeddedRunTrigger;
-   /** Heartbeat-transported turn that continues a conversation (its own command completion). */
+   sessionFile: string;
+   /** Start a fresh CLI process so per-turn MCP authority is reloaded from this run. */
 diff --git a/src/agents/command/attempt-execution.helpers.ts b/src/agents/command/attempt-execution.helpers.ts
-index 9069335e..38096c09 100644
+index 45f4e6ff5..605f4e071 100644
 --- a/src/agents/command/attempt-execution.helpers.ts
 +++ b/src/agents/command/attempt-execution.helpers.ts
-@@ -175,6 +175,7 @@ function claudeCliSessionTranscriptPath(params: {
+@@ -133,6 +133,7 @@ function claudeCliSessionTranscriptPath(params: {
    sessionId: string | undefined;
    workspaceDir: string | undefined;
    homeDir?: string;
@@ -1618,7 +1421,7 @@ index 9069335e..38096c09 100644
  }): string | null {
    const sessionId = normalizeClaudeCliSessionId(params.sessionId);
    if (!sessionId) {
-@@ -188,6 +189,7 @@ function claudeCliSessionTranscriptPath(params: {
+@@ -146,6 +147,7 @@ function claudeCliSessionTranscriptPath(params: {
      resolveClaudeCliProjectDirForWorkspace({
        workspaceDir,
        homeDir: params.homeDir,
@@ -1628,7 +1431,7 @@ index 9069335e..38096c09 100644
    );
 diff --git a/src/agents/command/claude-cli-project-dir.test.ts b/src/agents/command/claude-cli-project-dir.test.ts
 new file mode 100644
-index 00000000..8fd99f3d
+index 000000000..8fd99f3d5
 --- /dev/null
 +++ b/src/agents/command/claude-cli-project-dir.test.ts
 @@ -0,0 +1,99 @@
@@ -1732,27 +1535,10 @@ index 00000000..8fd99f3d
 +  );
 +});
 diff --git a/src/agents/command/claude-cli-project-dir.ts b/src/agents/command/claude-cli-project-dir.ts
-index 98bc049f..35737564 100644
+index 9854fd4ce..0a8f256ba 100644
 --- a/src/agents/command/claude-cli-project-dir.ts
 +++ b/src/agents/command/claude-cli-project-dir.ts
-@@ -3,17 +3,29 @@ import os from "node:os";
- import path from "node:path";
- import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
- 
--const CLAUDE_PROJECTS_DIRNAME = path.join(".claude", "projects");
-+/** Resolve the same account directory used by the native CLI process. */
-+export function resolveClaudeCliProjectsDir(params: {
-+  homeDir?: string;
-+  configDir?: string;
-+}): string {
-+  const configDir =
-+    normalizeOptionalString(params.configDir) ??
-+    normalizeOptionalString(process.env.CLAUDE_CONFIG_DIR);
-+  if (configDir) return path.join(path.resolve(configDir), "projects");
-+  const homeDir = normalizeOptionalString(params.homeDir) || process.env.HOME || os.homedir();
-+  return path.join(homeDir, ".claude", "projects");
-+}
- const MAX_SANITIZED_PROJECT_LENGTH = 200;
+@@ -16,12 +16,13 @@ export function resolveClaudeCliProjectsDir(homeDir?: string): string {
  
  // Claude CLI stores project state under a sanitized workspace key. Add a stable
  // hash when the key is truncated so long paths do not collide silently.
@@ -1768,34 +1554,27 @@ index 98bc049f..35737564 100644
  }
  
  function sanitizeClaudeCliProjectKey(workspaceDir: string): string {
-@@ -38,12 +50,11 @@ function canonicalizeWorkspaceDir(workspaceDir: string): string {
+@@ -46,6 +47,7 @@ function canonicalizeWorkspaceDir(workspaceDir: string): string {
  export function resolveClaudeCliProjectDirForWorkspace(params: {
    workspaceDir: string;
    homeDir?: string;
 +  configDir?: string;
  }): string {
--  const homeDir = normalizeOptionalString(params.homeDir) || process.env.HOME || os.homedir();
    const canonicalWorkspaceDir = canonicalizeWorkspaceDir(params.workspaceDir);
    return path.join(
--    homeDir,
--    CLAUDE_PROJECTS_DIRNAME,
-+    resolveClaudeCliProjectsDir(params),
-     sanitizeClaudeCliProjectKey(canonicalWorkspaceDir),
-   );
- }
 diff --git a/src/agents/command/maintenance.test.ts b/src/agents/command/maintenance.test.ts
-index 8ba46f44..1f48e4bb 100644
+index bacf9aa1b..6ffa396e1 100644
 --- a/src/agents/command/maintenance.test.ts
 +++ b/src/agents/command/maintenance.test.ts
-@@ -14,6 +14,7 @@ import {
+@@ -15,6 +15,7 @@ import {
    GATEWAY_INGRESS_ARGS,
  } from "../agent-command.compaction.test-support.js";
  import { waitForSessionMaintenance } from "../session-maintenance/coordinator.js";
 +import * as maintenanceRuntime from "../session-maintenance/run.js";
  
  const {
-   replaceSessionEntry,
-@@ -315,3 +316,106 @@ describe("agent command foreground completion", () => {
+   runAgentAttemptMock: attempt,
+@@ -352,3 +353,106 @@ describe("agent command foreground completion", () => {
      },
    );
  });
@@ -1903,19 +1682,19 @@ index 8ba46f44..1f48e4bb 100644
 +  }
 +});
 diff --git a/src/agents/command/post-run.ts b/src/agents/command/post-run.ts
-index 175589bd..3cd6b2fb 100644
+index d1fbd0be1..7d9057d18 100644
 --- a/src/agents/command/post-run.ts
 +++ b/src/agents/command/post-run.ts
-@@ -45,6 +45,8 @@ import {
-   createAgentRunRestartAbortError,
-   throwAgentRunRestartAbortReason,
- } from "../run-termination.js";
+@@ -30,6 +30,8 @@ import {
+   type PendingFinalDeliverySource,
+ } from "../pending-final-delivery-marker.js";
+ import { throwAgentRunRestartAbortReason } from "../run-termination.js";
 +import { isIdleCompactionHarness } from "../session-maintenance/idle.js";
 +import { resolveCompletedNativeIdleBinding } from "../session-maintenance/native-idle.js";
  import type { SessionMaintenanceRequest } from "../session-maintenance/run.js";
  import { persistAssistantTranscriptRepairRecord } from "./assistant-transcript-repair.js";
  import { persistAgentSession } from "./attempt-execution.shared.js";
-@@ -368,10 +370,20 @@ export async function finalizeEmbeddedAgentCommand(params: {
+@@ -322,10 +324,20 @@ export async function finalizeEmbeddedAgentCommand(params: {
            }
          : undefined;
      const agentMeta = result.meta.agentMeta;
@@ -1939,7 +1718,7 @@ index 175589bd..3cd6b2fb 100644
        !fallbackExhausted &&
        terminal.outcome.status === "ok" &&
        !resultErrorPayload &&
-@@ -399,7 +411,7 @@ export async function finalizeEmbeddedAgentCommand(params: {
+@@ -352,7 +364,7 @@ export async function finalizeEmbeddedAgentCommand(params: {
                provider: agentMeta?.provider ?? fallbackProvider,
                model: agentMeta?.model ?? fallbackModel,
                thinkLevel: effectiveTurnThinkLevel,
@@ -1948,7 +1727,7 @@ index 175589bd..3cd6b2fb 100644
                senderIsOwner: params.opts.senderIsOwner,
              }),
              sessionId: runOwnedSessionId,
-@@ -407,7 +419,8 @@ export async function finalizeEmbeddedAgentCommand(params: {
+@@ -360,7 +372,8 @@ export async function finalizeEmbeddedAgentCommand(params: {
              lifecycleGeneration,
              startedAt: params.attempt.startedAt,
              oneShotCliRun: params.opts.oneShotCliRun,
@@ -1959,10 +1738,10 @@ index 175589bd..3cd6b2fb 100644
            }
          : undefined;
 diff --git a/src/agents/embedded-agent-runner/cli-backend-dispatch.ts b/src/agents/embedded-agent-runner/cli-backend-dispatch.ts
-index 2a823f7a..ea87937e 100644
+index 44de28078..2b9ac8b33 100644
 --- a/src/agents/embedded-agent-runner/cli-backend-dispatch.ts
 +++ b/src/agents/embedded-agent-runner/cli-backend-dispatch.ts
-@@ -148,6 +148,15 @@ export async function runEmbeddedAgentViaCliBackendIfEligible(
+@@ -149,6 +149,15 @@ export async function runEmbeddedAgentViaCliBackendIfEligible(
        expectedLifecycleRevision,
        expectedWriterRunId,
        chatType: params.chatType,
@@ -1979,13 +1758,13 @@ index 2a823f7a..ea87937e 100644
        storePath,
        trigger: params.trigger,
 diff --git a/src/agents/embedded-agent-runner/compact.hooks.test.ts b/src/agents/embedded-agent-runner/compact.hooks.test.ts
-index a03ad8fa..982bcea2 100644
+index 5e5396ed0..8bcff1c86 100644
 --- a/src/agents/embedded-agent-runner/compact.hooks.test.ts
 +++ b/src/agents/embedded-agent-runner/compact.hooks.test.ts
-@@ -314,6 +314,39 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
-     resetCompactSessionStateMocks();
-   });
+@@ -418,6 +418,39 @@ beforeEach(async () => {
+ afterEach(() => configRuntime.clearRuntimeConfigSnapshot());
  
+ describe("compactEmbeddedAgentSessionDirect hooks", () => {
 +  it.each([true, false])(
 +    "preserves source memory owner %s in embedded compaction",
 +    async (sourceOwner) => {
@@ -2019,70 +1798,37 @@ index a03ad8fa..982bcea2 100644
 +    },
 +  );
 +
-   it("does not retry thinking after a recorded terminal compaction failure", async () => {
-     resolveContextEngineMock.mockResolvedValue({
-       info: { ownsCompaction: false },
-@@ -2230,30 +2263,53 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
+   beforeEach(() => mockResolvedModel());
+ 
+   it("never retries a recorded terminal failure", async () => {
+@@ -1972,7 +2005,7 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
      ]);
    });
  
--  it("reports cancellation while queued native CLI compaction is in flight", async () => {
--    const controller = new AbortController();
--    const cancellation = new Error("request timed out");
--    const cliStarted = createDeferred<AbortSignal>();
--    runCliAgentMock.mockImplementationOnce((async (params: { abortSignal?: AbortSignal }) => {
--      const signal = expectDefined(params.abortSignal, "native CLI compaction abort signal");
--      cliStarted.resolve(signal);
--      return await new Promise<never>((_resolve, reject) => {
--        signal.addEventListener("abort", () => reject(cancellation), { once: true });
-+  it.each([false, true])(
-+    "reports cancellation while queued native CLI compaction is in flight (idle=%s)",
-+    async (idle) => {
-+      const controller = new AbortController();
-+      const cancellation = new Error("request timed out");
-+      const cliStarted = createDeferred<AbortSignal>();
-+      runCliAgentMock.mockImplementationOnce((async (params: { abortSignal?: AbortSignal }) => {
-+        const signal = expectDefined(params.abortSignal, "native CLI compaction abort signal");
-+        cliStarted.resolve(signal);
-+        return await new Promise<never>((_resolve, reject) => {
-+          signal.addEventListener("abort", () => reject(cancellation), { once: true });
-+        });
-+      }) as never);
-+      const pending = compactEmbeddedAgentSession(
-+        nativeCliArgs({
-+          abortSignal: controller.signal,
-+          trigger: idle ? "auto" : "manual",
-+          idleNativeCompaction: idle,
-+        }),
-+      );
-+      const nativeSignal = await cliStarted.promise;
-+      controller.abort(cancellation);
-+      await expect(pending).resolves.toEqual({
-+        ok: false,
-+        compacted: false,
-+        reason: "compaction aborted",
+-  it("cancels in-flight native CLI compaction", async () => {
++  it.each([false, true])("cancels in-flight native CLI compaction (idle=%s)", async (idle) => {
+     const controller = new AbortController();
+     const cancellation = new Error("request timed out");
+     const cliStarted = createDeferred<AbortSignal>();
+@@ -1983,7 +2016,13 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
+         signal.addEventListener("abort", () => reject(cancellation), { once: true });
        });
--    }) as never);
+     }) as never);
 -    const pending = compactEmbeddedAgentSession(nativeCliArgs({ abortSignal: controller.signal }));
--    const nativeSignal = await cliStarted.promise;
--    controller.abort(cancellation);
--    await expect(pending).resolves.toEqual({
--      ok: false,
--      compacted: false,
--      reason: "compaction aborted",
--    });
--    expect(nativeSignal.aborted).toBe(true);
--    expect(nativeSignal.reason).toBe(cancellation);
--    expect(resolveContextEngineMock).not.toHaveBeenCalled();
--    expect(isEmbeddedAgentRunHandleActive(TEST_SESSION_ID)).toBe(false);
--  });
-+      expect(nativeSignal.aborted).toBe(true);
-+      expect(nativeSignal.reason).toBe(cancellation);
-+      expect(resolveContextEngineMock).not.toHaveBeenCalled();
-+      expect(isEmbeddedAgentRunHandleActive(TEST_SESSION_ID)).toBe(false);
-+    },
-+  );
-+
++    const pending = compactEmbeddedAgentSession(
++      nativeCliArgs({
++        abortSignal: controller.signal,
++        trigger: idle ? "auto" : "manual",
++        idleNativeCompaction: idle,
++      }),
++    );
+     const nativeSignal = await cliStarted.promise;
+     controller.abort(cancellation);
+     await expect(pending).resolves.toEqual(abortedCompaction);
+@@ -1992,6 +2031,19 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
+     expect(resolveContextEngineMock).not.toHaveBeenCalled();
+     expect(isEmbeddedAgentRunHandleActive(TEST_SESSION_ID)).toBe(false);
+   });
 +  it.each([false, true])(
 +    "routes queued native compaction to the CLI backend (idle=%s)",
 +    async (idle) => {
@@ -2097,13 +1843,13 @@ index a03ad8fa..982bcea2 100644
 +    },
 +  );
  
-   it("rejects a replaced writer claim before queued native CLI compaction", async () => {
-     const laneEntered = createDeferred();
+   it("checks writer authority before native CLI compaction", async () => {
+     const { entered: laneEntered, release: laneRelease } = blockQueuedLane();
 diff --git a/src/agents/embedded-agent-runner/compact.ts b/src/agents/embedded-agent-runner/compact.ts
-index b61a2277..523c9455 100644
+index c2563d9a5..2c62e6499 100644
 --- a/src/agents/embedded-agent-runner/compact.ts
 +++ b/src/agents/embedded-agent-runner/compact.ts
-@@ -22,6 +22,7 @@ import {
+@@ -25,6 +25,7 @@ import {
  import { resolveCliBackendConfig } from "../cli-backends.js";
  import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
  import { coerceToFailoverError } from "../failover-error.js";
@@ -2171,9 +1917,9 @@ index b61a2277..523c9455 100644
 +        });
 +      }
        await runCliAgent({
+         replyOperation: params.replyOperation,
          preparedRunAdmission,
-         sessionId: params.compactParams.sessionId,
-@@ -113,6 +160,16 @@ export async function compactNativeCliSession(params: {
+@@ -114,6 +161,16 @@ export async function compactNativeCliSession(params: {
          modelProvider: params.compactParams.provider,
          model: params.compactParams.model,
          thinkLevel: params.compactParams.thinkLevel,
@@ -2191,10 +1937,10 @@ index b61a2277..523c9455 100644
          runId,
          cliSessionId,
 diff --git a/src/agents/embedded-agent-runner/compact.types.ts b/src/agents/embedded-agent-runner/compact.types.ts
-index 990db5b3..e5355103 100644
+index 84736adb7..c2c63aa0e 100644
 --- a/src/agents/embedded-agent-runner/compact.types.ts
 +++ b/src/agents/embedded-agent-runner/compact.types.ts
-@@ -111,6 +111,10 @@ export type CompactEmbeddedAgentSessionParams = Pick<
+@@ -122,6 +122,10 @@ export type CompactEmbeddedAgentSessionParams = Pick<
    preflightRequired?: boolean;
    /** Diagnostic trigger that made preflight compaction mandatory. */
    preflightCompactionTrigger?: "tokens" | "transcript_bytes";
@@ -2206,10 +1952,10 @@ index 990db5b3..e5355103 100644
    /** Source-turn urgency survives replacing its trigger with a compaction reason. */
    modelCallUrgency?: ModelCallUrgency;
 diff --git a/src/agents/embedded-agent-runner/compaction-session-execution.ts b/src/agents/embedded-agent-runner/compaction-session-execution.ts
-index a93761f4..077489c9 100644
+index 88b12fac5..7711a42e9 100644
 --- a/src/agents/embedded-agent-runner/compaction-session-execution.ts
 +++ b/src/agents/embedded-agent-runner/compaction-session-execution.ts
-@@ -383,6 +383,38 @@ export async function executePreparedCompactionSession(runtime: PreparedCompacti
+@@ -399,6 +399,38 @@ export async function executePreparedCompactionSession(runtime: PreparedCompacti
            observedTokenCount,
            estimateTokensFn: estimateTokens,
          });
@@ -2249,7 +1995,7 @@ index a93761f4..077489c9 100644
          const hookContext = () => ({
            hookRunner,
 diff --git a/src/agents/harness/hook-context.ts b/src/agents/harness/hook-context.ts
-index c7a06e30..a8c10221 100644
+index 18f94b1eb..24974aa4d 100644
 --- a/src/agents/harness/hook-context.ts
 +++ b/src/agents/harness/hook-context.ts
 @@ -1,3 +1,4 @@
@@ -2257,7 +2003,7 @@ index c7a06e30..a8c10221 100644
  import type { OpenClawConfig } from "../../config/types.openclaw.js";
  import { buildAgentHookContextIdentityFields } from "../../plugins/hook-agent-context.js";
  import type { PluginHookAgentContext } from "../../plugins/hook-types.js";
-@@ -21,6 +22,23 @@ export type AgentHarnessHookContext = Omit<
+@@ -19,6 +20,23 @@ export type AgentHarnessHookContext = Omit<
    | "assertMemoryAudienceCurrent"
  > & {
    config?: OpenClawConfig;
@@ -2280,12 +2026,12 @@ index c7a06e30..a8c10221 100644
 +  memorySaveAuth?: { authProfileId?: string; authProfileIdSource?: "auto" | "user" };
  };
  
- /** Builds the sparse hook context object passed to agent harness plugin hooks. */
+ export function buildAgentHookContext(params: AgentHarnessHookContext): PluginHookAgentContext {
 diff --git a/src/agents/harness/prompt-compaction-hook-helpers.ts b/src/agents/harness/prompt-compaction-hook-helpers.ts
-index d162899e..a62ef6f5 100644
+index 4be4944bb..0f3cf8d2f 100644
 --- a/src/agents/harness/prompt-compaction-hook-helpers.ts
 +++ b/src/agents/harness/prompt-compaction-hook-helpers.ts
-@@ -188,6 +188,10 @@ export async function runAgentHarnessBeforeCompactionHook(params: {
+@@ -178,6 +178,10 @@ export async function runAgentHarnessBeforeCompactionHook(params: {
    messages?: AgentMessage[];
    ctx: AgentHarnessHookContext;
  }): Promise<void> {
@@ -2297,7 +2043,7 @@ index d162899e..a62ef6f5 100644
    if (!hookRunner?.hasHooks("before_compaction")) {
      return;
 diff --git a/src/agents/harness/tool-surface-bridge.test.ts b/src/agents/harness/tool-surface-bridge.test.ts
-index 5120ae69..fea5c48d 100644
+index ca2825b82..62d351db5 100644
 --- a/src/agents/harness/tool-surface-bridge.test.ts
 +++ b/src/agents/harness/tool-surface-bridge.test.ts
 @@ -9,6 +9,11 @@ import { setPluginToolMeta } from "../../plugins/tool-metadata.js";
@@ -2312,66 +2058,8 @@ index 5120ae69..fea5c48d 100644
  import { applyEmbeddedAttemptToolsAllow } from "../embedded-agent-runner/run/attempt-tool-construction-plan.js";
  import { projectAgentToolDefinition } from "../prepared-tool-surface.js";
  import { createStubTool } from "../test-helpers/agent-tool-stubs.js";
-@@ -116,6 +121,57 @@ describe("createAgentHarnessToolSurfaceRuntime", () => {
-     },
-   );
- 
-+  it("selects borrowed policy without moving Code Mode execution to the policy session", async () => {
-+    const executionKey = "agent:worker:execution";
-+    const policyKey = "agent:worker:policy";
-+    const runtime = createAgentHarnessToolSurfaceRuntime({
-+      config: {
-+        agents: {
-+          defaults: { experimental: { localModelLean: false } },
-+          entries: {
-+            main: { tools: { codeMode: false } },
-+            worker: { tools: { codeMode: { enabled: true, surface: "additive" } } },
-+          },
-+        },
-+        tools: { toolSearch: false },
-+      },
-+      agentId: "worker",
-+      sessionKey: executionKey,
-+      runtimePolicySessionKey: policyKey,
-+      sessionId: "borrowed-policy-session",
-+      runId: "borrowed-policy-run",
-+      modelToolsEnabled: true,
-+      executeTool: async () => ({ content: [], details: {} }),
-+    });
-+    try {
-+      expect(runtime.codeModeControlsEnabled).toBe(true);
-+      const surface = runtime.compactTools(tools(["probe"]));
-+      const exec = expectDefined(
-+        surface.tools.find((tool) => tool.name === "code_exec"),
-+        "Code Mode exec",
-+      );
-+      const parked = resultDetails(
-+        await exec.execute("borrowed-policy-call", {
-+          code: "await yield_control(); return 17;",
-+        }),
-+      );
-+      expect(parked).toMatchObject({ status: "waiting" });
-+      expect(codeModeTesting.activeRuns.get(String(parked.runId))?.ctx.sessionKey).toBe(
-+        executionKey,
-+      );
-+      const wait = expectDefined(
-+        surface.tools.find((tool) => tool.name === "code_wait"),
-+        "Code Mode wait",
-+      );
-+      expect(
-+        resultDetails(await wait.execute("borrowed-policy-resume", { runId: parked.runId })),
-+      ).toMatchObject({ status: "completed", value: 17 });
-+    } finally {
-+      runtime.cleanup();
-+      await resetCodeModeTestState();
-+    }
-+  });
-+
-   it.each([
-     {
-       mode: "automatic Code Mode",
 diff --git a/src/agents/harness/tool-surface-bridge.ts b/src/agents/harness/tool-surface-bridge.ts
-index 12d5bf9f..9aa28c52 100644
+index 63080a5ef..b289dd1fa 100644
 --- a/src/agents/harness/tool-surface-bridge.ts
 +++ b/src/agents/harness/tool-surface-bridge.ts
 @@ -53,6 +53,8 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
@@ -2409,7 +2097,7 @@ index 12d5bf9f..9aa28c52 100644
              modelProvider: params.modelProvider,
              modelId: params.modelId,
              runtimeToolAllowlist,
-@@ -199,7 +202,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+@@ -198,7 +201,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
          : filterLocalModelLeanTools({
              ...params,
              tools: compacted.tools,
@@ -2418,7 +2106,7 @@ index 12d5bf9f..9aa28c52 100644
              preserveToolNames,
            });
      const schemaProjection = filterRuntimeCompatibleTools(projectedCompactedTools);
-@@ -226,7 +229,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
+@@ -225,7 +228,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(
                  config: surfaceCodeModeControlsEnabled ? params.config : toolSearchRuntimeConfig,
                  toolSearchDirectoryLean: presentation?.toolSearchDirectoryLean,
                  agentId: params.agentId,
@@ -2429,7 +2117,7 @@ index 12d5bf9f..9aa28c52 100644
              : undefined,
 diff --git a/src/agents/session-maintenance/compaction-memory-input.test.ts b/src/agents/session-maintenance/compaction-memory-input.test.ts
 new file mode 100644
-index 00000000..59a99a47
+index 000000000..59a99a479
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory-input.test.ts
 @@ -0,0 +1,86 @@
@@ -2521,7 +2209,7 @@ index 00000000..59a99a47
 +});
 diff --git a/src/agents/session-maintenance/compaction-memory-input.ts b/src/agents/session-maintenance/compaction-memory-input.ts
 new file mode 100644
-index 00000000..4c7eb324
+index 000000000..4c7eb324c
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory-input.ts
 @@ -0,0 +1,85 @@
@@ -2612,7 +2300,7 @@ index 00000000..4c7eb324
 +}
 diff --git a/src/agents/session-maintenance/compaction-memory-jobs.test.ts b/src/agents/session-maintenance/compaction-memory-jobs.test.ts
 new file mode 100644
-index 00000000..c07b36bf
+index 000000000..c07b36bfb
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory-jobs.test.ts
 @@ -0,0 +1,194 @@
@@ -2812,7 +2500,7 @@ index 00000000..c07b36bf
 +});
 diff --git a/src/agents/session-maintenance/compaction-memory-jobs.ts b/src/agents/session-maintenance/compaction-memory-jobs.ts
 new file mode 100644
-index 00000000..b9939b7d
+index 000000000..b9939b7d1
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory-jobs.ts
 @@ -0,0 +1,209 @@
@@ -3027,7 +2715,7 @@ index 00000000..b9939b7d
 +}
 diff --git a/src/agents/session-maintenance/compaction-memory.capture.test.ts b/src/agents/session-maintenance/compaction-memory.capture.test.ts
 new file mode 100644
-index 00000000..3903b9a1
+index 000000000..3903b9a1e
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory.capture.test.ts
 @@ -0,0 +1,161 @@
@@ -3194,10 +2882,10 @@ index 00000000..3903b9a1
 +);
 diff --git a/src/agents/session-maintenance/compaction-memory.test.ts b/src/agents/session-maintenance/compaction-memory.test.ts
 new file mode 100644
-index 00000000..4acd93fe
+index 000000000..fe0e7366e
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory.test.ts
-@@ -0,0 +1,547 @@
+@@ -0,0 +1,546 @@
 +import { randomUUID } from "node:crypto";
 +import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 +import { createDeferred } from "../../../test/helpers/promise.js";
@@ -3242,12 +2930,11 @@ index 00000000..4acd93fe
 +  ...(await original<object>()),
 +  getRuntimeConfig: () => mocks.cfg,
 +}));
-+vi.mock("../sandbox.js", () => ({
++vi.mock("../sandbox/runtime-status.js", () => ({
 +  resolveSandboxRuntimeStatusAsync: async () => ({
 +    sandboxed: true,
 +    workspaceAccess: mocks.writable ? "rw" : "ro",
 +  }),
-+  resolveSandboxConfigForAgent: () => ({ workspaceAccess: "rw" }),
 +}));
 +vi.mock("../../plugins/runtime.js", async (original) => ({
 +  ...(await original<object>()),
@@ -3747,7 +3434,7 @@ index 00000000..4acd93fe
 +});
 diff --git a/src/agents/session-maintenance/compaction-memory.ts b/src/agents/session-maintenance/compaction-memory.ts
 new file mode 100644
-index 00000000..464bb7a1
+index 000000000..1687835ca
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory.ts
 @@ -0,0 +1,410 @@
@@ -3783,7 +3470,8 @@ index 00000000..464bb7a1
 +import { resolveAgentDir, resolveAgentWorkspaceDir } from "../agent-scope.js";
 +import { createCommandBudget } from "../command/maintenance-budget.js";
 +import type { AgentHarnessHookContext } from "../harness/hook-context.js";
-+import { resolveSandboxConfigForAgent, resolveSandboxRuntimeStatusAsync } from "../sandbox.js";
++import { resolveSandboxConfigForAgent } from "../sandbox/config.js";
++import { resolveSandboxRuntimeStatusAsync } from "../sandbox/runtime-status.js";
 +import { buildCompactionMemoryInputs } from "./compaction-memory-input.js";
 +import {
 +  createCompactionMemoryJobRunner,
@@ -3980,7 +3668,6 @@ index 00000000..464bb7a1
 +                          runtimePolicySessionKey:
 +                            source.policy?.runtimePolicySessionKey ?? source.sessionKey,
 +                          storePath: source.storePath,
-+                          isHeartbeat: false,
 +                          abortSignal: owner.signal,
 +                        },
 +                        {
@@ -4162,18 +3849,18 @@ index 00000000..464bb7a1
 +  }
 +}
 diff --git a/src/agents/session-maintenance/coordinator.ts b/src/agents/session-maintenance/coordinator.ts
-index 9d49843b..11a14f7d 100644
+index 58dec5f36..1af32b43f 100644
 --- a/src/agents/session-maintenance/coordinator.ts
 +++ b/src/agents/session-maintenance/coordinator.ts
-@@ -9,6 +9,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
- import { getGatewayRestartDrainSignal } from "../../process/gateway-work-admission.js";
+@@ -19,6 +19,7 @@ import {
  import { createDeferredCore } from "../../shared/deferred.js";
  import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
+ import { withoutGatewayToolCallerIdentity } from "../tools/gateway-caller-context.js";
 +import { cancelIdleCompaction } from "./idle.js";
  
  type MaintenanceOwner = {
-   sequence: number;
-@@ -183,6 +184,7 @@ export async function beginForegroundSessionMaintenance(sessionKey?: string): Pr
+   controller: AbortController;
+@@ -208,6 +209,7 @@ export async function beginForegroundSessionMaintenance(sessionKey?: string): Pr
    if (!key) {
      return () => {};
    }
@@ -4183,7 +3870,7 @@ index 9d49843b..11a14f7d 100644
    let released = false;
 diff --git a/src/agents/session-maintenance/idle.test.ts b/src/agents/session-maintenance/idle.test.ts
 new file mode 100644
-index 00000000..8e56a7b1
+index 000000000..8e56a7b14
 --- /dev/null
 +++ b/src/agents/session-maintenance/idle.test.ts
 @@ -0,0 +1,58 @@
@@ -4247,7 +3934,7 @@ index 00000000..8e56a7b1
 +});
 diff --git a/src/agents/session-maintenance/idle.ts b/src/agents/session-maintenance/idle.ts
 new file mode 100644
-index 00000000..331ecbb5
+index 000000000..331ecbb5c
 --- /dev/null
 +++ b/src/agents/session-maintenance/idle.ts
 @@ -0,0 +1,97 @@
@@ -4350,7 +4037,7 @@ index 00000000..331ecbb5
 +}
 diff --git a/src/agents/session-maintenance/native-idle.test.ts b/src/agents/session-maintenance/native-idle.test.ts
 new file mode 100644
-index 00000000..889c15c0
+index 000000000..889c15c01
 --- /dev/null
 +++ b/src/agents/session-maintenance/native-idle.test.ts
 @@ -0,0 +1,108 @@
@@ -4464,7 +4151,7 @@ index 00000000..889c15c0
 +});
 diff --git a/src/agents/session-maintenance/native-idle.ts b/src/agents/session-maintenance/native-idle.ts
 new file mode 100644
-index 00000000..e5d698c5
+index 000000000..e5d698c58
 --- /dev/null
 +++ b/src/agents/session-maintenance/native-idle.ts
 @@ -0,0 +1,58 @@
@@ -4528,23 +4215,23 @@ index 00000000..e5d698c5
 +}
 diff --git a/src/agents/session-maintenance/run.native-idle.test.ts b/src/agents/session-maintenance/run.native-idle.test.ts
 new file mode 100644
-index 00000000..f9c22062
+index 000000000..f74650ac6
 --- /dev/null
 +++ b/src/agents/session-maintenance/run.native-idle.test.ts
-@@ -0,0 +1,359 @@
+@@ -0,0 +1,357 @@
 +import { AsyncLocalStorage } from "node:async_hooks";
 +import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 +import { createDeferred } from "../../../test/helpers/promise.js";
++import type { SessionEntry } from "../../config/sessions.js";
 +import { writeSessionEntry } from "../../config/sessions/session-accessor.sqlite-entry-store.js";
++import type { OpenClawConfig } from "../../config/types.openclaw.js";
 +import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 +import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 +import { withPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
++import { AsyncWorkScope, trackAsyncWork } from "../../shared/async-work-scope.js";
 +import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 +import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 +import { beginForegroundSessionMaintenance, waitForSessionMaintenance } from "./coordinator.js";
-+import type { SessionEntry } from "../../config/sessions.js";
-+import type { OpenClawConfig } from "../../config/types.openclaw.js";
-+import { AsyncWorkScope, trackAsyncWork } from "../../shared/async-work-scope.js";
 +import { cancelIdleCompaction } from "./idle.js";
 +import { resolveCompletedNativeIdleBinding } from "./native-idle.js";
 +import { scheduleSessionMaintenance, type SessionMaintenanceRequest } from "./run.js";
@@ -4573,14 +4260,12 @@ index 00000000..f9c22062
 +  getFollowupQueueDepth: () => state.queueDepth,
 +}));
 +// Observe the native lease without replacing its source, writer, or cancellation checks.
-+vi.mock("../../sessions/session-lifecycle-admission.js", async (original) => {
-+  const actual = await original<typeof import("../../sessions/session-lifecycle-admission.js")>();
++vi.mock("../../sessions/session-controller.lifecycle.js", async (original) => {
++  const actual = await original<typeof import("../../sessions/session-controller.lifecycle.js")>();
 +  return {
 +    ...actual,
-+    beginSessionWorkAdmission: async (
-+      ...args: Parameters<typeof actual.beginSessionWorkAdmission>
-+    ) => {
-+      const admission = await actual.beginSessionWorkAdmission(...args);
++    beginSessionEffect: async (...args: Parameters<typeof actual.beginSessionEffect>) => {
++      const admission = await actual.beginSessionEffect(...args);
 +      return {
 +        ...admission,
 +        release: () => {
@@ -4892,7 +4577,7 @@ index 00000000..f9c22062
 +  });
 +});
 diff --git a/src/agents/session-maintenance/run.ts b/src/agents/session-maintenance/run.ts
-index 62a9c267..78969851 100644
+index fbd36e75e..5db7d9d44 100644
 --- a/src/agents/session-maintenance/run.ts
 +++ b/src/agents/session-maintenance/run.ts
 @@ -1,4 +1,6 @@
@@ -4902,20 +4587,29 @@ index 62a9c267..78969851 100644
  import type { CapturedSessionEntryCurrentRead } from "../../config/sessions/session-entry-current.types.js";
  import { listSqliteTargetCandidatePathsForSessionStorePath } from "../../config/sessions/session-sqlite-target-paths.js";
  import { captureSessionTranscriptTargetBinding } from "../../config/sessions/transcript-target-binding.js";
-@@ -19,15 +21,19 @@ import {
+@@ -19,7 +21,10 @@ import {
    getPluginRuntimeGatewayRequestScope,
    withPluginRuntimeGatewayRequestScope,
  } from "../../plugins/runtime/gateway-request-scope.js";
 -import { runWithGatewayIndependentRootWorkAdmission } from "../../process/gateway-work-admission.js";
-+import { runWithGatewayDetachedWorkAdmission } from "../../process/gateway-work-admission.js";
- import { beginSessionWorkAdmission } from "../../sessions/session-lifecycle-admission.js";
-+import { resolveDefaultAgentId } from "../agent-scope.js";
++import {
++  runWithGatewayIndependentRootWorkAdmission,
++  runWithGatewayDetachedWorkAdmission,
++} from "../../process/gateway-work-admission.js";
+ import { withSessionTurn } from "../../sessions/session-controller.admission.js";
+ import {
+   beginSessionEffect,
+@@ -27,13 +32,17 @@ import {
+   captureSessionTarget,
+ } from "../../sessions/session-controller.lifecycle.js";
+ import { runWithSessionControllerCleanup } from "../../sessions/session-controller.owner-context.js";
++import { resolveDefaultAgentId } from "../agent-scope-config.js";
  import { createCommandBudget } from "../command/maintenance-budget.js";
  import {
    loadAgentRunnerMemoryRuntime,
    loadSessionStoreRuntime,
  } from "../command/runtime-loaders.js";
- import type { CompactionRequestBudget } from "../sessions/compaction/request-budget.js";
+ import type { CompactionRequestBudget } from "../sessions/compaction/request-budget.types.js";
 +import { resolveEffectiveAgentRuntime } from "../thinking-runtime.js";
  import { createSessionMaintenanceOwner } from "./coordinator.js";
 +import { isIdleCompactionHarness, scheduleIdleCompaction } from "./idle.js";
@@ -4923,7 +4617,7 @@ index 62a9c267..78969851 100644
  
  const log = createSubsystemLogger("agents/session-maintenance");
  export type SessionMaintenanceRequest = {
-@@ -46,6 +52,8 @@ export type SessionMaintenanceRequest = {
+@@ -52,6 +61,8 @@ export type SessionMaintenanceRequest = {
    oneShotCliRun?: boolean;
    agentHarnessId?: string;
    compactionRequestBudget?: CompactionRequestBudget;
@@ -4932,7 +4626,7 @@ index 62a9c267..78969851 100644
  };
  
  /** Copy data only: turn callbacks, tool grants, delivery context and writer custody stay behind. */
-@@ -125,6 +133,36 @@ export function scheduleSessionMaintenance(
+@@ -139,6 +150,36 @@ export function scheduleSessionMaintenance(
    request: SessionMaintenanceRequest,
    afterOwnerSettles?: Promise<boolean>,
  ): void {
@@ -4969,106 +4663,162 @@ index 62a9c267..78969851 100644
    const { prepared, followupRun } = request;
    const sessionKey = prepared.sessionKey;
    if (!sessionKey) {
-@@ -197,7 +235,7 @@ export function scheduleSessionMaintenance(
-         return;
-       }
-       return owner.run(() =>
--        runWithGatewayIndependentRootWorkAdmission(
-+        runWithGatewayDetachedWorkAdmission(
-           async () => {
-             assertCurrent();
-             const { captureSessionEntryCurrentRead, withSessionEntryReadOnlyInWorker } =
-@@ -257,6 +295,30 @@ export function scheduleSessionMaintenance(
-                 ) {
-                   throw createAbortError("Session changed before optional maintenance admission");
-                 }
-+                if (
-+                  request.idleCompaction &&
-+                  ((request.nativeIdleBinding
-+                    ? !matchesNativeIdleBinding(entry, request.nativeIdleBinding) ||
-+                      resolveEffectiveAgentRuntime({
-+                        cfg: prepared.cfg,
-+                        provider: followupRun.run.provider,
-+                        modelId: followupRun.run.model,
-+                        agentId: followupRun.run.agentId ?? resolveDefaultAgentId(prepared.cfg),
-+                        sessionKey:
-+                          prepared.runtimePolicySessionKey ??
-+                          followupRun.run.runtimePolicySessionKey ??
-+                          sessionKey,
-+                        sessionEntry: entry,
-+                      }) !== request.nativeIdleBinding.backendId
-+                    : entry.agentHarnessId !== request.agentHarnessId) ||
-+                    entry.modelProvider !== followupRun.run.provider ||
-+                    entry.model !== followupRun.run.model)
-+                ) {
-+                  throw createAbortError("Idle compaction source model or harness changed");
-+                }
-+                if (request.idleCompaction && getFollowupQueueDepth(sessionKey) > 0) {
-+                  throw createAbortError("Idle compaction skipped while messages are queued");
-+                }
-                 if (entry.pendingFinalDelivery) {
-                   throw createAbortError(
-                     "Optional maintenance skipped while final delivery is pending",
-@@ -270,6 +332,21 @@ export function scheduleSessionMaintenance(
-                 if (!entry) {
-                   throw createAbortError("Session maintenance has no admitted session");
-                 }
-+                if (request.idleCompaction) {
-+                  const { listUnsettledRequesterChildren } =
-+                    await import("../subagents/registry/subagent-registry.js");
-+                  assertCurrent();
-+                  if (
-+                    (
-+                      await listUnsettledRequesterChildren({
-+                        requesterSessionKey: sessionKey,
-+                        requesterAgentId: followupRun.run.agentId,
-+                      })
-+                    ).length > 0
-+                  ) {
-+                    throw createAbortError("Idle compaction skipped while delegation is unsettled");
-+                  }
-+                }
-                 const sessionStore = { [sessionKey]: entry };
-                 const maintenanceParams = () => ({
-                   cfg: prepared.cfg,
-@@ -288,10 +365,12 @@ export function scheduleSessionMaintenance(
-                 assertCurrent();
-                 followupRun.run.timeoutMs = budget.remainingMs();
-                 assertCurrent();
--                const flushed = await memory.runMemoryFlushIfNeeded({
--                  ...maintenanceParams(),
--                  resolvedVerboseLevel: followupRun.run.verboseLevel ?? "off",
--                });
-+                const flushed = request.idleCompaction
-+                  ? { sessionEntry: entry }
-+                  : await memory.runMemoryFlushIfNeeded({
-+                      ...maintenanceParams(),
-+                      resolvedVerboseLevel: followupRun.run.verboseLevel ?? "off",
-+                    });
-                 // Flush reports aborted attempts as failed outcomes; cancellation still forbids compaction.
-                 assertCurrent();
-                 entry = flushed.sessionEntry ?? entry;
-@@ -305,6 +384,7 @@ export function scheduleSessionMaintenance(
-                     ? { ...request.compactionRequestBudget, pendingTokens: 0 }
-                     : undefined,
-                   agentHarnessId: request.agentHarnessId,
-+                  idleCompaction: request.idleCompaction,
-                   authorize: () => {
-                     assertCurrent();
-                     return true;
+@@ -222,7 +263,9 @@ export function scheduleSessionMaintenance(
+         }
+         await owner.run({
+           admit: (runAdmitted) =>
+-            runWithGatewayIndependentRootWorkAdmission(
++            (request.idleCompaction
++              ? runWithGatewayDetachedWorkAdmission
++              : runWithGatewayIndependentRootWorkAdmission)(
+               async () =>
+                 await withSessionTurn(
+                   {
+@@ -306,6 +349,35 @@ export function scheduleSessionMaintenance(
+                               "Session changed before optional maintenance admission",
+                             );
+                           }
++                          if (
++                            request.idleCompaction &&
++                            ((request.nativeIdleBinding
++                              ? !matchesNativeIdleBinding(entry, request.nativeIdleBinding) ||
++                                resolveEffectiveAgentRuntime({
++                                  cfg: prepared.cfg,
++                                  provider: followupRun.run.provider,
++                                  modelId: followupRun.run.model,
++                                  agentId:
++                                    followupRun.run.agentId ?? resolveDefaultAgentId(prepared.cfg),
++                                  sessionKey:
++                                    prepared.runtimePolicySessionKey ??
++                                    followupRun.run.runtimePolicySessionKey ??
++                                    sessionKey,
++                                  sessionEntry: entry,
++                                }) !== request.nativeIdleBinding.backendId
++                              : entry.agentHarnessId !== request.agentHarnessId) ||
++                              entry.modelProvider !== followupRun.run.provider ||
++                              entry.model !== followupRun.run.model)
++                          ) {
++                            throw createAbortError(
++                              "Idle compaction source model or harness changed",
++                            );
++                          }
++                          if (request.idleCompaction && getFollowupQueueDepth(sessionKey) > 0) {
++                            throw createAbortError(
++                              "Idle compaction skipped while messages are queued",
++                            );
++                          }
+                           if (entry.pendingFinalDelivery) {
+                             throw createAbortError(
+                               "Optional maintenance skipped while final delivery is pending",
+@@ -319,24 +391,44 @@ export function scheduleSessionMaintenance(
+                           if (!entry) {
+                             throw createAbortError("Session maintenance has no admitted session");
+                           }
++                          if (request.idleCompaction) {
++                            const { listUnsettledRequesterChildren } =
++                              await import("../subagents/registry/subagent-registry.js");
++                            assertTurnCurrent();
++                            if (
++                              (
++                                await listUnsettledRequesterChildren({
++                                  requesterSessionKey: sessionKey,
++                                  requesterAgentId: followupRun.run.agentId,
++                                })
++                              ).length > 0
++                            ) {
++                              throw createAbortError(
++                                "Idle compaction skipped while delegation is unsettled",
++                              );
++                            }
++                          }
+                           const sessionStore = { [sessionKey]: entry };
+                           const memory = await loadAgentRunnerMemoryRuntime();
+                           followupRun.run.timeoutMs = budget.remainingMs();
+                           assertTurnCurrent();
+-                          const flushed = await memory.runMemoryFlushIfNeeded({
+-                            cfg: prepared.cfg,
+-                            followupRun,
+-                            promptForEstimate: "",
+-                            defaultModel: followupRun.run.model,
+-                            resolvedVerboseLevel: followupRun.run.verboseLevel ?? "off",
+-                            sessionEntry: entry,
+-                            sessionStore,
+-                            sessionKey,
+-                            runtimePolicySessionKey: prepared.runtimePolicySessionKey ?? sessionKey,
+-                            storePath: prepared.storePath,
+-                            replyOperation: operation,
+-                            abortSignal: operationSignal,
+-                          });
++                          const flushed = request.idleCompaction
++                            ? { sessionEntry: entry }
++                            : await memory.runMemoryFlushIfNeeded({
++                                cfg: prepared.cfg,
++                                followupRun,
++                                promptForEstimate: "",
++                                defaultModel: followupRun.run.model,
++                                resolvedVerboseLevel: followupRun.run.verboseLevel ?? "off",
++                                sessionEntry: entry,
++                                sessionStore,
++                                sessionKey,
++                                runtimePolicySessionKey:
++                                  prepared.runtimePolicySessionKey ?? sessionKey,
++                                storePath: prepared.storePath,
++                                replyOperation: operation,
++                                abortSignal: operationSignal,
++                              });
+                           // Flush reports aborted attempts as failed outcomes; cancellation still forbids compaction.
+                           assertTurnCurrent();
+                           entry = flushed.sessionEntry ?? entry;
+@@ -358,6 +450,7 @@ export function scheduleSessionMaintenance(
+                             storePath: prepared.storePath,
+                             defaultModel: followupRun.run.model,
+                             agentHarnessId: request.agentHarnessId,
++                            idleCompaction: request.idleCompaction,
+                             abortSignal: operationSignal,
+                             authorize: () => {
+                               assertTurnCurrent();
 diff --git a/src/auto-reply/reply/agent-runner-maintenance.test.ts b/src/auto-reply/reply/agent-runner-maintenance.test.ts
 new file mode 100644
-index 00000000..346d35d7
+index 000000000..77c739eed
 --- /dev/null
 +++ b/src/auto-reply/reply/agent-runner-maintenance.test.ts
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,146 @@
 +import { beforeEach, expect, it, vi } from "vitest";
 +import type { SessionEntry } from "../../config/sessions/types.js";
-+import { scheduleReplySessionMaintenance } from "./agent-runner-maintenance.js";
 +import type { AccountedAgentTurn } from "./agent-runner-result-accounting.js";
++import { finalizeReplyAgentRun } from "./agent-runner-result.js";
 +import type { FinalizeReplyAgentRunInput } from "./agent-runner-result.types.js";
 +
 +const scheduled = vi.hoisted(() => vi.fn());
++const completionFixture = vi.hoisted(() => ({
++  accounting: undefined as unknown,
++  entry: undefined as unknown,
++}));
++vi.mock("./agent-runner-completion.js", () => ({
++  withAgentTurnCompletion: async (_params: unknown, run: (completion: unknown) => unknown) =>
++    run({ complete: async () => completionFixture.entry }),
++}));
++vi.mock("./agent-runner-result-accounting.js", () => ({
++  accountAgentTurn: async () => completionFixture.accounting,
++}));
++vi.mock("./agent-runner-result-payloads.js", () => ({
++  prepareReplyAgentPayloads: async () => ({
++    kind: "continue",
++    activeSessionEntry: completionFixture.entry,
++    guardedReplyPayloads: [],
++    replyCompletion: { outcome: "silent" },
++  }),
++}));
++vi.mock("./agent-runner-result-diagnostics.js", () => ({
++  buildReplyDiagnosticsPayload: async () => undefined,
++}));
++vi.mock("./post-compaction-context.js", () => ({ readPostCompactionContext: async () => "" }));
++
++async function scheduleReplySessionMaintenance(input: ReturnType<typeof fixture>) {
++  completionFixture.accounting = input.accounting;
++  completionFixture.entry = input.sessionEntry;
++  return finalizeReplyAgentRun(input.context);
++}
 +vi.mock("../../agents/session-maintenance/run.js", () => ({
 +  scheduleSessionMaintenance: scheduled,
 +  createSessionMaintenanceFollowup: ({ run, auth }: { run: object; auth: object }) => ({
@@ -5096,6 +4846,8 @@ index 00000000..346d35d7
 +        },
 +      },
 +    },
++    sessionCtx: {},
++    returnWithQueuedFollowupDrain: (value: unknown) => value,
 +    sessionKey: "agent:main:idle",
 +    storePath: "/synthetic/sessions.sqlite",
 +    execution: { status: "ok", maintenanceAuthProfile: undefined },
@@ -5112,6 +4864,7 @@ index 00000000..346d35d7
 +    providerUsed: "anthropic",
 +    modelUsed: "native-model",
 +    autoCompactionCount: 0,
++    expectedSession: { sessionId: "host-session" },
 +    runResult: {
 +      meta: {
 +        durationMs: 1,
@@ -5136,7 +4889,7 @@ index 00000000..346d35d7
 +
 +it("arms native Claude idle work after a reply without embedded harness/auth fields", async () => {
 +  const input = fixture();
-+  scheduleReplySessionMaintenance(input);
++  await scheduleReplySessionMaintenance(input);
 +  expect(scheduled).toHaveBeenCalledOnce();
 +  const [request, settlement] = scheduled.mock.calls[0]!;
 +  expect(request.agentHarnessId).toBe("claude-cli");
@@ -5148,7 +4901,7 @@ index 00000000..346d35d7
 +
 +it.each(["aborted", "yielded", "failed", "compacted", "missing-binding", "unknown-embedded-auth"])(
 +  "does not schedule %s completion",
-+  (condition) => {
++  async (condition) => {
 +    const input = fixture();
 +    if (condition === "aborted") input.accounting.runResult.meta.aborted = true;
 +    if (condition === "yielded") input.accounting.runResult.meta.yielded = true;
@@ -5160,72 +4913,28 @@ index 00000000..346d35d7
 +      input.accounting.runResult.meta.executionTrace!.runner = "embedded";
 +      input.accounting.runResult.meta.agentMeta!.agentHarnessId = "openclaw";
 +    }
-+    scheduleReplySessionMaintenance(input);
++    await scheduleReplySessionMaintenance(input);
 +    expect(scheduled).not.toHaveBeenCalled();
 +  },
 +);
 +
-+it("preserves configured embedded-harness maintenance with its completed auth observer", () => {
++it("preserves configured embedded-harness maintenance with its completed auth observer", async () => {
 +  const input = fixture();
 +  input.context.cfg.agents!.defaults!.compaction!.idle!.harnesses = ["configured-runtime"];
 +  input.accounting.runResult.meta.executionTrace!.runner = "embedded";
 +  input.accounting.runResult.meta.agentMeta!.agentHarnessId = "configured-runtime";
 +  input.context.execution.maintenanceAuthProfile = {};
-+  scheduleReplySessionMaintenance(input);
++  await scheduleReplySessionMaintenance(input);
 +  expect(scheduled).toHaveBeenCalledOnce();
 +  expect(scheduled.mock.calls[0]![0].agentHarnessId).toBe("configured-runtime");
 +  expect(scheduled.mock.calls[0]![0].nativeIdleBinding).toBeUndefined();
 +});
-diff --git a/src/auto-reply/reply/agent-runner-maintenance.ts b/src/auto-reply/reply/agent-runner-maintenance.ts
-index f033affa..0f32134e 100644
---- a/src/auto-reply/reply/agent-runner-maintenance.ts
-+++ b/src/auto-reply/reply/agent-runner-maintenance.ts
-@@ -1,4 +1,6 @@
- import { OPENCLAW_AGENT_RUNTIME_ID } from "../../agents/agent-runtime-id.js";
-+import { isIdleCompactionHarness } from "../../agents/session-maintenance/idle.js";
-+import { resolveCompletedNativeIdleBinding } from "../../agents/session-maintenance/native-idle.js";
- import {
-   createSessionMaintenanceFollowup,
-   scheduleSessionMaintenance,
-@@ -16,7 +18,11 @@ export function scheduleReplySessionMaintenance(params: {
-   const { context, accounting, sessionEntry } = params;
-   const { replyOperation, followupRun, cfg, sessionKey, storePath } = context;
-   const meta = accounting.runResult.meta;
--  const auth = context.execution.maintenanceAuthProfile;
-+  const nativeIdleBinding = resolveCompletedNativeIdleBinding({ cfg, meta, entry: sessionEntry });
-+  const agentHarnessId = nativeIdleBinding?.backendId ?? meta?.agentMeta?.agentHarnessId;
-+  const auth = nativeIdleBinding
-+    ? { authProfileId: nativeIdleBinding.binding.authProfileId }
-+    : context.execution.maintenanceAuthProfile;
-   if (
-     !sessionEntry ||
-     !sessionKey ||
-@@ -32,7 +38,8 @@ export function scheduleReplySessionMaintenance(params: {
-     meta?.aborted ||
-     meta?.yielded ||
-     meta?.error ||
--    meta?.agentMeta?.agentHarnessId !== OPENCLAW_AGENT_RUNTIME_ID ||
-+    (agentHarnessId !== OPENCLAW_AGENT_RUNTIME_ID &&
-+      !isIdleCompactionHarness(agentHarnessId, cfg.agents?.defaults?.compaction?.idle)) ||
-     auth === undefined ||
-     cfg.agents?.defaults?.compaction?.enabled === false
-   ) {
-@@ -63,7 +70,8 @@ export function scheduleReplySessionMaintenance(params: {
-       lifecycleRevision: sessionEntry.lifecycleRevision,
-       lifecycleGeneration: replyOperation.lifecycleGeneration,
-       startedAt: replyOperation.startedAtMs,
--      agentHarnessId: meta.agentMeta.agentHarnessId,
-+      agentHarnessId,
-+      nativeIdleBinding,
-       compactionRequestBudget: context.execution.compactionRequestBudget,
-     },
-     replyOperation.ownerSettlement.then(
 diff --git a/src/auto-reply/reply/agent-runner-memory.native-idle.test.ts b/src/auto-reply/reply/agent-runner-memory.native-idle.test.ts
 new file mode 100644
-index 00000000..07e11f54
+index 000000000..0107a8b59
 --- /dev/null
 +++ b/src/auto-reply/reply/agent-runner-memory.native-idle.test.ts
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,131 @@
 +import { join } from "node:path";
 +import { afterEach, expect, it, vi } from "vitest";
 +import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
@@ -5340,7 +5049,6 @@ index 00000000..07e11f54
 +      sessionStore: { [key]: entry },
 +      sessionKey: key,
 +      storePath,
-+      isHeartbeat: false,
 +      idleCompaction: true,
 +      agentHarnessId: "claude-cli",
 +    });
@@ -5359,10 +5067,10 @@ index 00000000..07e11f54
 +  45_000,
 +);
 diff --git a/src/auto-reply/reply/agent-runner-memory.test.ts b/src/auto-reply/reply/agent-runner-memory.test.ts
-index 3faac2e0..159394ab 100644
+index 3a66c4d25..0d279b6e2 100644
 --- a/src/auto-reply/reply/agent-runner-memory.test.ts
 +++ b/src/auto-reply/reply/agent-runner-memory.test.ts
-@@ -60,6 +60,7 @@ import { setActivePluginRegistry } from "../../plugins/runtime.js";
+@@ -61,6 +61,7 @@ import { waitForReplyRunSuccessorAdmission } from "../../sessions/session-contro
  import { closeOpenClawAgentDatabasesAsync } from "../../state/openclaw-agent-db.js";
  import { refreshSessionEntryFromStore } from "./agent-runner-core.js";
  import {
@@ -5370,7 +5078,7 @@ index 3faac2e0..159394ab 100644
    runMemoryFlushIfNeeded as runMemoryFlushIfNeededRaw,
    runSessionCompactionIfNeeded as runSessionCompactionIfNeededRaw,
  } from "./agent-runner-memory.js";
-@@ -87,6 +88,7 @@ const {
+@@ -88,6 +89,7 @@ const {
    compactEmbeddedAgentSessionMock,
    runEmbeddedAgentEntryMock,
    runEmbeddedAgentMock,
@@ -5378,7 +5086,7 @@ index 3faac2e0..159394ab 100644
    refreshQueuedFollowupSessionMock,
    incrementCompactionCountMock,
    registerAgentRunContextMock,
-@@ -95,11 +97,13 @@ const {
+@@ -96,11 +98,13 @@ const {
    compactEmbeddedAgentSessionMock: vi.fn(),
    runEmbeddedAgentEntryMock: vi.fn(),
    runEmbeddedAgentMock: vi.fn(),
@@ -5392,7 +5100,7 @@ index 3faac2e0..159394ab 100644
  const runWithModelFallbackMock = vi.fn();
  const ensureSelectedAgentHarnessPluginMock = vi.fn();
  
-@@ -283,6 +287,120 @@ describe("runMemoryFlushIfNeeded", () => {
+@@ -264,6 +268,127 @@ describe("runMemoryFlushIfNeeded", () => {
      await waitForSessionTranscriptProjection(scope);
    }
  
@@ -5434,6 +5142,12 @@ index 3faac2e0..159394ab 100644
 +    "runs an explicit %s snapshot with explicit store %s without updating the live checkpoint",
 +    async (harnessId, explicitStore) => {
 +      if (harnessId === "claude-cli") registerClaudeCliBackend(true);
++      const capturedAt = Date.parse("2023-11-14T12:00:00Z");
++      const capturedTimes: number[] = [];
++      registerMemoryFlushPlanResolverForTest((params) => {
++        capturedTimes.push(params.nowMs);
++        return createMemoryFlushPlan();
++      });
 +      const storePath = path.join(rootDir, "sessions.json");
 +      const captured = createFlushSessionEntry({
 +        agentHarnessId: harnessId,
@@ -5461,16 +5175,17 @@ index 3faac2e0..159394ab 100644
 +          sessionEntry: captured,
 +          sessionKey: "main",
 +          storePath: explicitStore ? storePath : undefined,
-+          isHeartbeat: false,
 +        },
 +        {
 +          partId: "a".repeat(64) + "-0",
++          capturedAt,
 +          entries: manager.getEntries(),
 +          turnTainted: true,
 +          contextTokens: 100000,
 +        },
 +      );
 +      expect(result.outcome).toBe("completed");
++      expect(capturedTimes).toContain(capturedAt);
 +      const call =
 +        harnessId === "claude-cli"
 +          ? runCliAgentMock.mock.calls[0]?.[0]
@@ -5513,7 +5228,7 @@ index 3faac2e0..159394ab 100644
    async function runDefaultMemoryFlush(
      sessionEntry: SessionEntry,
      overrides: Partial<MemoryFlushTestParams> = {},
-@@ -415,6 +533,7 @@ describe("runMemoryFlushIfNeeded", () => {
+@@ -383,6 +508,7 @@ describe("runMemoryFlushIfNeeded", () => {
        result: { tokensAfter: 42 },
      });
      runEmbeddedAgentMock.mockReset().mockResolvedValue({ payloads: [], meta: {} });
@@ -5522,22 +5237,24 @@ index 3faac2e0..159394ab 100644
      ensureSelectedAgentHarnessPluginMock.mockReset().mockResolvedValue(undefined);
      registerAgentRunContextMock.mockReset();
 diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/agent-runner-memory.ts
-index 8cbe28f6..df382e2b 100644
+index 1ca0c6c5b..c94ad1c90 100644
 --- a/src/auto-reply/reply/agent-runner-memory.ts
 +++ b/src/auto-reply/reply/agent-runner-memory.ts
-@@ -8,13 +8,20 @@ import { resolveEffectiveCompactionReserveTokens } from "../../agents/agent-comp
+@@ -8,15 +8,22 @@ import { resolveEffectiveCompactionReserveTokens } from "../../agents/agent-comp
  import { resolveDefaultAgentId } from "../../agents/agent-scope-config.js";
  import { MemoryFlushToolsUnavailableError } from "../../agents/agent-tools.memory-flush.js";
  import { resolveBootstrapWarningSignaturesSeen } from "../../agents/bootstrap-budget.js";
 +import { runCliAgent } from "../../agents/cli-runner.js";
 +import { getCliSessionBinding } from "../../agents/cli-session.js";
+ import { readCompactionTranscriptBytes } from "../../agents/compaction-transcript-bytes.js";
  import { isBenignCompactionSkipResult } from "../../agents/embedded-agent-runner/compact-reasons.js";
  import type { AcceptedCompactionSuccessor } from "../../agents/embedded-agent-runner/compaction-successor.js";
  import { runEmbeddedAgentEntry } from "../../agents/embedded-agent-runner/run-entry.js";
  import { createDeferredEmbeddedRunLifecycleManager } from "../../agents/embedded-agent-runner/run/deferred-lifecycle-owner.js";
 +import type { RunEmbeddedAgentInternalParams } from "../../agents/embedded-agent-runner/run/internal-params.js";
+ import { emitInternalRunUsageDiagnostic } from "../../agents/internal-run-usage.js";
  import { resolveModelCallUrgency } from "../../agents/run-trigger.js";
- import { resolveSandboxConfigForAgent } from "../../agents/sandbox.js";
+ import { resolveSandboxConfigForAgent } from "../../agents/sandbox/config.js";
  import { withSandboxRuntimeStatusInWorker } from "../../agents/sandbox/runtime-status.js";
 +import {
 +  isIdleCompactionHarness,
@@ -5546,38 +5263,40 @@ index 8cbe28f6..df382e2b 100644
  import {
    resolvePersistedSessionRuntimeId,
    resolveSessionRuntimeOverrideForProvider,
-@@ -46,6 +53,7 @@ import { isMemoryFlushPlanNativeProviderOwned } from "../../plugins/memory-state
- import { CommandLane } from "../../process/lanes.js";
- import { isIncognitoSessionKey, isUnscopedSessionKeySentinel } from "../../routing/session-key.js";
+@@ -46,6 +53,7 @@ import { isIncognitoSessionKey, isUnscopedSessionKeySentinel } from "../../routi
  import { resolveSessionPinnedHarnessId } from "../../sessions/agent-harness-session-key.js";
+ import type { ReplyOperation } from "../../sessions/session-controller.js";
+ import { acknowledgeReplySessionTransition } from "../../sessions/session-controller.state.js";
 +import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
- import type { UserTurnTranscriptAdmissionReceipt } from "../../sessions/user-turn-transcript.types.js";
  import { createLazyImportLoader } from "../../shared/lazy-promise.js";
- import type { VerboseLevel } from "../thinking.js";
-@@ -130,6 +138,8 @@ export async function runSessionCompactionIfNeeded(params: {
-   isHeartbeat: boolean;
+ import type { ReplyPayload } from "../types.js";
+ import {
+@@ -124,6 +132,7 @@ export async function runSessionCompactionIfNeeded(params: {
+   storePath?: string;
    /** Completed commands carry the actual harness, not the originally requested runtime. */
    agentHarnessId?: string;
-+  /** Only the admitted idle scheduler sets this; automatic memory gates remain excluded. */
 +  idleCompaction?: boolean;
    abortSignal?: AbortSignal;
    authorize?: () => boolean;
    beforeCompaction?: (entry: SessionEntry) => Promise<SessionEntry | undefined>;
-@@ -160,7 +170,12 @@ export async function runSessionCompactionIfNeeded(params: {
+@@ -154,7 +163,15 @@ export async function runSessionCompactionIfNeeded(params: {
    const runtimeId = resolveFollowupAgentRuntimeId(runtimeParams);
    const isCli = followupUsesCliRuntime(runtimeParams, runtimeId);
    const ownsNativeCompaction = followupOwnsNativeCompaction(runtimeParams, runtimeId);
--  if (isCli || ownsNativeCompaction) {
+-  if (isCli || ownsNativeCompaction || normalizeLowercaseStringOrEmpty(runtimeId) === "codex") {
 +  const idlePolicy = params.cfg.agents?.defaults?.compaction?.idle;
 +  const nativeIdle =
 +    params.idleCompaction === true &&
 +    ownsNativeCompaction &&
 +    isIdleCompactionHarness(runtimeId, idlePolicy);
-+  if ((isCli || ownsNativeCompaction) && !nativeIdle) {
++  if (
++    ((isCli || ownsNativeCompaction) && !nativeIdle) ||
++    normalizeLowercaseStringOrEmpty(runtimeId) === "codex"
++  ) {
      return entry;
    }
-   const isCodexRuntime = normalizeLowercaseStringOrEmpty(runtimeId) === "codex";
-@@ -204,6 +219,13 @@ export async function runSessionCompactionIfNeeded(params: {
+ 
+@@ -198,6 +215,13 @@ export async function runSessionCompactionIfNeeded(params: {
        reserveTokens: 20_000,
      });
    const freshPersistedTokens = resolveFreshSessionTotalTokens(entry);
@@ -5591,26 +5310,25 @@ index 8cbe28f6..df382e2b 100644
    const promptTokenEstimate = estimatePromptTokensForMemoryFlush(
      params.promptForEstimate ?? params.followupRun.prompt,
    );
-@@ -328,7 +350,7 @@ export async function runSessionCompactionIfNeeded(params: {
-       tokenCount: tokenCountForCompaction,
-       threshold,
-     });
+@@ -286,7 +310,7 @@ export async function runSessionCompactionIfNeeded(params: {
+     tokenCount: tokenCountForCompaction,
+     threshold,
+   });
 -  if (!shouldCompactByTokens && !shouldCompactByTranscriptBytes) {
 +  if (!nativeIdle && !shouldCompactByTokens && !shouldCompactByTranscriptBytes) {
      return entry;
    }
  
-@@ -425,6 +447,9 @@ export async function runSessionCompactionIfNeeded(params: {
+@@ -380,6 +404,8 @@ export async function runSessionCompactionIfNeeded(params: {
          groupId: entry.groupId ?? params.followupRun.run.groupId,
          groupChannel: entry.groupChannel ?? params.followupRun.run.groupChannel,
          groupSpace: entry.space ?? params.followupRun.run.groupSpace,
-+        senderIsOwner: params.followupRun.run.senderIsOwner,
 +        memoryAudienceSenderIsOwner:
 +          params.followupRun.memoryAudienceSenderIsOwner ?? params.followupRun.run.senderIsOwner,
          senderId: params.followupRun.run.senderId,
          senderName: params.followupRun.run.senderName,
          senderUsername: params.followupRun.run.senderUsername,
-@@ -447,6 +472,8 @@ export async function runSessionCompactionIfNeeded(params: {
+@@ -402,6 +428,8 @@ export async function runSessionCompactionIfNeeded(params: {
          authProfileId: params.followupRun.run.authProfileId,
          authProfileIdSource: params.followupRun.run.authProfileIdSource,
          sessionEntry: entry,
@@ -5619,22 +5337,19 @@ index 8cbe28f6..df382e2b 100644
          agentHarnessId:
            params.agentHarnessId ??
            (entry.sessionId === params.followupRun.run.sessionId
-@@ -458,6 +485,7 @@ export async function runSessionCompactionIfNeeded(params: {
+@@ -413,6 +441,7 @@ export async function runSessionCompactionIfNeeded(params: {
          thinkLevel: params.followupRun.run.thinkLevel,
          bashElevated: params.followupRun.run.bashElevated,
          trigger: "budget",
 +        idleNativeCompaction: nativeIdle,
          modelCallUrgency: resolveModelCallUrgency({
            ...params.followupRun.run,
-           trigger: params.isHeartbeat ? "heartbeat" : "user",
-@@ -620,32 +648,61 @@ type MemoryFlushResult = {
-   outcome: MemoryFlushOutcome;
- };
+           trigger: "user",
+@@ -534,14 +563,39 @@ export async function runSessionCompactionIfNeeded(params: {
+ }
  
--type MemoryFlushRunParams = Parameters<typeof runMemoryFlushIfNeeded>[0];
-+type MemoryFlushRunParams = Parameters<typeof runMemoryFlush>[0];
-+
-+/** A retained snapshot uses a separate internal saver and never rereads the compacted source. */
+ /** Runs pre-compaction memory flush when transcript state warrants it. */
+-export async function runMemoryFlushIfNeeded(
 +export type CompactionMemorySnapshot = {
 +  partId: string;
 +  sessionSettings?: Pick<SessionEntry, "permissionMode" | "toolOverrides">;
@@ -5642,7 +5357,6 @@ index 8cbe28f6..df382e2b 100644
 +  entries: readonly unknown[];
 +  turnTainted: boolean;
 +  capturedAt?: number;
-+  /** Native generation lease owned by the retained job, never serialized. */
 +  assertCurrent?: () => void;
 +};
 +
@@ -5658,47 +5372,11 @@ index 8cbe28f6..df382e2b 100644
 +    throw new Error("Invalid retained snapshot part identity");
 +  return runMemoryFlush(params, snapshot);
 +}
- 
- /** Runs pre-compaction memory flush when transcript state warrants it. */
--export async function runMemoryFlushIfNeeded(params: {
--  /** Supplied only by required preflight, while this admitted input is unprocessed. */
--  preflightAdmission?: UserTurnTranscriptAdmissionReceipt;
--  cfg: OpenClawConfig;
--  followupRun: FollowupRun;
--  promptForEstimate?: string;
--  opts?: Pick<GetReplyOptions, "promptCacheKey" | "runId">;
--  defaultModel: string;
--  resolvedVerboseLevel: VerboseLevel;
--  sessionEntry?: SessionEntry;
--  sessionStore?: Record<string, SessionEntry>;
--  sessionKey?: string;
--  runtimePolicySessionKey?: string;
--  storePath?: string;
--  isHeartbeat: boolean;
--  replyOperation?: ReplyOperation;
--  abortSignal?: AbortSignal;
--}): Promise<MemoryFlushResult> {
++
 +async function runMemoryFlush(
-+  params: {
-+    /** Supplied only by required preflight, while this admitted input is unprocessed. */
-+    preflightAdmission?: UserTurnTranscriptAdmissionReceipt;
-+    cfg: OpenClawConfig;
-+    followupRun: FollowupRun;
-+    promptForEstimate?: string;
-+    opts?: Pick<GetReplyOptions, "promptCacheKey" | "runId">;
-+    defaultModel: string;
-+    resolvedVerboseLevel: VerboseLevel;
-+    sessionEntry?: SessionEntry;
-+    sessionStore?: Record<string, SessionEntry>;
-+    sessionKey?: string;
-+    runtimePolicySessionKey?: string;
-+    storePath?: string;
-+    isHeartbeat: boolean;
-+    replyOperation?: ReplyOperation;
-+    abortSignal?: AbortSignal;
-+  },
+   params: MemoryFlushRunParams,
 +  snapshot?: CompactionMemorySnapshot,
-+): Promise<MemoryFlushResult> {
+ ): Promise<MemoryFlushResult> {
    const abortSignal = resolveFollowupAbortSignal({
      abortSignal: params.replyOperation?.abortSignal ?? params.abortSignal,
      operatorAuthority: params.followupRun.operatorAuthority,
@@ -5708,11 +5386,13 @@ index 8cbe28f6..df382e2b 100644
      abortSignal?.throwIfAborted();
      params.followupRun.operatorAuthority?.assertCurrent();
    };
-@@ -680,15 +737,26 @@ export async function runMemoryFlushIfNeeded(params: {
-   const canAttemptFlush =
-     (memoryFlushWritable || isMemoryFlushPlanNativeProviderOwned()) &&
-     !params.isHeartbeat &&
--    !isCli;
+@@ -573,21 +627,37 @@ export async function runMemoryFlushIfNeeded(
+     followupOwnsNativeCompaction(runtimeParams, runtimeId);
+   // Only a native provider's flush can persist without a writable workspace, so other
+   // resolvers are never called for a session whose workspace cannot be written.
+-  const canAttemptFlush = (memoryFlushWritable || isMemoryFlushPlanNativeProviderOwned()) && !isCli;
++  const canAttemptFlush =
++    (memoryFlushWritable || isMemoryFlushPlanNativeProviderOwned()) &&
 +    (snapshot !== undefined ||
 +      (!isCli &&
 +        !params.cfg.agents?.defaults?.compaction?.memoryFlush?.compactionHooks?.includes(
@@ -5725,7 +5405,6 @@ index 8cbe28f6..df382e2b 100644
    const flushRunId = crypto.randomUUID();
    let flushRunRegistered = false;
 -  const recordFailure = (error: unknown) => recordMemoryFlushFailure(error, params, entry);
--  const contextWindowTokens = resolveFollowupContextTokens(runtimeParams, runtimeId);
 +  const recordFailure = async (error: unknown): Promise<MemoryFlushResult> => {
 +    if (snapshot) {
 +      logVerbose(`compaction memory snapshot failed: ${String(error)}`);
@@ -5733,12 +5412,23 @@ index 8cbe28f6..df382e2b 100644
 +    }
 +    return recordMemoryFlushFailure(error, params, entry);
 +  };
-+  const contextWindowTokens =
-+    snapshot?.contextTokens ?? resolveFollowupContextTokens(runtimeParams, runtimeId);
+   const contextWindowTokens = Math.min(
+-    resolveFollowupContextTokens(runtimeParams, runtimeId),
++    snapshot?.contextTokens ?? resolveFollowupContextTokens(runtimeParams, runtimeId),
+     params.recoveryContextTokenBudget ?? Number.POSITIVE_INFINITY,
+   );
    let memoryFlushResolution: MemoryFlushPlanForRunResolution | null;
    try {
-     memoryFlushResolution = resolveMemoryFlushPlanForRun({ cfg: params.cfg, contextWindowTokens });
-@@ -703,151 +771,156 @@ export async function runMemoryFlushIfNeeded(params: {
+-    memoryFlushResolution = resolveMemoryFlushPlanForRun({ cfg: params.cfg, contextWindowTokens });
++    memoryFlushResolution = resolveMemoryFlushPlanForRun({
++      cfg: params.cfg,
++      contextWindowTokens,
++      nowMs: snapshot?.capturedAt,
++    });
+   } catch (error) {
+     return await recordFailure(error);
+   }
+@@ -599,123 +669,132 @@ export async function runMemoryFlushIfNeeded(
      return { sessionEntry: entry, outcome: "skipped" };
    }
  
@@ -5746,7 +5436,6 @@ index 8cbe28f6..df382e2b 100644
 -    params.promptForEstimate ?? params.followupRun.prompt,
 -  );
 -  const persistedPromptTokens = resolveFreshSessionTotalTokens(entry);
--  const hasFreshPersistedPromptTokens = persistedPromptTokens !== undefined;
 -
 -  // The soft margin belongs only to early flushing, leaving room before blocking compaction.
 -  const flushThreshold = Math.max(
@@ -5762,20 +5451,11 @@ index 8cbe28f6..df382e2b 100644
 +      params.promptForEstimate ?? params.followupRun.prompt,
 +    );
 +    const persistedPromptTokens = resolveFreshSessionTotalTokens(entry);
-+    const hasFreshPersistedPromptTokens = persistedPromptTokens !== undefined;
  
--  // When totals are stale/unknown, derive prompt + last output from transcript so memory
--  // flush can still be evaluated against projected next-input size.
--  //
--  // When totals are fresh, only read the transcript when we're close enough to the
--  // threshold that missing the last output tokens could flip the decision.
--  const shouldReadTranscriptForOutput =
+-  const shouldReadTranscript = Boolean(
 -    entry &&
--    hasFreshPersistedPromptTokens &&
--    typeof promptTokenEstimate === "number" &&
--    flushThreshold > 0 &&
--    persistedPromptTokens + promptTokenEstimate >=
--      flushThreshold - TRANSCRIPT_OUTPUT_READ_BUFFER_TOKENS;
+-    shouldReadMemoryFlushTranscript({ persistedPromptTokens, promptTokenEstimate, flushThreshold }),
+-  );
 +    // The soft margin belongs only to early flushing, leaving room before blocking compaction.
 +    const flushThreshold = Math.max(
 +      0,
@@ -5784,22 +5464,6 @@ index 8cbe28f6..df382e2b 100644
 +        reserveTokensFloor: memoryFlushPlan.reserveTokensFloor,
 +      }) - Math.max(0, Math.floor(memoryFlushPlan.softThresholdTokens)),
 +    );
- 
--  const shouldReadTranscript = Boolean(
--    entry && (!hasFreshPersistedPromptTokens || shouldReadTranscriptForOutput),
--  );
-+    // When totals are stale/unknown, derive prompt + last output from transcript so memory
-+    // flush can still be evaluated against projected next-input size.
-+    //
-+    // When totals are fresh, only read the transcript when we're close enough to the
-+    // threshold that missing the last output tokens could flip the decision.
-+    const shouldReadTranscriptForOutput =
-+      entry &&
-+      hasFreshPersistedPromptTokens &&
-+      typeof promptTokenEstimate === "number" &&
-+      flushThreshold > 0 &&
-+      persistedPromptTokens + promptTokenEstimate >=
-+        flushThreshold - TRANSCRIPT_OUTPUT_READ_BUFFER_TOKENS;
  
 -  const forceFlushTranscriptBytes = memoryFlushPlan.forceFlushTranscriptBytes;
 -  const sessionLogSnapshot = entry
@@ -5817,9 +5481,14 @@ index 8cbe28f6..df382e2b 100644
 -  assertMemoryFlushCurrent();
 -  const transcriptByteSize = sessionLogSnapshot?.byteSize;
 -  const shouldForceFlushByTranscriptSize =
--    typeof transcriptByteSize === "number" && transcriptByteSize >= forceFlushTranscriptBytes;
+-    transcriptByteSize !== undefined && transcriptByteSize >= forceFlushTranscriptBytes;
 +    const shouldReadTranscript = Boolean(
-+      entry && (!hasFreshPersistedPromptTokens || shouldReadTranscriptForOutput),
++      entry &&
++      shouldReadMemoryFlushTranscript({
++        persistedPromptTokens,
++        promptTokenEstimate,
++        flushThreshold,
++      }),
 +    );
  
 -  const transcriptUsageTokens =
@@ -5851,7 +5520,6 @@ index 8cbe28f6..df382e2b 100644
 +        })
        : undefined;
 -  const transcriptPromptTokens = transcriptUsageTokens?.promptTokens;
--  const transcriptOutputTokens = transcriptUsageTokens?.outputTokens;
 -  const shouldPersistTranscriptPromptTokens =
 -    transcriptPromptTokens !== undefined &&
 -    transcriptUsageTokens?.promptTokenSource !== "prompt_projection" &&
@@ -5859,7 +5527,7 @@ index 8cbe28f6..df382e2b 100644
 +    assertMemoryFlushCurrent();
 +    const transcriptByteSize = sessionLogSnapshot?.byteSize;
 +    const shouldForceFlushByTranscriptSize =
-+      typeof transcriptByteSize === "number" && transcriptByteSize >= forceFlushTranscriptBytes;
++      transcriptByteSize !== undefined && transcriptByteSize >= forceFlushTranscriptBytes;
  
 -  assertMemoryFlushCurrent();
 -  if (entry && shouldPersistTranscriptPromptTokens) {
@@ -5908,7 +5576,6 @@ index 8cbe28f6..df382e2b 100644
 +          )
 +        : undefined;
 +    const transcriptPromptTokens = transcriptUsageTokens?.promptTokens;
-+    const transcriptOutputTokens = transcriptUsageTokens?.outputTokens;
 +    const shouldPersistTranscriptPromptTokens =
 +      transcriptPromptTokens !== undefined &&
 +      transcriptUsageTokens?.promptTokenSource !== "prompt_projection" &&
@@ -5966,30 +5633,10 @@ index 8cbe28f6..df382e2b 100644
 +    );
 +    const tokenCountForFlush = asPositiveFiniteNumber(projectedTokenCount);
  
--  logVerbose(
--    `memoryFlush check: sessionKey=${params.sessionKey} ` +
--      `tokenCount=${tokenCountForFlush ?? "undefined"} ` +
--      `contextWindow=${contextWindowTokens} threshold=${flushThreshold} ` +
--      `isHeartbeat=${params.isHeartbeat} isCli=${isCli} memoryFlushWritable=${memoryFlushWritable} ` +
--      `compactionCount=${entry?.compactionCount ?? 0} memoryFlushCompactionCount=${entry?.memoryFlush?.compactionCount ?? "undefined"} ` +
--      `persistedPromptTokens=${persistedPromptTokens ?? "undefined"} persistedFresh=${entry?.totalTokensFresh === true} ` +
--      `promptTokensEst=${promptTokenEstimate ?? "undefined"} transcriptPromptTokens=${transcriptPromptTokens ?? "undefined"} transcriptOutputTokens=${transcriptOutputTokens ?? "undefined"} ` +
--      `projectedTokenCount=${projectedTokenCount ?? "undefined"} transcriptBytes=${transcriptByteSize ?? "undefined"} ` +
--      `forceFlushTranscriptBytes=${forceFlushTranscriptBytes} forceFlushByTranscriptSize=${shouldForceFlushByTranscriptSize}`,
--  );
-+    logVerbose(
-+      `memoryFlush check: sessionKey=${params.sessionKey} ` +
-+        `tokenCount=${tokenCountForFlush ?? "undefined"} ` +
-+        `contextWindow=${contextWindowTokens} threshold=${flushThreshold} ` +
-+        `isHeartbeat=${params.isHeartbeat} isCli=${isCli} memoryFlushWritable=${memoryFlushWritable} ` +
-+        `compactionCount=${entry?.compactionCount ?? 0} memoryFlushCompactionCount=${entry?.memoryFlush?.compactionCount ?? "undefined"} ` +
-+        `persistedPromptTokens=${persistedPromptTokens ?? "undefined"} persistedFresh=${entry?.totalTokensFresh === true} ` +
-+        `promptTokensEst=${promptTokenEstimate ?? "undefined"} transcriptPromptTokens=${transcriptPromptTokens ?? "undefined"} transcriptOutputTokens=${transcriptOutputTokens ?? "undefined"} ` +
-+        `projectedTokenCount=${projectedTokenCount ?? "undefined"} transcriptBytes=${transcriptByteSize ?? "undefined"} ` +
-+        `forceFlushTranscriptBytes=${forceFlushTranscriptBytes} forceFlushByTranscriptSize=${shouldForceFlushByTranscriptSize}`,
-+    );
- 
 -  const shouldFlushMemory =
+-    (params.recoveryContextTokenBudget !== undefined &&
+-      entry != null &&
+-      !hasAlreadyFlushedForCurrentCompaction(entry)) ||
 -    shouldRunMemoryFlush({
 -      entry,
 -      tokenCount: tokenCountForFlush,
@@ -5999,6 +5646,9 @@ index 8cbe28f6..df382e2b 100644
 -      entry != null &&
 -      !hasAlreadyFlushedForCurrentCompaction(entry));
 +    const shouldFlushMemory =
++      (params.recoveryContextTokenBudget !== undefined &&
++        entry != null &&
++        !hasAlreadyFlushedForCurrentCompaction(entry)) ||
 +      shouldRunMemoryFlush({
 +        entry,
 +        tokenCount: tokenCountForFlush,
@@ -6010,30 +5660,21 @@ index 8cbe28f6..df382e2b 100644
  
 -  if (!shouldFlushMemory) {
 -    return { sessionEntry: entry, outcome: "skipped" };
--  }
 +    if (!shouldFlushMemory) {
 +      return { sessionEntry: entry, outcome: "skipped" };
 +    }
- 
--  logVerbose(
--    `memoryFlush triggered: sessionKey=${params.sessionKey} tokenCount=${tokenCountForFlush ?? "undefined"} threshold=${flushThreshold}`,
--  );
-+    logVerbose(
-+      `memoryFlush triggered: sessionKey=${params.sessionKey} tokenCount=${tokenCountForFlush ?? "undefined"} threshold=${flushThreshold}`,
-+    );
-+  }
+   }
  
    params.replyOperation?.setPhase("memory_flushing");
-   let bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
-@@ -865,6 +938,7 @@ export async function runMemoryFlushIfNeeded(params: {
+@@ -734,6 +813,7 @@ export async function runMemoryFlushIfNeeded(
      const runtime = await memoryFlushPreparationLoader.load();
      preparedAttempt = await runtime.prepareMemoryFlushAttempt({
        ...params,
 +      snapshot,
        sessionEntry: entry,
        flushRunId,
-       contextWindowTokens,
-@@ -902,6 +976,7 @@ export async function runMemoryFlushIfNeeded(params: {
+       resolution: memoryFlushResolution,
+@@ -769,6 +849,7 @@ export async function runMemoryFlushIfNeeded(
    });
    const flushedCompactionCount = entry?.compactionCount ?? 0;
    let visibleErrorPayloads: ReplyPayload[] = [];
@@ -6041,7 +5682,7 @@ index 8cbe28f6..df382e2b 100644
    // Only the bounded phase belongs to the parent turn; maintenance content stays private.
    const parentRunId = params.opts?.runId;
    if (parentRunId) {
-@@ -950,13 +1025,16 @@ export async function runMemoryFlushIfNeeded(params: {
+@@ -816,13 +897,16 @@ export async function runMemoryFlushIfNeeded(
            trigger: "memory",
          }),
        },
@@ -6060,7 +5701,7 @@ index 8cbe28f6..df382e2b 100644
        },
        harness: {
          workspaceDir: params.followupRun.run.workspaceDir,
-@@ -973,6 +1051,10 @@ export async function runMemoryFlushIfNeeded(params: {
+@@ -839,6 +923,10 @@ export async function runMemoryFlushIfNeeded(
        sessionOverride: { kind: "preserve" },
        abortSignal: deferredLifecycle.signal,
        runCandidate: async (provider, model, runOptions) => {
@@ -6071,7 +5712,7 @@ index 8cbe28f6..df382e2b 100644
          const sessionRuntimeOverride = runOptions.agentHarnessRuntimeOverride;
          const candidateThinkLevel = resolveRunThinkingLevelForFallbackCandidate({
            cfg: params.cfg,
-@@ -999,11 +1081,12 @@ export async function runMemoryFlushIfNeeded(params: {
+@@ -865,11 +953,12 @@ export async function runMemoryFlushIfNeeded(
            allowTransientCooldownProbe: runOptions.allowTransientCooldownProbe,
          });
          const runtime = await embeddedAgentRuntimeLoader.load();
@@ -6085,25 +5726,20 @@ index 8cbe28f6..df382e2b 100644
            agentHarnessId: resolveSessionPinnedHarnessId(entry),
            agentHarnessRuntimeOverride: sessionRuntimeOverride,
            sandboxSessionKey: sourcePolicySessionKey,
-@@ -1017,9 +1100,24 @@ export async function runMemoryFlushIfNeeded(params: {
+@@ -883,9 +972,19 @@ export async function runMemoryFlushIfNeeded(
            memoryFlushWritePath,
            memoryFlushTools,
            initialTurnTainted:
 -            !params.followupRun.run.senderIsOwner || sessionLogSnapshot?.turnTainted === true,
 +            !params.followupRun.run.senderIsOwner ||
-+            (snapshot?.turnTainted ?? sessionLogSnapshot?.turnTainted) === true,
-           prompt: activeMemoryFlushPlan.prompt,
++            snapshot?.turnTainted === true ||
++            sessionLogSnapshot?.turnTainted === true,
+           prompt: memoryFlushPlan.prompt,
            transcriptPrompt: "",
-+          // A hidden maintenance input still needs host-owned prompt identity. It has no
-+          // canonical transcript target and must never borrow the foreground recorder.
 +          ...(snapshot
 +            ? {
 +                userTurnTranscriptRecorder: createUserTurnTranscriptRecorder({
-+                  message: {
-+                    role: "user",
-+                    content: activeMemoryFlushPlan.prompt,
-+                    timestamp: Date.now(),
-+                  },
++                  input: { text: memoryFlushPlan.prompt, display: false, excludeFromContext: true },
 +                  target: async () => undefined,
 +                }),
 +              }
@@ -6111,7 +5747,7 @@ index 8cbe28f6..df382e2b 100644
            extraSystemPrompt: flushSystemPrompt,
            isFinalFallbackAttempt: runOptions.isFinalFallbackAttempt,
            resolvedModelSelection: runOptions.resolvedModelSelection,
-@@ -1034,7 +1132,28 @@ export async function runMemoryFlushIfNeeded(params: {
+@@ -900,7 +999,28 @@ export async function runMemoryFlushIfNeeded(
            authProfileFailurePolicy: runOptions.authProfileFailurePolicy,
            contextEngineLogicalTurnLease: runOptions.contextEngineLogicalTurnLease,
            onContextEngineTurnCandidate: runOptions.onContextEngineTurnCandidate,
@@ -6141,7 +5777,7 @@ index 8cbe28f6..df382e2b 100644
          visibleErrorPayloads = resolveVisibleMemoryFlushErrorPayloads(result.payloads);
          bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
            result.meta?.systemPromptReport,
-@@ -1054,7 +1173,7 @@ export async function runMemoryFlushIfNeeded(params: {
+@@ -929,7 +1049,7 @@ export async function runMemoryFlushIfNeeded(
      ) {
        throw new Error("no persistence tool call succeeded");
      }
@@ -6150,11 +5786,61 @@ index 8cbe28f6..df382e2b 100644
        try {
          const updatedEntry = await updateSessionEntry(
            { storePath: params.storePath, sessionKey: params.sessionKey },
+diff --git a/src/auto-reply/reply/agent-runner-result.ts b/src/auto-reply/reply/agent-runner-result.ts
+index a27529d7d..d92539716 100644
+--- a/src/auto-reply/reply/agent-runner-result.ts
++++ b/src/auto-reply/reply/agent-runner-result.ts
+@@ -1,6 +1,8 @@
+ import crypto from "node:crypto";
+ import { OPENCLAW_AGENT_RUNTIME_ID } from "../../agents/agent-runtime-id.js";
+ import { createMissingReplyNotice } from "../../agents/reply-completion.js";
++import { isIdleCompactionHarness } from "../../agents/session-maintenance/idle.js";
++import { resolveCompletedNativeIdleBinding } from "../../agents/session-maintenance/native-idle.js";
+ import {
+   createSessionMaintenanceFollowup,
+   scheduleSessionMaintenance,
+@@ -348,7 +350,15 @@ export async function finalizeReplyAgentRun(
+       );
+       const { replyOperation } = current;
+       const meta = runResult.meta;
+-      const auth = current.execution.maintenanceAuthProfile;
++      const nativeIdleBinding = resolveCompletedNativeIdleBinding({
++        cfg,
++        meta,
++        entry: activeSessionEntry,
++      });
++      const agentHarnessId = nativeIdleBinding?.backendId ?? meta?.agentMeta?.agentHarnessId;
++      const auth = nativeIdleBinding
++        ? { authProfileId: nativeIdleBinding.binding.authProfileId }
++        : current.execution.maintenanceAuthProfile;
+       if (
+         !activeSessionEntry ||
+         !sessionKey ||
+@@ -362,7 +372,8 @@ export async function finalizeReplyAgentRun(
+         meta?.aborted ||
+         meta?.yielded ||
+         meta?.error ||
+-        meta?.agentMeta?.agentHarnessId !== OPENCLAW_AGENT_RUNTIME_ID ||
++        (agentHarnessId !== OPENCLAW_AGENT_RUNTIME_ID &&
++          !isIdleCompactionHarness(agentHarnessId, cfg.agents?.defaults?.compaction?.idle)) ||
+         auth === undefined ||
+         cfg.agents?.defaults?.compaction?.enabled === false
+       ) {
+@@ -394,7 +405,8 @@ export async function finalizeReplyAgentRun(
+           lifecycleRevision: activeSessionEntry.lifecycleRevision,
+           lifecycleGeneration: replyOperation.lifecycleGeneration,
+           startedAt: replyOperation.startedAtMs,
+-          agentHarnessId: meta.agentMeta.agentHarnessId,
++          agentHarnessId,
++          nativeIdleBinding,
+           compactionRequestBudget: current.execution.compactionRequestBudget,
+         },
+         replyOperation.ownerSettlement.then(
 diff --git a/src/auto-reply/reply/memory-flush-prepare.ts b/src/auto-reply/reply/memory-flush-prepare.ts
-index d60ba159..a5f665f7 100644
+index 478e02bb5..40391a2b0 100644
 --- a/src/auto-reply/reply/memory-flush-prepare.ts
 +++ b/src/auto-reply/reply/memory-flush-prepare.ts
-@@ -20,6 +20,7 @@ import {
+@@ -22,6 +22,7 @@ import {
    deriveMemoryFlushId,
    ensureMemoryFlushTargetFile,
    prepareMemoryFlushSession,
@@ -6162,7 +5848,7 @@ index d60ba159..a5f665f7 100644
  } from "./memory-flush-session.js";
  import type { FollowupRun } from "./queue.js";
  
-@@ -51,6 +52,7 @@ function resolveMemoryFlushModelFallbackOptions(
+@@ -29,6 +30,7 @@ const log = createSubsystemLogger("auto-reply/memory-flush");
  
  export async function prepareMemoryFlushAttempt(params: {
    cfg: OpenClawConfig;
@@ -6170,16 +5856,7 @@ index d60ba159..a5f665f7 100644
    followupRun: FollowupRun;
    sessionEntry?: SessionEntry;
    sessionKey?: string;
-@@ -67,7 +69,7 @@ export async function prepareMemoryFlushAttempt(params: {
-   params.assertCurrent();
-   const resolution = resolveMemoryFlushPlanForRun({
-     cfg: params.cfg,
--    nowMs: Date.now(),
-+    nowMs: params.snapshot?.capturedAt ?? Date.now(),
-     contextWindowTokens: params.contextWindowTokens,
-   });
-   if (!resolution) {
-@@ -126,18 +128,26 @@ export async function prepareMemoryFlushAttempt(params: {
+@@ -94,18 +96,26 @@ export async function prepareMemoryFlushAttempt(params: {
    try {
      // The detached transcript keeps maintenance messages out of the source session.
      params.assertCurrent();
@@ -6218,7 +5895,7 @@ index d60ba159..a5f665f7 100644
      if (!isToolsMemoryFlushPlan(plan)) {
        await ensureMemoryFlushTargetFile({
          workspaceDir: followupRun.run.workspaceDir,
-@@ -181,6 +191,7 @@ export async function prepareMemoryFlushAttempt(params: {
+@@ -145,6 +155,7 @@ export async function prepareMemoryFlushAttempt(params: {
              sourceSessionId: sessionEntry.sessionId,
              sourceLifecycleRevision: sessionEntry.lifecycleRevision,
              compactionCount: sessionEntry.compactionCount ?? 0,
@@ -6226,7 +5903,7 @@ index d60ba159..a5f665f7 100644
            }),
            ownerPluginId: resolution.pluginId,
            persistenceToolNames: plan.persistenceToolNames,
-@@ -193,7 +204,7 @@ export async function prepareMemoryFlushAttempt(params: {
+@@ -157,7 +168,7 @@ export async function prepareMemoryFlushAttempt(params: {
        params.flushRunId,
        followupRun.run.agentId,
        "auto-reply.memory-flush",
@@ -6236,7 +5913,7 @@ index d60ba159..a5f665f7 100644
      );
      return {
 diff --git a/src/auto-reply/reply/memory-flush-session.test.ts b/src/auto-reply/reply/memory-flush-session.test.ts
-index f6610a48..7c4a6a86 100644
+index f6610a489..7c4a6a86f 100644
 --- a/src/auto-reply/reply/memory-flush-session.test.ts
 +++ b/src/auto-reply/reply/memory-flush-session.test.ts
 @@ -21,7 +21,12 @@ import { createSessionTranscriptHeader } from "../../config/sessions/transcript-
@@ -6319,7 +5996,7 @@ index f6610a48..7c4a6a86 100644
 +  }
 +});
 diff --git a/src/auto-reply/reply/memory-flush-session.ts b/src/auto-reply/reply/memory-flush-session.ts
-index f03f7ebf..65456fb7 100644
+index f03f7ebf0..65456fb76 100644
 --- a/src/auto-reply/reply/memory-flush-session.ts
 +++ b/src/auto-reply/reply/memory-flush-session.ts
 @@ -25,11 +25,23 @@ export function deriveMemoryFlushId(params: {
@@ -6374,10 +6051,10 @@ index f03f7ebf..65456fb7 100644
 +  };
 +}
 diff --git a/src/config/zod-schema.agent-defaults-base.ts b/src/config/zod-schema.agent-defaults-base.ts
-index c144457e..92908599 100644
+index 22430756d..7543e4666 100644
 --- a/src/config/zod-schema.agent-defaults-base.ts
 +++ b/src/config/zod-schema.agent-defaults-base.ts
-@@ -131,6 +131,14 @@ export const AgentDefaultsBaseSchema = z.strictObject({
+@@ -134,6 +134,14 @@ export const AgentDefaultsBaseSchema = z.strictObject({
      .strictObject({
        /** Enable embedded proactive auto-compaction. Default: true. */
        enabled: z.boolean().optional(),
@@ -6392,21 +6069,21 @@ index c144457e..92908599 100644
        mode: z.union([z.literal("default"), z.literal("safeguard")]).optional(),
        /**
         * Id of a registered compaction provider plugin.
-@@ -180,6 +188,8 @@ export const AgentDefaultsBaseSchema = z.strictObject({
+@@ -185,6 +193,8 @@ export const AgentDefaultsBaseSchema = z.strictObject({
          .strictObject({
            /** Enable the pre-compaction memory flush (default: true). */
            enabled: z.boolean().optional(),
-+          /** Harnesses whose memory saves start only from retained compaction snapshots. */
-+          compactionHooks: z.array(z.string().min(1)).optional(),
-           /** Optional provider/model override used only for pre-compaction memory flush turns. */
-           model: z.string().optional(),
++          /** Harnesses whose saves start only from retained compaction snapshots. */
++          compactionHooks: z.array(z.string()).optional(),
            /** Run the memory flush when context is within this many tokens of the compaction threshold. */
+           softThresholdTokens: z.number().int().nonnegative().optional(),
+           /**
 diff --git a/src/gateway/mcp-grant-store.test.ts b/src/gateway/mcp-grant-store.test.ts
-index 79f9acfc..0049ebb7 100644
+index 2abcde436..0b4a00299 100644
 --- a/src/gateway/mcp-grant-store.test.ts
 +++ b/src/gateway/mcp-grant-store.test.ts
-@@ -69,6 +69,35 @@ describe("mcp-grant-store", () => {
-     }
+@@ -76,6 +76,35 @@ describe("mcp-grant-store", () => {
+     clearRuntimeConfigSnapshot();
    });
  
 +  it("retains memory capabilities only on the host and fences them with the native grant", async () => {
@@ -6428,20 +6105,20 @@ index 79f9acfc..0049ebb7 100644
 +    expect(grant.context).not.toHaveProperty("memoryFlushTools");
 +    expect(() => structuredClone(grant)).not.toThrow();
 +    const params = grantParams(grant.token, "memory-capture");
-+    expect(activateMcpLoopbackClientGrantCapture(params)).toBeTruthy();
-+    const resolved = resolveMcpLoopbackClientGrant(params);
++    expect(activateCapture(params)).toBeTruthy();
++    const resolved = resolveClient(params);
 +    expect(resolved?.memoryAudience).toBe(memoryAudience);
 +    expect(resolved?.memoryFlushTools).toBe(memoryFlushTools);
 +    expect(resolved?.isCurrent()).toBe(true);
-+    revokeMcpLoopbackClientGrant(grant.token);
++    revokeClient(grant.token);
 +    expect(resolved?.isCurrent()).toBe(false);
-+    expect(resolveMcpLoopbackClientGrant(params)).toBeUndefined();
++    expect(resolveClient(params)).toBeUndefined();
 +  });
 +
    it("requires a non-empty sessionKey", () => {
-     expect(() => mintAttachGrant({ sessionKey: "  ", nowMs: T0 })).toThrow();
+     expect(() => attach("  ")).toThrow();
    });
-@@ -407,6 +436,13 @@ describe("mcp-grant-store", () => {
+@@ -316,6 +345,13 @@ describe("mcp-grant-store", () => {
        admittedRunContext: nextAdmission,
        abortSignal: nextController.signal,
        skillLibraryAuthoring,
@@ -6452,23 +6129,23 @@ index 79f9acfc..0049ebb7 100644
 +        persistenceToolNames: ["memory_store"],
 +        recordPersistenceToolSuccess: () => {},
 +      },
-       toolAuth: {
-         agentDir: "/tmp/next-agent",
-         store: { version: 1, profiles: {} },
-@@ -493,6 +529,8 @@ describe("mcp-grant-store", () => {
-       captureKey: "next-capture",
+       toolAuth,
+     });
+     expect(activateCapture(grantParams(stable.token, "stale-capture"))).toBeTruthy();
+@@ -357,6 +393,8 @@ describe("mcp-grant-store", () => {
+       toolAuth,
      });
      expect(transferred?.skillLibraryAuthoring).toBe(skillLibraryAuthoring);
 +    expect(transferred?.memoryAudience).toEqual({ kind: "owner-private", agentId: "main" });
 +    expect(transferred?.memoryFlushTools?.flushId).toBe("next-cycle");
      expect(transferred?.isCurrent()).toBe(true);
      expect(first?.isCurrent()).toBe(false);
-     expect(
+     expect(activateCapture(grantParams(next.token, "forged-source-capture"))).toBe(false);
 diff --git a/src/gateway/mcp-grant-store.ts b/src/gateway/mcp-grant-store.ts
-index 41a820a7..814b6341 100644
+index e73498c45..99f5da099 100644
 --- a/src/gateway/mcp-grant-store.ts
 +++ b/src/gateway/mcp-grant-store.ts
-@@ -50,6 +50,7 @@ export type McpLoopbackRequestContext = {
+@@ -59,6 +59,7 @@ export type McpLoopbackRequestContext = {
    runtimePolicySessionKey?: string;
    /** Host-minted policy and memory target, never read from MCP request headers. */
    conversationRoutePeerId?: string;
@@ -6476,57 +6153,158 @@ index 41a820a7..814b6341 100644
    initialTurnTainted?: boolean;
    /** Agent whose execution policy applies when it differs from the durable session owner. */
    runtimePolicyAgentId?: string;
-@@ -181,6 +182,8 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
+@@ -193,7 +194,7 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
+   assertCurrent?: () => void;
    /** Original CLI policy, rebound only to this stored row's exact lifetime. */
    bindQuestionAnswerAuthority?: (assertActive: () => void) => PreparedQuestionAnswerAuthority;
-   /** Native memory capability retained on the host; never serialized to CLI context. */
-+  memoryAudience?: import("../plugins/memory-provider-types.js").MemoryAudience;
+-  /** Native memory capability retained on the host; never serialized to CLI context. */
 +  memoryFlushTools?: import("../agents/agent-tools.memory-flush.types.js").MemoryFlushToolRunContext;
    skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
    /** Configured MCP tools owned by the minting CLI run; disposed with that run. */
    bundledTools?: readonly AnyAgentTool[];
-@@ -320,6 +323,8 @@ export function mintMcpLoopbackClientGrant(
+@@ -334,6 +335,7 @@ export function mintMcpLoopbackClientGrant(
      assertCurrent: params.assertCurrent,
      bindQuestionAnswerAuthority: params.bindQuestionAnswerAuthority,
      skillLibraryAuthoring: params.skillLibraryAuthoring,
-+    memoryAudience: params.memoryAudience,
 +    memoryFlushTools: params.memoryFlushTools,
      ...(params.bundledTools?.length ? { bundledTools: params.bundledTools } : {}),
      ...(params.toolAuth ? { toolAuth: structuredClone(params.toolAuth) } : {}),
    };
-@@ -518,6 +523,8 @@ export function resolveMcpLoopbackClientGrant(params: {
-       cronAuthorityCheck?: () => boolean;
+@@ -535,6 +537,7 @@ export function resolveMcpLoopbackClientGrant(params: {
+       withCronManagementToolConstruction?: <T>(run: () => T) => T;
        questionAnswerAuthority?: PreparedQuestionAnswerAuthority;
        skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
-+      memoryAudience?: import("../plugins/memory-provider-types.js").MemoryAudience;
 +      memoryFlushTools?: import("../agents/agent-tools.memory-flush.types.js").MemoryFlushToolRunContext;
        bundledTools?: readonly AnyAgentTool[];
        isCurrent: () => boolean;
        abortSignal?: AbortSignal;
-@@ -574,6 +581,8 @@ export function resolveMcpLoopbackClientGrant(params: {
+@@ -602,6 +605,7 @@ export function resolveMcpLoopbackClientGrant(params: {
      abortSignal: grant.abortSignal,
      codeModeSkills: grant.codeModeSkills,
      skillLibraryAuthoring: grant.skillLibraryAuthoring,
-+    memoryAudience: grant.memoryAudience,
 +    memoryFlushTools: grant.memoryFlushTools,
      ...(grant.bundledTools ? { bundledTools: grant.bundledTools } : {}),
      isCurrent,
  
+diff --git a/src/gateway/mcp-http.code-mode.test.ts b/src/gateway/mcp-http.code-mode.test.ts
+index 2c1f2f319..c42348957 100644
+--- a/src/gateway/mcp-http.code-mode.test.ts
++++ b/src/gateway/mcp-http.code-mode.test.ts
+@@ -21,7 +21,11 @@ afterEach(async () => {
+   await resetCodeModeTestState();
+ });
+ 
+-function surface(policyEnabled: boolean, sessionKey = "agent:main:current") {
++function surface(
++  policyEnabled: boolean,
++  sessionKey = "agent:main:current",
++  trigger?: "memory",
++) {
+   const config: OpenClawConfig = {
+     agents: {
+       ownership: "explicit",
+@@ -44,6 +48,7 @@ function surface(policyEnabled: boolean, sessionKey = "agent:main:current") {
+       runtimePolicySessionKey: "agent:worker:policy",
+       toolsAllow: ["probe"],
+       senderIsOwner: false,
++      trigger,
+     },
+     tools,
+     executeTool: async ({ toolName, toolCallId, input, signal, onUpdate }) => {
+@@ -124,6 +129,12 @@ describe("MCP Code Mode delegated policy", () => {
+     },
+   );
+ 
++  it("keeps persistence-only memory runs out of Code Mode controls", () => {
++    const current = surface(true, "agent:main:memory-writer", "memory");
++    expect(current.enabled).toBe(false);
++    expect(current.tools.map((tool) => tool.name)).toEqual(["probe"]);
++  });
++
+   it("keeps parked execution bound to the current conversation and joins it on cleanup", async () => {
+     const current = surface(true);
+     const exec = current.tools.find((tool) => tool.name === "code_exec")!;
 diff --git a/src/gateway/mcp-http.code-mode.ts b/src/gateway/mcp-http.code-mode.ts
-index 20ed1b49..f8b8080f 100644
+index af9f8c27c..5db356802 100644
 --- a/src/gateway/mcp-http.code-mode.ts
 +++ b/src/gateway/mcp-http.code-mode.ts
-@@ -21,6 +21,7 @@ export function createMcpCodeModeToolSurface(params: {
-     agentId: context.runtimePolicyAgentId ?? context.agentId,
+@@ -1,6 +1,7 @@
+ import { resolveCodeModeConfig } from "../agents/code-mode-runtime.js";
+ import type { CodeModeSkill } from "../agents/code-mode-skills.js";
+ import { createAgentHarnessToolSurfaceRuntimeCore } from "../agents/harness/tool-surface-bridge.js";
++import type { EmbeddedRunTrigger } from "../agents/run-trigger.js";
+ import type { ToolSearchCatalogToolExecutor } from "../agents/tool-search-types.js";
+ import type { OpenClawConfig } from "../config/types.openclaw.js";
+ import type { McpLoopbackRequestContext } from "./mcp-grant-store.js";
+@@ -28,6 +29,7 @@ export function createMcpCodeModeToolSurface(params: {
      sessionId: context.sessionId,
      sessionKey: context.sessionKey,
-+    runtimePolicySessionKey: context.runtimePolicySessionKey,
      runId: context.runId,
++    trigger: context.trigger as EmbeddedRunTrigger | undefined,
      modelProvider: context.modelProvider,
      modelId: context.modelId,
+     modelToolsEnabled: params.tools.length > 0,
+diff --git a/src/gateway/mcp-http.memory-audience.test.ts b/src/gateway/mcp-http.memory-audience.test.ts
+index 34a8a17eb..1de16faaa 100644
+--- a/src/gateway/mcp-http.memory-audience.test.ts
++++ b/src/gateway/mcp-http.memory-audience.test.ts
+@@ -29,11 +29,17 @@ async function listTools(token: string, headers: Record<string, string> = {}) {
+   expect(response.status).toBe(200);
+ }
+ 
+-it("carries a memory audience only from a run-bound CLI grant", async () => {
++it("carries memory audience and persistence only from a run-bound CLI grant", async () => {
+   resolveTools.mockResolvedValue(mcp.scopedToolFixture([], "/tmp/openclaw-workspace"));
+   const sessionKey = "agent:main:telegram:direct:owner";
+   const sessionId = "session-memory";
+   const memoryAudience: MemoryAudience = Object.freeze({ kind: "owner-private", agentId: "main" });
++  const memoryFlushTools = {
++    flushId: "retained-part",
++    ownerPluginId: "memory-fixture",
++    persistenceToolNames: ["save_fixture_memory"],
++    recordPersistenceToolSuccess: vi.fn(),
++  };
+   const config = { session: { mainKey: "main" } };
+   const admission = prepareSystemAgentRunAdmission(
+     config,
+@@ -48,12 +54,14 @@ it("carries a memory audience only from a run-bound CLI grant", async () => {
+       runtimeOwnerToken: runtime().ownerToken,
+       admittedRunContext: await admission.admit("gateway", "gateway-run-memory-audience"),
+       memoryAudience,
++      memoryFlushTools,
+     });
+     const captureKey = "capture-memory-audience";
+     mcp.captureGrant(grant.token, captureKey, runtime().ownerToken);
+     const attach = grants.mintAttachGrant({ sessionKey });
+ 
+     expect(grant.context).not.toHaveProperty("memoryAudience");
++    expect(grant.context).not.toHaveProperty("memoryFlushTools");
+     await listTools(grant.token, { "x-openclaw-cli-capture-key": captureKey });
+     await listTools(attach.token);
+     await listTools(runtime().ownerToken, {
+@@ -62,11 +70,15 @@ it("carries a memory audience only from a run-bound CLI grant", async () => {
+     });
+ 
+     expect(
+-      resolveTools.mock.calls.map(([input]) => [input.sessionKey, input.memoryAudience]),
++      resolveTools.mock.calls.map(([input]) => [
++        input.sessionKey,
++        input.memoryAudience,
++        input.memoryFlushTools,
++      ]),
+     ).toEqual([
+-      [sessionKey, memoryAudience],
+-      [sessionKey, undefined],
+-      [sessionKey, undefined],
++      [sessionKey, memoryAudience, memoryFlushTools],
++      [sessionKey, undefined, undefined],
++      [sessionKey, undefined, undefined],
+     ]);
+   } finally {
+     admission.close();
 diff --git a/src/gateway/mcp-http.memory-flush.test.ts b/src/gateway/mcp-http.memory-flush.test.ts
 new file mode 100644
-index 00000000..35536ee3
+index 000000000..35536ee39
 --- /dev/null
 +++ b/src/gateway/mcp-http.memory-flush.test.ts
 @@ -0,0 +1,219 @@
@@ -6750,10 +6528,10 @@ index 00000000..35536ee3
 +  });
 +});
 diff --git a/src/gateway/mcp-http.runtime.ts b/src/gateway/mcp-http.runtime.ts
-index b685a299..07d1e0da 100644
+index 64ac0b258..37a099450 100644
 --- a/src/gateway/mcp-http.runtime.ts
 +++ b/src/gateway/mcp-http.runtime.ts
-@@ -6,6 +6,7 @@ import {
+@@ -4,6 +4,7 @@ import {
    type AdmittedRunContext,
  } from "../agents/admitted-run-context.js";
  import { resolveSessionAgentIds } from "../agents/agent-scope.js";
@@ -6761,35 +6539,32 @@ index b685a299..07d1e0da 100644
  import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
  import type { CodeModeSkill } from "../agents/code-mode-skills.js";
  import {
-@@ -20,6 +21,7 @@ import { applyEmbeddedAttemptToolsAllow } from "../agents/embedded-agent-runner/
- import { loadNodeExecAvailability } from "../agents/node-exec-availability.js";
- import { pickSandboxToolPolicy } from "../agents/sandbox-tool-policy.js";
- import { prepareSessionCapabilityRead } from "../agents/subagents/spawn/subagent-session-store.js";
+@@ -18,6 +19,7 @@ import {
+   isCoreCodingSurfaceToolName,
+   listCoreToolFactoryDescriptors,
+ } from "../agents/tool-catalog.js";
 +import { isRuntimeToolAllowed } from "../agents/tool-policy-match.js";
  import { normalizeToolPolicyName, toolPolicyRestrictsTools } from "../agents/tool-policy.js";
  import type { ToolSearchCatalogToolExecutor } from "../agents/tool-search-types.js";
  import type { AnyAgentTool } from "../agents/tools/common.js";
-@@ -74,6 +76,10 @@ type McpLoopbackScopeParams = {
+@@ -73,6 +75,8 @@ type McpLoopbackScopeParams = {
    authProfileStore?: AuthProfileStore;
    authProfileStoreAgentDir?: string;
    skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
-+  /** Native memory capability retained on the host; never serialized to CLI context. */
-+  memoryAudience?: import("../plugins/memory-provider-types.js").MemoryAudience;
 +  memoryFlushTools?: import("../agents/agent-tools.memory-flush.types.js").MemoryFlushToolRunContext;
 +
    /** Run-owned configured MCP tools; only an exclusive CLI run supplies them. */
    bundledTools?: readonly AnyAgentTool[];
    /** Host-selected coding owners for pre-grant projection only. */
-@@ -359,6 +365,8 @@ async function constructMcpLoopbackTools(
+@@ -362,6 +366,7 @@ async function constructMcpLoopbackTools(
      authProfileStore: params.authProfileStore,
      onYield: params.onYield,
      skillWorkshop,
-+    memoryAudience: params.memoryAudience,
 +    memoryFlushTools: params.memoryFlushTools,
      bundledTools: params.bundledTools,
      nativeCronCreatorToolAllowlist: context.nativeCronCreatorToolAllowlist ?? undefined,
      agentDir: params.authProfileStoreAgentDir,
-@@ -376,10 +384,21 @@ async function constructMcpLoopbackTools(
+@@ -378,10 +383,21 @@ async function constructMcpLoopbackTools(
    };
    const scoped = await resolveGatewayScopedTools(scopeOptions, params.assertCurrent);
    params.assertCurrent();
@@ -6813,23 +6588,22 @@ index b685a299..07d1e0da 100644
    scoped.captureFinalCronCreatorTools?.(new Set(toolSchema.map((tool) => tool.name)));
    return {
 diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
-index f4133b25..dd356d32 100644
+index f45c3181b..8941cb525 100644
 --- a/src/gateway/mcp-http.ts
 +++ b/src/gateway/mcp-http.ts
-@@ -304,6 +304,8 @@ async function startMcpLoopbackServer(
-                   admittedRunContext: boundClientGrant?.admittedRunContext,
-                   sessionEventSourcePolicy: boundClientGrant?.sessionEventSourcePolicy,
+@@ -335,6 +335,7 @@ async function startMcpLoopbackServer(work: GatewayConnectionWork): Promise<() =
                    messageActionTurnCapability: boundClientGrant?.messageActionTurnCapability,
-+                  memoryAudience: boundClientGrant?.memoryAudience,
+                   // Only a run-bound CLI grant carries a verified turn sender's audience.
+                   memoryAudience: boundClientGrant?.memoryAudience,
 +                  memoryFlushTools: boundClientGrant?.memoryFlushTools,
-                   cfg,
+                   cfg: boundClientGrant?.toolPolicyConfig ?? cfg,
                    signal: requestAbort.signal,
                    authProfileStore: boundClientGrant?.toolAuth?.store,
 diff --git a/src/gateway/server-startup-observers.ts b/src/gateway/server-startup-observers.ts
-index abd36916..78319aae 100644
+index f6f463634..53ecdf89d 100644
 --- a/src/gateway/server-startup-observers.ts
 +++ b/src/gateway/server-startup-observers.ts
-@@ -167,6 +167,17 @@ export async function runGatewayStartupObservers(params: {
+@@ -95,6 +95,17 @@ export async function runGatewayStartupObservers(params: {
    });
    try {
      await sweepSessionStateWatchNotices();
@@ -6848,15 +6622,10 @@ index abd36916..78319aae 100644
      if (params.isClosing?.() || !hookRunner.hasHooks("gateway_start")) {
        return;
 diff --git a/src/gateway/tool-resolution.test.ts b/src/gateway/tool-resolution.test.ts
-index 3f800aa2..ef9a8684 100644
+index 186887fcf..eb07438f5 100644
 --- a/src/gateway/tool-resolution.test.ts
 +++ b/src/gateway/tool-resolution.test.ts
-@@ -1,3 +1,4 @@
-+import fs from "node:fs/promises";
- import os from "node:os";
- import path from "node:path";
- import { isRecord } from "@openclaw/normalization-core/record-coerce";
-@@ -6,6 +7,7 @@ import {
+@@ -7,6 +7,7 @@ import {
    getAdmittedRunDelegatedAuthority,
    prepareSystemAgentRunAdmission,
  } from "../agents/admitted-run-context.js";
@@ -6864,68 +6633,20 @@ index 3f800aa2..ef9a8684 100644
  import {
    getGatewayToolCallerIdentity,
    wrapToolWithGatewayCallerIdentity,
-@@ -43,6 +45,47 @@ async function resolveTools(
- }
- 
- describe("resolveGatewayScopedTools", () => {
-+  it("keeps mediated memory writes append-only and under the source policy", async () => {
-+    const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-memory-mediated-"));
-+    const memoryFlushWritePath = "memory/2026-01-01.md";
-+    try {
-+      await fs.mkdir(path.join(workspaceDir, "memory"));
-+      await fs.writeFile(path.join(workspaceDir, memoryFlushWritePath), "existing fact");
-+      const params = {
-+        cfg: { plugins: { slots: { memory: "none" } } } as OpenClawConfig,
-+        sessionKey: "agent:main:internal:memory-test",
-+        runtimePolicySessionKey: "agent:main:main",
-+        surface: "loopback" as const,
-+        workspaceDir,
-+        mediatedToolNames: ["read", "write"],
-+        trigger: "memory" as const,
-+        memoryFlushWritePath,
-+        initialTurnTainted: true,
-+        senderIsOwner: false,
-+      };
-+      const tools = (await resolveGatewayScopedTools(params)).tools;
-+      const write = tools.find((tool) => tool.name === "write");
-+      expect(write).toBeDefined();
-+      await write!.execute("save", { path: memoryFlushWritePath, content: "new durable fact" });
-+      await expect(
-+        fs.readFile(path.join(workspaceDir, memoryFlushWritePath), "utf8"),
-+      ).resolves.toBe("existing fact\nnew durable fact");
-+      await expect(
-+        write!.execute("wrong-target", { path: "other.md", content: "forbidden" }),
-+      ).rejects.toThrow();
-+      await expect(fs.stat(path.join(workspaceDir, "other.md"))).rejects.toThrow();
-+      const denied = (
-+        await resolveGatewayScopedTools({
-+          ...params,
-+          conversationToolPolicy: { deny: ["write"] },
-+        })
-+      ).tools;
-+      expect(denied.some((tool) => tool.name === "write")).toBe(false);
-+    } finally {
-+      await fs.rm(workspaceDir, { recursive: true, force: true });
-+    }
-+  });
-+
-   beforeEach(() => setRuntimeConfigSnapshot({}));
- 
-   it("retains a computer execution across MCP catalog rebuilds and releases it with its run", async () => {
 diff --git a/src/gateway/tool-resolution.ts b/src/gateway/tool-resolution.ts
-index e37f3b7b..da0e4138 100644
+index 7ead47ea3..165f13c2d 100644
 --- a/src/gateway/tool-resolution.ts
 +++ b/src/gateway/tool-resolution.ts
-@@ -28,7 +28,7 @@ import { resolveSandboxRuntimeStatusAsync } from "../agents/sandbox/runtime-stat
- import { createScheduledMessageInvocationAdmission } from "../agents/scheduled-message-invocation.js";
- import { resolveScheduledToolCallerContext } from "../agents/scheduled-tool-policy.js";
+@@ -32,7 +32,7 @@ import { resolveScheduledToolCallerContext } from "../agents/scheduled-tool-poli
+ import { projectEffectiveExecPolicy } from "../agents/session-permission-exec-mode.js";
+ import { resolveCoreToolFactoryFamily } from "../agents/tool-catalog.js";
  import { buildDeclaredToolAllowlistContext } from "../agents/tool-policy-declared-context.js";
 -import { filterToolsByPolicy } from "../agents/tool-policy-match.js";
 +import { filterToolsByPolicy, isRuntimeToolAllowed } from "../agents/tool-policy-match.js";
  import {
    applyToolPolicyPipeline,
    buildDefaultToolPolicyPipelineSteps,
-@@ -116,6 +116,8 @@ export async function resolveGatewayScopedTools(
+@@ -120,6 +120,8 @@ export async function resolveGatewayScopedTools(
      excludeToolNames?: Iterable<string>;
      /** Server-minted coding tools that must be mediated through the loopback surface. */
      mediatedToolNames?: Iterable<string>;
@@ -6934,18 +6655,16 @@ index e37f3b7b..da0e4138 100644
      /** Host-projected canonical authority for native CLI tools absent from this bridge. */
      nativeCronCreatorToolAllowlist?: readonly string[];
      disablePluginTools?: boolean;
-@@ -126,6 +128,10 @@ export async function resolveGatewayScopedTools(
+@@ -130,6 +132,8 @@ export async function resolveGatewayScopedTools(
      nodeExecAvailable?: (node?: string) => boolean;
      pairedNodeComputerUse?: import("../agents/computer-use-node-capabilities.js").PreparedPairedComputerUse;
      skillWorkshop?: SkillWorkshopRunOptions;
-+    /** Native memory capability retained on the host; never serialized to CLI context. */
-+    memoryAudience?: import("../plugins/memory-provider-types.js").MemoryAudience;
 +    memoryFlushTools?: import("../agents/agent-tools.memory-flush.types.js").MemoryFlushToolRunContext;
 +
      /**
       * Run-owned configured MCP tools for an exclusive CLI grant. They enter the
       * same policy pipeline as Gateway tools; core names always win collisions.
-@@ -446,7 +452,20 @@ export async function resolveGatewayScopedTools(
+@@ -459,7 +463,20 @@ export async function resolveGatewayScopedTools(
      inheritedToolPolicySource: requesterPolicies.inheritedToolPolicySource,
      delegatedToolPolicyUnavailable: Boolean(requesterPolicies.delegatedToolPolicy),
    };
@@ -6967,7 +6686,7 @@ index e37f3b7b..da0e4138 100644
    assertCurrent();
    const execDefaults =
      nodeExecSurface || mediatedToolNames.size > 0
-@@ -466,6 +485,7 @@ export async function resolveGatewayScopedTools(
+@@ -479,6 +496,7 @@ export async function resolveGatewayScopedTools(
          )
        : undefined;
    const nodeExecDefaults =
@@ -6975,7 +6694,7 @@ index e37f3b7b..da0e4138 100644
      nodeExecSurface &&
      execDefaults?.canRequestNode === true &&
      params.nodeExecAvailable?.(execDefaults.node) === true
-@@ -476,8 +496,9 @@ export async function resolveGatewayScopedTools(
+@@ -489,8 +507,9 @@ export async function resolveGatewayScopedTools(
      ? resolveExecToolConfig({ cfg: params.cfg, agentId: policyAgentId })
      : undefined;
    const mediatedToolFamilies = new Set(Array.from(mediatedToolNames, resolveCoreToolFactoryFamily));
@@ -6987,27 +6706,21 @@ index e37f3b7b..da0e4138 100644
    const mediatedCodingTools =
      surface === "loopback" && (includeMediatedBaseCodingTools || includeMediatedShellTools)
        ? await createOpenClawCodingToolsInternalAsync({
-@@ -518,13 +539,17 @@ export async function resolveGatewayScopedTools(
-                 messageProvider: "webchat",
-                 workspaceDir,
-                 cwd: params.cwd?.trim() || workspaceDir,
--                runtimeToolAllowlist: [...mediatedToolNames],
-+                runtimeToolAllowlist: providerMemoryToolNames ?? [...mediatedToolNames],
-               })
-             : undefined,
+@@ -518,8 +537,12 @@ export async function resolveGatewayScopedTools(
+           inputProvenance: params.inputProvenance,
+           trustedInternalHandoff: params.trustedInternalHandoff,
            trigger: params.trigger,
 +          memoryFlushWritePath: params.memoryFlushWritePath,
 +          memoryAudience: params.memoryAudience,
 +          memoryFlushTools: params.memoryFlushTools,
 +          isTurnTainted: () => params.initialTurnTainted === true,
-           continuesConversation: params.continuesConversation,
            approvalReviewerDeviceId: params.approvalReviewerDeviceId,
 -          runtimeToolAllowlist: [...mediatedToolNames],
 +          runtimeToolAllowlist: providerMemoryToolNames ?? [...mediatedToolNames],
            exec: execDefaults
              ? {
                  host: execDefaults.host,
-@@ -545,7 +570,7 @@ export async function resolveGatewayScopedTools(
+@@ -540,7 +563,7 @@ export async function resolveGatewayScopedTools(
              includeShellTools: includeMediatedShellTools,
              includeChannelTools: false,
              includeOpenClawTools: false,
@@ -7016,7 +6729,7 @@ index e37f3b7b..da0e4138 100644
            },
          })
        : [];
-@@ -619,7 +644,7 @@ export async function resolveGatewayScopedTools(
+@@ -614,7 +637,7 @@ export async function resolveGatewayScopedTools(
  
    const coreToolNames = new Set(allTools.map((tool) => normalizeToolPolicyName(tool.name)));
    const bundledTools =
@@ -7026,10 +6739,10 @@ index e37f3b7b..da0e4138 100644
            (tool) => !coreToolNames.has(normalizeToolPolicyName(tool.name)),
          )
 diff --git a/src/plugins/cli-backend.types.ts b/src/plugins/cli-backend.types.ts
-index 8331f8e0..20c2c9d2 100644
+index e42ac45f7..1de6e736c 100644
 --- a/src/plugins/cli-backend.types.ts
 +++ b/src/plugins/cli-backend.types.ts
-@@ -240,11 +240,15 @@ export type CliBackendExecuteContext = {
+@@ -253,11 +253,15 @@ export type CliBackendExecuteContext = {
    systemPrompt: string;
    sessionId?: string;
    useResume: boolean;
@@ -7045,3 +6758,18 @@ index 8331f8e0..20c2c9d2 100644
    toolAvailability?: CliBackendToolAvailability;
    /** Exact host-owned reusable process lifecycle and current-turn admission. */
    liveSession?: CliBackendLiveSessionCapability;
+diff --git a/test/vitest/vitest.database-worker-core-paths.mjs b/test/vitest/vitest.database-worker-core-paths.mjs
+index c0b645b9d..cf7ab593c 100644
+--- a/test/vitest/vitest.database-worker-core-paths.mjs
++++ b/test/vitest/vitest.database-worker-core-paths.mjs
+@@ -1,5 +1,10 @@
+ // These consumers need the host-owned SQLite broker, which runs in forked processes.
+ export const databaseWorkerCoreTestFiles = [
++  "src/auto-reply/reply/agent-runner-memory.native-idle.test.ts",
++  "src/agents/session-maintenance/compaction-memory-jobs.test.ts",
++  "src/agents/session-maintenance/compaction-memory.test.ts",
++  "src/agents/session-maintenance/compaction-memory.capture.test.ts",
++  "src/agents/session-maintenance/run.native-idle.test.ts",
+   "src/gateway/test/talk-client-agent-consult.requester-final.test.ts",
+   "src/infra/approval-session-audience.sqlite.test.ts",
+   "src/gateway/server-methods.workshop-contract.test.ts",

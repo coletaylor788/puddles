@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { createServer } from "node:http";
 import {
@@ -44,6 +45,7 @@ export function isolatedContext(root) {
 }
 
 export function fixtureEnv(context) {
+  const profile = `puddles-fixture-${createHash("sha256").update(context.root).digest("hex").slice(0, 16)}`;
   return {
     ...(process.env.PUDDLES_PROCESS_SCOPES === undefined ? {} : { PUDDLES_PROCESS_SCOPES: process.env.PUDDLES_PROCESS_SCOPES }),
     PATH: `${dirname(process.execPath)}:${process.env.PATH ?? "/usr/bin:/bin"}`,
@@ -53,6 +55,7 @@ export function fixtureEnv(context) {
     XDG_DATA_HOME: join(context.home, ".local", "share"),
     OPENCLAW_HOME: context.home, OPENCLAW_STATE_DIR: context.stateDir,
     OPENCLAW_CONFIG_PATH: context.configPath,
+    OPENCLAW_PROFILE: profile,
     E2E_MOCK_STATE: context.recordingsDir,
     OPENCLAW_DISABLE_BONJOUR: "1", OPENCLAW_SKIP_CANVAS_HOST: "1",
     npm_config_offline: "true", npm_config_cache: join(context.home, ".npm"),
@@ -112,10 +115,6 @@ function validateScenario(scenario) {
       !(typeof value === "string" && value.length) && !(Array.isArray(value) && value.length && value.every(text => typeof text === "string" && text.length)))) {
       throw new Error("Invalid fixture reply expectation");
     }
-    if (step.expect.heartbeatRefusal !== undefined &&
-        (step.expect.heartbeatRefusal !== true || !scenario.heartbeat || step.wake)) {
-      throw new Error("Invalid ordinary heartbeat refusal expectation");
-    }
     for (const incoming of step.incoming ?? []) {
       if (incoming.delayMs !== undefined &&
           (!Number.isInteger(incoming.delayMs) || incoming.delayMs < 0 || incoming.delayMs > 1_000)) {
@@ -124,8 +123,7 @@ function validateScenario(scenario) {
     }
     for (const response of step.responses) {
       for (const tool of response.toolCalls ?? []) {
-        if (!(scenario.heartbeat && (step.wake || step.expect.heartbeatRefusal) && tool.name === "heartbeat_respond") &&
-            !(scenario.sessionSend && tool.name === "sessions_send") &&
+        if (!(scenario.sessionSend && tool.name === "sessions_send") &&
             !(scenario.sessionRecall && tool.name === "sessions_history") && !scenario.adapters?.[tool.name]) throw new Error(`Missing required recording adapter: ${tool.name}`);
       }
     }
@@ -261,7 +259,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
       update: { checkOnStart: false },
       cron: { enabled: Boolean(scenario.heartbeat) },
       browser: { enabled: false },
-      agents: { defaults: { workspace: context.workspace, model: { primary: "fixture/fixture-model" }, compaction: { mode: "default" }, heartbeat: { every: "0m" } } },
+      agents: { defaults: { workspace: context.workspace, model: { primary: "fixture/fixture-model" }, compaction: { mode: "default" } } },
       models: { mode: "replace", providers: { fixture: { api: "openai-completions", baseUrl: `http://127.0.0.1:${modelPort}/v1`, apiKey: "synthetic-fixture-key", models: [{ id: "fixture-model", name: "Scripted model", contextWindow: 128000, maxTokens: 4096, reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } },
       channels: { imessage: { enabled: true, cliPath: bridge, dbPath: join(context.stateDir, "fixture-chat.db"), dmPolicy: "allowlist", allowFrom: ["+15550001111"], groupPolicy: scenario.chatType === "group" ? "allowlist" : "disabled",
         ...(scenario.chatType === "group" ? { groupAllowFrom: ["+15550001111"], groups: { "123": { requireMention: false } } } : {}),
@@ -276,8 +274,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
       session: { dmScope: "per-channel-peer" },
     };
     if (scenario.heartbeat) {
-      config.agents.defaults.heartbeat = { every: "60m", isolatedSession: true, target: "imessage", to: "+15550001111", accountId: "default" };
-      config.agents.entries = { main: { tools: { allow: ["message", "heartbeat_respond", ...Object.keys(scenario.adapters ?? {})] } } };
+      config.agents.entries = { main: { tools: { allow: ["message", ...Object.keys(scenario.adapters ?? {})] } } };
       // Exercise explicit agent policy: profile expansion cannot bypass this list.
       delete config.tools.allow;
       config.tools.profile = "full";
@@ -324,6 +321,28 @@ export async function runScenario(installedDir, scenario, options = {}) {
       }, "real iMessage subscription", timeout, child);
     };
     await startGateway();
+    if (scenario.heartbeat) {
+      const migrated = JSON.parse(readFileSync(context.configPath, "utf8"));
+      assert.equal(migrated.agents?.defaults?.heartbeat, undefined, "legacy heartbeat config was not retired");
+      assert.equal(migrated.agents?.entries?.main?.heartbeat, undefined, "legacy agent heartbeat config was not retired");
+      await runCommand(process.execPath, [
+        join(installedDir, "openclaw.mjs"), "cron", "add",
+        "--name", "Fixture heartbeat",
+        "--declaration-key", "heartbeat:main",
+        "--every", "60m",
+        "--agent", "main",
+        "--session", "isolated",
+        ...(provider?.heartbeatModel ? ["--model", provider.heartbeatModel] : []),
+        "--message", "Read the current heartbeat scratch and act only on that saved work.",
+        "--skip-if-scratch-empty",
+        "--idle-only",
+        "--announce",
+        "--channel", "imessage",
+        "--to", "+15550001111",
+        "--account", "default",
+        "--json",
+      ], { cwd: context.workspace, env: environment, capture: true, quiet: true, timeoutMs: 30_000 });
+    }
     let requestCount = 0;
     let sendCount = 0;
     let rowid = 1;
@@ -388,12 +407,12 @@ export async function runScenario(installedDir, scenario, options = {}) {
       if (scenario.heartbeat) {
       const firstRequest = requests[requestCount - step.responses.length];
       const offered = firstRequest.tools?.map(t => t.function?.name) ?? [];
-      assert.ok(offered.includes("heartbeat_respond"), "heartbeat tool schema absent");
+      assert.ok(!offered.includes("heartbeat_respond"), "retired heartbeat tool schema returned");
       const firstMessages = JSON.stringify(firstRequest.messages);
       assert.ok(firstMessages.includes("FULL_WORKSPACE_CONTEXT_MARKER"), "full bootstrap absent");
       for (const text of step.expect.promptExcludes ?? []) assert.ok(!firstMessages.includes(text), "unwanted history in heartbeat");
       if (!step.wake) {
-        assert.ok(!firstMessages.includes("Use heartbeat_respond to report the wake outcome."), "ordinary turn includes heartbeat completion instructions");
+        assert.ok(!firstMessages.includes("heartbeat_respond"), "ordinary turn includes retired heartbeat instructions");
         for (const heartbeatStep of scenario.steps.filter(candidate => candidate.wake)) {
           assert.ok(!firstMessages.includes(heartbeatStep.wake), "ordinary turn includes heartbeat scratch");
         }
@@ -405,14 +424,11 @@ export async function runScenario(installedDir, scenario, options = {}) {
           assert.ok(!messages.includes("The previous assistant turn recorded reasoning"), "reasoning-only recovery was requested");
           assert.ok(!messages.includes("The previous attempt did not produce a user-visible answer"), "empty-response recovery was requested");
           assert.ok(!messages.includes("text-only pass"), "text-only recovery was requested");
-          assert.ok((req.tools ?? []).some(t => t.function?.name === "heartbeat_respond"), "recovery removed tool schema");
+          assert.ok(!(req.tools ?? []).some(t => t.function?.name === "heartbeat_respond"), "recovery restored retired tool schema");
         }
-        const terminalMessages = JSON.stringify(requests[requestCount - 1].messages);
-        assert.ok(terminalMessages.includes("heartbeat_respond") && terminalMessages.includes("accepted"), "final pass lacks successful heartbeat tool result");
         const prompt = JSON.stringify(firstRequest.messages);
         assert.ok(prompt.includes(step.wake), "monitor scratch missing from model request");
-        assert.ok(prompt.includes("Use heartbeat_respond to report the wake outcome."), "native notification instructions absent");
-        assert.ok(!prompt.includes("visible reply MUST use `message(action=send)`"), "contradictory notification instruction");
+        assert.ok(!prompt.includes("heartbeat_respond"), "native Cron prompt restored retired response tool");
       }
       }
       await provider?.assertTurn?.();
@@ -422,7 +438,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
     const db = new DatabaseSync(join(context.stateDir, "agents/main/agent/openclaw-agent.sqlite"), {readOnly:true});
     let windows;
     try { windows = db.prepare("select session_key,session_id,reason from session_windows order by created_at").all(); } finally { db.close(); }
-    const heartbeatWindows = windows.filter(w => w.session_key.endsWith(":heartbeat"));
+    const heartbeatWindows = windows.filter(w => w.session_key.includes(":cron:"));
     assert.equal(heartbeatWindows.length, scenario.steps.filter(s => s.wake).length, "heartbeat session count differs");
     assert.equal(new Set(heartbeatWindows.map(w => w.session_id)).size, heartbeatWindows.length, "heartbeat reused a session");
     assert.equal(windows.filter(w => w.session_key.includes(":imessage:")).length, 1, "main conversation did not retain one session");
