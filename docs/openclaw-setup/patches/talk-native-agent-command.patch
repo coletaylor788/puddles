@@ -2453,7 +2453,7 @@ index 2f6700972..8073de77d 100644
  }
  
 diff --git a/src/talk/agent-consult-runtime.test.ts b/src/talk/agent-consult-runtime.test.ts
-index 7df3c9f40..dcdfb07cf 100644
+index 7df3c9f40d2..4a9b2ac42da 100644
 --- a/src/talk/agent-consult-runtime.test.ts
 +++ b/src/talk/agent-consult-runtime.test.ts
 @@ -19,7 +19,10 @@ import {
@@ -2483,7 +2483,48 @@ index 7df3c9f40..dcdfb07cf 100644
      agentRuntime: runtime as never,
      cfg: {},
      logger: { warn: vi.fn() },
-@@ -610,4 +617,46 @@ describe("realtime voice agent consult runtime", () => {
+@@ -459,7 +466,10 @@ describe("realtime voice agent consult runtime", () => {
+   ])("preserves $label instead of speaking a partial result", async ({ meta, errorName }) => {
+     const { runtime, runEmbeddedAgent } = createAgentRuntime();
+     const cleanup = vi.fn();
+-    runEmbeddedAgent.mockResolvedValueOnce({ payloads: [{ text: "Partial answer." }], meta });
++    runEmbeddedAgent.mockResolvedValueOnce({
++      payloads: [{ text: "Partial answer." }],
++      meta: { ...meta, terminalReply: { disposition: "visible", text: "Partial answer." } },
++    });
+ 
+     await expect(runConsult(runtime, { onRunStarted: () => ({ cleanup }) })).rejects.toMatchObject({
+       name: errorName,
+@@ -467,6 +477,28 @@ describe("realtime voice agent consult runtime", () => {
+     expect(cleanup).toHaveBeenCalledOnce();
+   });
+ 
++  it.each([
++    {
++      terminalReply: { disposition: "visible", text: "Corrected answer." },
++      expected: "Corrected answer.",
++    },
++    { terminalReply: { disposition: "silent" }, expected: "No current answer." },
++    { terminalReply: { disposition: "empty" }, expected: "No current answer." },
++  ])(
++    "uses the $terminalReply.disposition terminal reply instead of earlier CLI answers",
++    async ({ terminalReply, expected }) => {
++      const { runtime, runEmbeddedAgent } = createAgentRuntime();
++      runEmbeddedAgent.mockResolvedValueOnce({
++        payloads: [{ text: "Original answer." }, { text: "Corrected answer." }],
++        meta: { terminalReply },
++      });
++
++      await expect(
++        runConsult(runtime, { fallbackText: "No current answer." }, true),
++      ).resolves.toEqual({ text: expected });
++    },
++  );
++
+   it("returns a speakable fallback when the embedded agent has no visible text", async () => {
+     const warn = vi.fn();
+     const { runtime } = createAgentRuntime([
+@@ -610,4 +642,46 @@ describe("realtime voice agent consult runtime", () => {
        traceAuthorized: false,
      });
    });
@@ -2531,7 +2572,7 @@ index 7df3c9f40..dcdfb07cf 100644
 +  });
  });
 diff --git a/src/talk/agent-consult-runtime.ts b/src/talk/agent-consult-runtime.ts
-index 1046c9f34..f8fe5d5ea 100644
+index 1046c9f3464..bc8b9efe0f7 100644
 --- a/src/talk/agent-consult-runtime.ts
 +++ b/src/talk/agent-consult-runtime.ts
 @@ -84,8 +84,11 @@ export function assertRealtimeVoiceAgentConsultModelSelectionUnlocked(
@@ -2662,6 +2703,27 @@ index 1046c9f34..f8fe5d5ea 100644
            fastMode: params.fastMode,
            verboseLevel: "off",
            reasoningLevel: "off",
+@@ -604,10 +673,16 @@ export async function consultRealtimeVoiceAgent(params: {
+           yielded: true,
+         };
+       }
+-      // Earlier input answers remain in history; this completion speaks for the current input.
+-      const currentInputPayloads = (result.payloads ?? []).filter(
+-        (payload) => getReplyPayloadMetadata(payload)?.precedingInputAnswer !== true,
+-      );
++      // The command's terminal snapshot excludes interim CLI answers retained in history.
++      // Older runtimes without that snapshot retain their payload-based projection.
++      const terminalReply = result.meta?.terminalReply;
++      const currentInputPayloads = terminalReply
++        ? terminalReply.disposition === "visible"
++          ? [{ text: terminalReply.text }]
++          : []
++        : (result.payloads ?? []).filter(
++            (payload) => getReplyPayloadMetadata(payload)?.precedingInputAnswer !== true,
++          );
+       const text = collectRealtimeVoiceAgentConsultVisibleText(currentInputPayloads);
+       if (!text) {
+         params.logger.warn(
 diff --git a/test/vitest/vitest.database-worker-core-paths.mjs b/test/vitest/vitest.database-worker-core-paths.mjs
 index 67f1b81c3..c0b645b9d 100644
 --- a/test/vitest/vitest.database-worker-core-paths.mjs
@@ -2673,3 +2735,11 @@ index 67f1b81c3..c0b645b9d 100644
    "src/infra/approval-session-audience.sqlite.test.ts",
    "src/gateway/server-methods.workshop-contract.test.ts",
    "src/cli/skills-cli.workshop-contract.test.ts",
+diff --git a/config/test-lines-allocations/talk-cli-terminal-selection.txt b/config/test-lines-allocations/talk-cli-terminal-selection.txt
+new file mode 100644
+index 00000000000..e27ad774f6c
+--- /dev/null
++++ b/config/test-lines-allocations/talk-cli-terminal-selection.txt
+@@ -0,0 +1,2 @@
++25
++# Cover terminal CLI answer selection and preserve cancellation despite partial terminal text.

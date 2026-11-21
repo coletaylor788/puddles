@@ -25,6 +25,13 @@ draining, abort/error refusal, receipt identity and current-voice checks. The
 regression covers current and stale non-embedded yields alongside embedded runs;
 it fails on the previous adapter and passes after the correction.
 
+Settled speech uses the command's terminal-answer snapshot. Claude may retain an
+answer produced before a refinement as interim history, then return the corrected
+answer in the same command. Joining all result payloads spoke both. The terminal
+snapshot already identifies the final model answer; silent and empty snapshots
+cannot revive earlier text. Runtimes without that metadata retain the existing
+payload projection. Cancellation and timeout checks still precede speech.
+
 The .5 port preserves its new transcript custody rule: generated consult input
 is hidden and excluded from later context. The regression targets are registered
 in the cumulative patch suite. Local and installed acceptance must prove a real
