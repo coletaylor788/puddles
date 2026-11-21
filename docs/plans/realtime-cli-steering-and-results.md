@@ -197,8 +197,9 @@ snapshot session acquires native admission before starting its CLI run. The
 remaining corrections adapt regression fixtures to native 11.5 lifecycle,
 metadata and supported historical database behavior. The three child exceptions,
 tool containment and Talk routing remain unchanged. Focused source and installed
-checks pass; the remaining cumulative tests, rebuilt-candidate DEV, TEST/PROD
-and physical voice acceptance remain open.
+checks pass. All mapped source groups have completed, with the discovered
+fixture failures passing focused repair checks. Rebuilt-candidate DEV, the full
+CI suite, TEST/PROD and physical voice acceptance remain open.
 
 ## Agent section
 
@@ -285,6 +286,25 @@ and compare against the installed schema declaration. Remaining checks continue
 against the rebuilt candidate; historical fixture success does not independently
 prove the release migration sequence. The retained reviewer reports no findings
 in the current behavior diff. Evidence: `/private/tmp/phase2-suite-paths-20261121`.
+
+The broader source run exposed additional test-only drift. Darwin port fixtures
+now describe both native sysctl ranges and retain refusal on an unreadable range;
+all 20 focused cases and 117 unit-project cases pass. Talk history and client
+fixtures now supply matching native terminal-reply metadata instead of relying
+on payload-only mocks. The history file passes 19 cases with three existing
+upstream skips. A stale supervisor fixture hunk is removed entirely, restoring
+the upstream test rather than recreating an unused mock. The retained reviewer
+reports no findings. The three client files pass all 34 cases in 111.11 seconds;
+the restored supervisor file passes all 52 cases in 97.15 seconds.
+Native core types, 101 helper tests, six manifest tests, and all 20 original
+installed failure cases pass their focused rechecks, including warm memory
+restart. The complete 25-patch composition reproduces all 413 changed files exactly;
+all 307 mapped targets across 34 native projects have completed. The three
+failed groups have passing focused repair checks (history 19, client 34 and
+supervisor 52); this is not an all-green unmodified run. The final child-wakeup
+and tool-hook integration group passes all 61 cases. CI must rerun the entire
+suite against the frozen candidate. Source disk reserve blocked a repository rehearsal check; only closed,
+owner-verified generated artifacts are being retired before retrying it.
 
 ### Scope and acceptance criteria
 

@@ -129,7 +129,7 @@ index f04ea7595..cfbc801d8 100644
 +
  }
 diff --git a/src/gateway/server.talk-consult-history.test.ts b/src/gateway/server.talk-consult-history.test.ts
-index 9cf45f65e..707ac2c13 100644
+index 9cf45f6..e9db463 100644
 --- a/src/gateway/server.talk-consult-history.test.ts
 +++ b/src/gateway/server.talk-consult-history.test.ts
 @@ -14,10 +14,15 @@ import {
@@ -160,6 +160,34 @@ index 9cf45f65e..707ac2c13 100644
    context = createDirectChatContext({ getRuntimeConfig });
    const rowProjection = await createSessionRowProjection({
      cfg: getRuntimeConfig(),
+@@ -175,6 +185,7 @@ beforeEach(async () => {
+       payloads: [{ text: answer }],
+       meta: {
+         durationMs: 0,
++        terminalReply: { disposition: "visible", text: answer },
+         agentMeta: {
+           sessionId: params.sessionId,
+           provider: "test",
+@@ -537,7 +548,8 @@ it("keeps read-only Talk operator consult scaffolding out of chat and later cont
+     for (const message of modelMessages) {
+       manager.appendMessage(message);
+     }
+-    return { ...result, payloads: [{ text: modelReply }] };
++    return { ...result, payloads: [{ text: modelReply }],
++      meta: { ...result.meta, terminalReply: { disposition: "visible", text: modelReply } } };
+   });
+   const userTranscript = spokenTranscript();
+   await rpc("talk.client.transcript", userTranscript);
+@@ -664,7 +676,8 @@ it.each(["before-final", "after-final"] as const)(
+       transcriptManager(params).appendMessage(assistantMessage(directAnswer));
+       finalCommitted.resolve();
+       await releaseResult.promise;
+-      return { ...result, payloads: [{ text: directAnswer }] };
++      return { ...result, payloads: [{ text: directAnswer }],
++      meta: { ...result.meta, terminalReply: { disposition: "visible", text: directAnswer } } };
+     });
+     const runner = createTalkClientAgentConsultRunner({
+       config: getRuntimeConfig(),
 diff --git a/src/gateway/server.talk-consult-session-runtime.test.ts b/src/gateway/server.talk-consult-session-runtime.test.ts
 new file mode 100644
 index 000000000..b39412572
@@ -1927,10 +1955,10 @@ index dc40398fc..cfc79e5b2 100644
  
  import { parseRealtimeVoiceAgentConsultArgs } from "../../talk/agent-consult-tool.js";
 diff --git a/src/gateway/talk/client-permission-parity.test.ts b/src/gateway/talk/client-permission-parity.test.ts
-index e247e6dc2..38a4cc9d7 100644
+index e247e6d..d6c1ed1 100644
 --- a/src/gateway/talk/client-permission-parity.test.ts
 +++ b/src/gateway/talk/client-permission-parity.test.ts
-@@ -165,7 +165,12 @@ describe("authenticated Talk permission parity", () => {
+@@ -165,9 +165,17 @@ describe("authenticated Talk permission parity", () => {
          cwd,
          sessionRoot: cwd,
          permissionMode: "guarded",
@@ -1942,9 +1970,15 @@ index e247e6dc2..38a4cc9d7 100644
 +          execCwd: "/node/task",
 +        }),
        });
-       return { payloads: [{ text: "Prepared." }], meta: {} };
+-      return { payloads: [{ text: "Prepared." }], meta: {} };
++      return {
++        payloads: [{ text: "Prepared." }],
++        meta: { terminalReply: { disposition: "visible", text: "Prepared." } },
++      };
      });
-@@ -223,9 +228,11 @@ describe("authenticated Talk permission parity", () => {
+     const runner = createRunner({
+       config: cfg,
+@@ -223,9 +231,11 @@ describe("authenticated Talk permission parity", () => {
      });
      try {
        const runner = createRunner({ context, runAuthority: retained });
@@ -1960,10 +1994,22 @@ index e247e6dc2..38a4cc9d7 100644
        retained.release();
        source.release();
 diff --git a/src/gateway/talk/handlers/client-native-control.test-support.ts b/src/gateway/talk/handlers/client-native-control.test-support.ts
-index 1895b0ff3..ea6f32be7 100644
+index 1895b0f..756d4b1 100644
 --- a/src/gateway/talk/handlers/client-native-control.test-support.ts
 +++ b/src/gateway/talk/handlers/client-native-control.test-support.ts
-@@ -439,6 +439,7 @@ export async function withParkedNativeTask(
+@@ -106,7 +106,10 @@ const AUDIO_SDP = "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n";
+ const DATA_CHANNEL_SDP = `${AUDIO_SDP}m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n`;
+ 
+ export function nativeResult(text: string, meta: { aborted?: boolean } = {}) {
+-  return { payloads: [{ text }], meta: { durationMs: 0, ...meta } };
++  return {
++    payloads: [{ text }],
++    meta: { durationMs: 0, terminalReply: { disposition: "visible" as const, text }, ...meta },
++  };
+ }
+ 
+ export function nativeConsult(text: string) {
+@@ -439,6 +442,7 @@ export async function withParkedNativeTask(
    const runAbortController = new AbortController();
    let activeRun: RunEmbeddedAgentParams | undefined;
    let phase = "waiting for delegation";
@@ -1971,7 +2017,7 @@ index 1895b0ff3..ea6f32be7 100644
    let backendAborted = false;
    const abortOwned = vi.fn(() => {
      backendAborted = true;
-@@ -452,6 +453,8 @@ export async function withParkedNativeTask(
+@@ -452,6 +456,8 @@ export async function withParkedNativeTask(
    upstream.runEmbeddedAgent
      .mockImplementationOnce(async (params) => {
        try {
@@ -1980,7 +2026,7 @@ index 1895b0ff3..ea6f32be7 100644
          phase = "admitting backend";
          if (!params.preparedRunAdmission) {
            throw new Error("Expected real Talk admission");
-@@ -584,21 +587,27 @@ export async function withParkedNativeTask(
+@@ -584,21 +590,27 @@ export async function withParkedNativeTask(
      let deadline: ReturnType<typeof setTimeout> | undefined;
      let stopObservingCompletion: (() => void) | undefined;
      const timeoutMs = 1000;
@@ -2052,7 +2098,7 @@ index 998715c79..c901776b1 100644
        expect(upstream.runEmbeddedAgent).toHaveBeenCalledOnce();
      });
 diff --git a/src/gateway/talk/handlers/client.test.ts b/src/gateway/talk/handlers/client.test.ts
-index c7c19fb4d..fa9c297ed 100644
+index c7c19fb..f16ee39 100644
 --- a/src/gateway/talk/handlers/client.test.ts
 +++ b/src/gateway/talk/handlers/client.test.ts
 @@ -78,6 +78,7 @@ vi.mock("../../../talk/provider-registry.js", async (importOriginal) => ({
@@ -2078,7 +2124,7 @@ index c7c19fb4d..fa9c297ed 100644
            ) {
              await voiceMocks.executionReady();
            }
-@@ -188,7 +190,7 @@ async function createBrowserConsult(publicOnly = false) {
+@@ -188,14 +190,17 @@ async function createBrowserConsult(publicOnly = false) {
    const actual = await vi.importActual<typeof import("../../../talk/agent-consult-runtime.js")>(
      "../../../talk/agent-consult-runtime.js",
    );
@@ -2087,6 +2133,17 @@ index c7c19fb4d..fa9c297ed 100644
    voiceMocks.runEmbeddedAgent.mockImplementation(async (params) => {
      params.abortSignal?.throwIfAborted();
      return await enqueueCommandInLane(
+       "talk-admission-test",
+       async () => ({
+         payloads: [{ text: "fixture status" }],
+-        meta: { durationMs: 0 },
++        meta: {
++          durationMs: 0,
++          terminalReply: { disposition: "visible" as const, text: "fixture status" },
++        },
+       }),
+       { abortSignal: params.abortSignal },
+     );
 diff --git a/src/gateway/talk/handlers/index.test.ts b/src/gateway/talk/handlers/index.test.ts
 index da066ccc6..a88c215ef 100644
 --- a/src/gateway/talk/handlers/index.test.ts

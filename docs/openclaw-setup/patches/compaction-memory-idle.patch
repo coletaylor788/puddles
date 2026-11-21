@@ -1040,26 +1040,6 @@ index e5091993e..c3bcb83d3 100644
          registerTurnStatus: (status: CliBackendTurnStatus) => {
            assertCurrent();
            const registration: ReplyBackendTurnStatus = bindCliTurnStatus(
-diff --git a/src/agents/cli-runner/execute.supervisor-capture.test.ts b/src/agents/cli-runner/execute.supervisor-capture.test.ts
-index d25ea65f6..0cc375156 100644
---- a/src/agents/cli-runner/execute.supervisor-capture.test.ts
-+++ b/src/agents/cli-runner/execute.supervisor-capture.test.ts
-@@ -29,6 +29,7 @@ import {
-   startDiagnosticRunActivityTracking,
- } from "../../logging/diagnostic-run-activity.js";
- import type {
-+  CliBackendExecuteContext,
-   CliBackendParseJsonlEvent,
-   CliBackendParsedJsonlEvent,
- } from "../../plugins/cli-backend.types.js";
-@@ -274,6 +275,7 @@ beforeEach(() => {
-   vi.unstubAllEnvs();
-   resetAgentEventsForTest();
-   resetDiagnosticEventsForTest();
-+  snapshotHook.mockClear();
-   supervisorSpawnMock.mockReset(); // These contexts bypass preparation, which normally loads the provider owner.
-   // Unknown CLI errors must not materialize bundled plugins inside this fixture.
-   const registry = createEmptyPluginRegistry();
 diff --git a/src/agents/cli-runner/execute.ts b/src/agents/cli-runner/execute.ts
 index e7a9cf01d..85ae56908 100644
 --- a/src/agents/cli-runner/execute.ts
