@@ -1896,3 +1896,24 @@ index b7e4df568..8c7a0023e 100644
                targetAgentId: "main",
                targetSessionKey: "agent:main:child",
                displayKey: "agent:main:child",
+diff --git a/src/agents/harness/selection.context.cases.ts b/src/agents/harness/selection.context.cases.ts
+index cb5bfbf..0a447a7 100644
+--- a/src/agents/harness/selection.context.cases.ts
++++ b/src/agents/harness/selection.context.cases.ts
+@@ -1,4 +1,5 @@
+ import { expect, it, vi, type Mock } from "vitest";
++import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
+ import { setActiveNodeContexts } from "../../infra/active-node-context.js";
+ import { createOpenClawCodingToolsAsync } from "../../plugin-sdk/agent-harness.js";
+ import { isHostScopedAgentToolActive } from "../agent-tools.ring-zero-context.js";
+@@ -55,7 +56,9 @@ export function registerSelectionContextCases({
+     },
+   );
+ 
+-  it("carries a runtime-event completion result into the plugin harness inbound context", async () => {
++  it("carries a runtime-event completion result into the plugin harness inbound context", async ({ onTestFinished }) => {
++    setRuntimeConfigSnapshot({});
++    onTestFinished(clearRuntimeConfigSnapshot);
+     const runAttempt = vi.fn<AgentHarness["runAttempt"]>(async () => createAttemptResult("native"));
+     registerHarness({ runAttempt });
+     const params = {

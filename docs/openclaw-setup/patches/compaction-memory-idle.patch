@@ -5067,10 +5067,17 @@ index 000000000..0107a8b59
 +  45_000,
 +);
 diff --git a/src/auto-reply/reply/agent-runner-memory.test.ts b/src/auto-reply/reply/agent-runner-memory.test.ts
-index 3a66c4d25..0d279b6e2 100644
+index 3a66c4d..de2c7b4 100644
 --- a/src/auto-reply/reply/agent-runner-memory.test.ts
 +++ b/src/auto-reply/reply/agent-runner-memory.test.ts
-@@ -61,6 +61,7 @@ import { waitForReplyRunSuccessorAdmission } from "../../sessions/session-contro
+@@ -1,5 +1,6 @@
+ // Tests agent runner memory flush and persisted memory context handling.
+ import fsCore from "node:fs";
++import * as verboseDiagnostics from "../../globals.js";
+ import fs from "node:fs/promises";
+ import os from "node:os";
+ import path from "node:path";
+@@ -61,6 +62,7 @@ import { waitForReplyRunSuccessorAdmission } from "../../sessions/session-contro
  import { closeOpenClawAgentDatabasesAsync } from "../../state/openclaw-agent-db.js";
  import { refreshSessionEntryFromStore } from "./agent-runner-core.js";
  import {
@@ -5078,7 +5085,7 @@ index 3a66c4d25..0d279b6e2 100644
    runMemoryFlushIfNeeded as runMemoryFlushIfNeededRaw,
    runSessionCompactionIfNeeded as runSessionCompactionIfNeededRaw,
  } from "./agent-runner-memory.js";
-@@ -88,6 +89,7 @@ const {
+@@ -88,6 +90,7 @@ const {
    compactEmbeddedAgentSessionMock,
    runEmbeddedAgentEntryMock,
    runEmbeddedAgentMock,
@@ -5086,7 +5093,7 @@ index 3a66c4d25..0d279b6e2 100644
    refreshQueuedFollowupSessionMock,
    incrementCompactionCountMock,
    registerAgentRunContextMock,
-@@ -96,11 +98,13 @@ const {
+@@ -96,11 +99,13 @@ const {
    compactEmbeddedAgentSessionMock: vi.fn(),
    runEmbeddedAgentEntryMock: vi.fn(),
    runEmbeddedAgentMock: vi.fn(),
@@ -5100,7 +5107,7 @@ index 3a66c4d25..0d279b6e2 100644
  const runWithModelFallbackMock = vi.fn();
  const ensureSelectedAgentHarnessPluginMock = vi.fn();
  
-@@ -264,6 +268,127 @@ describe("runMemoryFlushIfNeeded", () => {
+@@ -264,6 +269,129 @@ describe("runMemoryFlushIfNeeded", () => {
      await waitForSessionTranscriptProjection(scope);
    }
  
@@ -5141,6 +5148,8 @@ index 3a66c4d25..0d279b6e2 100644
 +  ] as const)(
 +    "runs an explicit %s snapshot with explicit store %s without updating the live checkpoint",
 +    async (harnessId, explicitStore) => {
++      const snapshotLog = vi.spyOn(verboseDiagnostics, "logVerbose");
++      onTestFinished(() => snapshotLog.mockRestore());
 +      if (harnessId === "claude-cli") registerClaudeCliBackend(true);
 +      const capturedAt = Date.parse("2023-11-14T12:00:00Z");
 +      const capturedTimes: number[] = [];
@@ -5184,7 +5193,7 @@ index 3a66c4d25..0d279b6e2 100644
 +          contextTokens: 100000,
 +        },
 +      );
-+      expect(result.outcome).toBe("completed");
++      expect(result.outcome, JSON.stringify(snapshotLog.mock.calls)).toBe("completed");
 +      expect(capturedTimes).toContain(capturedAt);
 +      const call =
 +        harnessId === "claude-cli"
@@ -5228,7 +5237,7 @@ index 3a66c4d25..0d279b6e2 100644
    async function runDefaultMemoryFlush(
      sessionEntry: SessionEntry,
      overrides: Partial<MemoryFlushTestParams> = {},
-@@ -383,6 +508,7 @@ describe("runMemoryFlushIfNeeded", () => {
+@@ -383,6 +511,7 @@ describe("runMemoryFlushIfNeeded", () => {
        result: { tokensAfter: 42 },
      });
      runEmbeddedAgentMock.mockReset().mockResolvedValue({ payloads: [], meta: {} });
@@ -5237,7 +5246,7 @@ index 3a66c4d25..0d279b6e2 100644
      ensureSelectedAgentHarnessPluginMock.mockReset().mockResolvedValue(undefined);
      registerAgentRunContextMock.mockReset();
 diff --git a/src/auto-reply/reply/agent-runner-memory.ts b/src/auto-reply/reply/agent-runner-memory.ts
-index 1ca0c6c5b..c94ad1c90 100644
+index 1ca0c6c..ec50a80 100644
 --- a/src/auto-reply/reply/agent-runner-memory.ts
 +++ b/src/auto-reply/reply/agent-runner-memory.ts
 @@ -8,15 +8,22 @@ import { resolveEffectiveCompactionReserveTokens } from "../../agents/agent-comp
@@ -5770,7 +5779,7 @@ index 1ca0c6c5b..c94ad1c90 100644
 +                modelProvider: provider,
 +                modelContextTokens: contextWindowTokens,
 +                runtimePolicySessionKey: sourcePolicySessionKey,
-+                diagnosticOwner: deferredLifecycle.handoffToCli(),
++                // Snapshot sessions acquire their own native CLI admission first.
 +                cleanupCliLiveSessionOnRunEnd: true,
 +              })
 +            : await runtime.runEmbeddedAgent(memoryRunParams);

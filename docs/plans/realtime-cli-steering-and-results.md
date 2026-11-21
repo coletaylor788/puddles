@@ -187,15 +187,18 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-The combined candidate passes DEV, including native steering, sandboxed reader
+The previous candidate passes DEV, including native steering, sandboxed reader
 yield, proactive results, history and close/reopen. Production qualification
-stopped in the local full suite before target deployment. The latest repairs
-keep Python scratch settings out of native socket paths and align the synthetic
-model-error scenario with the exact native 11.5 messages. Both failures reproduce
-before repair; focused tests and all 15 installed scenarios pass afterward,
-with retained review clear and artifact integrity preserved.
-These are test-harness corrections. Runtime patches and sandbox behavior remain
-unchanged. Full-suite CI, TEST/PROD and physical voice acceptance remain open.
+stopped in the source-host full suite before transfer or deployment. The source
+transaction is closed and cleanup is complete.
+
+The next candidate repairs the existing memory-snapshot patch so each new
+snapshot session acquires native admission before starting its CLI run. The
+remaining corrections adapt regression fixtures to native 11.5 lifecycle,
+metadata and supported historical database behavior. The three child exceptions,
+tool containment and Talk routing remain unchanged. Focused source and installed
+checks pass; the remaining cumulative tests, rebuilt-candidate DEV, TEST/PROD
+and physical voice acceptance remain open.
 
 ## Agent section
 
@@ -262,6 +265,26 @@ Retained review has no findings. Evidence: `/private/tmp/phase2-suite-paths-2026
 No runtime source or patch changed. All 15 installed scenarios pass, including
 companion restart and quiet completion; process cleanup and unchanged artifact
 integrity checks pass. Fresh DEV and full-suite CI remain required.
+
+
+R17 DEV `gh-44948343029-1` passed. Production `gh-44950240113-1`
+failed the source full suite before transfer; no target receipt exists.
+The source queue closed at `1795297766159`, with transfer cleanup `already-clean`.
+R18 fixes snapshot admission inside the retained compaction patch; its native
+admission regression reproduces the failure before repair. Five affected native
+test files pass all 201 cases. Talk tests use native completion barriers, the
+runtime-event fixture initializes its configuration, and snapshot enumeration
+excludes only the persistent reclaim guard file.
+
+Installed filesystem isolation passes with native Docker identity queries and
+existing container pins. Reader guidance, model-selection preservation, fallback
+restoration/exhaustion, and owner-relay recovery checks pass. Memory restart
+fixtures now permit the existing native local worker broker while retaining
+external-network blocks. Historical Doctor fixtures use supported singleton keys
+and compare against the installed schema declaration. Remaining checks continue
+against the rebuilt candidate; historical fixture success does not independently
+prove the release migration sequence. The retained reviewer reports no findings
+in the current behavior diff. Evidence: `/private/tmp/phase2-suite-paths-20261121`.
 
 ### Scope and acceptance criteria
 

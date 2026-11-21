@@ -563,3 +563,16 @@ index 000000000..6efc52ab3
 +  }
 +  throw new Error("test barrier timed out");
 +}
+diff --git a/src/auto-reply/reply/session-hooks-context.test.ts b/src/auto-reply/reply/session-hooks-context.test.ts
+index 2089267..8406723 100644
+--- a/src/auto-reply/reply/session-hooks-context.test.ts
++++ b/src/auto-reply/reply/session-hooks-context.test.ts
+@@ -262,7 +262,7 @@ describe("session hook context wiring", () => {
+       }
+       await flushSessionMemoryWritesForTest();
+       const memoryDir = path.join(workspaceDir, "memory");
+-      const files = await fs.readdir(memoryDir);
++      const files = (await fs.readdir(memoryDir)).filter(name => name !== ".session-memory.lock.reclaim");
+       expect(files).toHaveLength(1);
+       const content = await fs.readFile(path.join(memoryDir, files[0]!), "utf8");
+       expect(content).toContain('assistant: "retiring-memory-5"');
