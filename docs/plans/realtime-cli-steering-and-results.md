@@ -2,7 +2,7 @@
 
 Status: Production approved; combined candidate qualification in progress
 Issue: https://github.com/coletaylor788/puddles/issues/377
-Last updated: 2026-11-20
+Last updated: 2026-11-21
 
 ## Human section
 
@@ -187,12 +187,13 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-The child expansion is reviewed and passes installed execution: DEV now reaches
-child completion and the resumed parent answer. Voice delivery exposed a yield
-settlement bug in the existing Talk adapter. Its reviewed correction passes
-focused tests and preserves the native completion owner. The next combined
-candidate must pass complete Talk, TEST and PROD qualification. Physical-call
-acceptance remains open.
+The child expansion is reviewed and passes installed execution, including child
+completion and the resumed parent answer. The existing Talk patch now corrects
+yield settlement and selects the command's final answer instead of combining
+it with earlier CLI answers. The latest DEV run exposed that second defect when
+an answer arrived before Claude consumed a refinement. Both repairs retain native
+completion ownership. Complete Talk, TEST and PROD qualification and physical-call
+acceptance remain open.
 
 ## Agent section
 
@@ -210,6 +211,16 @@ result; the resumed parent produces the exact final. The voice append times out
 because the Talk command adapter rejects yielded settlement and revokes its
 promoted requester-final attachment. Correct that adapter within the approved
 Talk patch, preserve the three sandbox exceptions and build a new sealed candidate.
+
+R13 DEV `gh-44842964047-1`, candidate `4f37330968773ad96ebd764db2d6f93c79f00797dc4c435e29c947668ff4bbd6`,
+is terminal failed with cleanup closed. The installed and sandbox checks pass.
+The Talk assertion detects the original answer alongside the steered answer,
+before reader yield starts. Native CLI records retain the original as interim
+history; Talk joined both payloads despite the final-answer metadata selecting
+only the corrected answer. Use that existing metadata for speech, with the
+payload projection retained only for runtimes lacking a terminal snapshot.
+Silent or empty snapshots must not revive earlier answers. No browser/runtime
+configuration or sandbox admission change is part of this correction.
 
 ### Scope and acceptance criteria
 
@@ -251,6 +262,14 @@ shrinks to removing an obsolete diagnostic because native tool construction now
 supports the configured sandboxed grant. Neither change adds custom routing.
 
 ### Validation
+
+The terminal-answer regression first fails all three added cases on the previous
+source. The correction passes 51 focused tests across Talk projection, the real
+Gateway command path and Quicksilver delegation (98.92 seconds across three
+shards, plus 44.67 seconds of compiler preparation). Core types pass. The complete
+25-patch composition applies to pinned 11.5 and exactly reproduces the changed
+source and tests. Retained review has no findings. Installed voice acceptance
+still requires a new DEV run.
 
 R12 DEV passes all twelve installed checks and real Claude subscription and
 boundary qualification. Native transcripts prove foreground steering, accepted
