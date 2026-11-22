@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import { gunzipSync } from "node:zlib";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import http from "node:http";
@@ -10,6 +10,7 @@ import https from "node:https";
 import net from "node:net";
 import { canonicalValueDigest, executeStateMigration } from "../src/native-state-migration.mjs";
 import { digest, fileDigest, treeDigest } from "../src/native-state.mjs";
+import { installSignalHandlers, runCommand } from "../src/process-runner.mjs";
 
 const [runtime, root, mode, legacyFixture] = process.argv.slice(2);
 let networkAttempts = 0;
@@ -38,7 +39,9 @@ if (mode === "authored-model") {
 const original = {
   agents,
   memory: mode === "include" ? { $include: "memory.json" } : memory,
-  ...(mode === "legacy-config"
+  // Historical fixtures contain other cron partitions. Select the reviewed
+  // partition explicitly, matching the native stopped-state SDK rehearsal.
+  ...(["legacy", "legacy-config"].includes(mode)
     ? { cron: { store: join(stateDir, "cron", "legacy-jobs.json") } }
     : {}),
   ...(mode === "legacy-config"
@@ -140,10 +143,60 @@ if (mode === "legacy") {
   await sdk.loadCronJobsStoreWithConfigJobsReadOnly(storePath, process.env, { artifactPreservingReadOnly: true });
   assert.equal(treeDigest(stateDir), digestBefore, "cron snapshot must not mutate target state");
 }
-const expectedBuiltIn = await executeStateMigration({ ...options, phase: "preflight" });
-assert.equal(treeDigest(stateDir), digestBefore, "preflight must not mutate target state");
-await executeStateMigration({ ...options, phase: "schema" });
-await executeStateMigration({ ...options, phase: "builtin-config", expectedBuiltIn });
+if (mode === "legacy") {
+  // The deployed upgrade uses native Doctor's backup and maintenance custody.
+  // Bind the original explicit partition before Doctor removes cron.store from
+  // authored configuration. Never rebaseline the reviewed jobs after repair.
+  const loaded = await sdk.loadCronJobsStoreWithConfigJobsReadOnly(storePath, process.env, {
+    artifactPreservingReadOnly: true, includeJobsFingerprint: true,
+  });
+  assert.equal(loaded.invalidConfigRows?.length ?? 0, 0);
+  assert.equal(typeof loaded.jobsFingerprint, "string");
+  assert.deepEqual(loaded.store.jobs, before.jobs);
+  assert.equal(sdk.resolveCronJobConfigRevision(loaded.store.jobs.find(job => job.id === "selected")),
+    manifest.cronOperation.expectedRevision);
+  assert.equal(treeDigest(stateDir), digestBefore, "preflight must not mutate target state");
+  const guard = join(root, "doctor-offline.mjs"), denied = join(root, "doctor-network-attempts");
+  writeFileSync(guard, `import net from 'node:net';
+import { appendFileSync } from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';
+const connect = net.Socket.prototype.connect;
+net.Socket.prototype.connect = function (...args) {
+  const first = Array.isArray(args[0]) ? args[0][0] : args[0];
+  if (typeof first === 'string' && !/^[0-9]+$/.test(first) || first?.path) return connect.apply(this, args);
+  const options = typeof first === 'object' ? first : { port: first, host: args[1] };
+  // Doctor probes local Gateway health. Block that socket too, without treating
+  // its expected offline probe as an external provider request.
+  if (!['127.0.0.1', '::1', 'localhost'].includes(options?.host ?? 'localhost'))
+    appendFileSync(${JSON.stringify(denied)}, 'denied');
+  throw Error('Network is forbidden in the stopped-state fixture');
+}; syncBuiltinESMExports();`);
+  installSignalHandlers();
+  await runCommand(process.execPath, [join(runtime, "openclaw.mjs"),
+    "doctor", "--repair", "--yes", "--non-interactive", "--no-workspace-suggestions"], {
+    cwd: root, timeoutMs: 120_000, quiet: true, logPath: join(root, "doctor.log"),
+    env: { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${pathToFileURL(guard).href}`.trim(),
+      OPENCLAW_NO_RESPAWN: "1", OPENCLAW_SERVICE_REPAIR_POLICY: "external" },
+  });
+  assert.equal(existsSync(denied), false, "Doctor must not attempt external network activity");
+  const repaired = JSON.parse(readFileSync(configPath, "utf8"));
+  const repairedPath = sdk.resolveCronJobsStorePathFromConfig(repaired, process.env, process.env,
+    { artifactPreservingReadOnly: true });
+  assert.equal(repairedPath, storePath, "Doctor must preserve the original selected cron partition");
+  const repairedJobs = await sdk.loadCronJobsStoreWithConfigJobsReadOnly(repairedPath, process.env,
+    { artifactPreservingReadOnly: true, includeJobsFingerprint: true });
+  assert.equal(repairedJobs.jobsFingerprint, loaded.jobsFingerprint, "Doctor must preserve every bound cron row");
+  assert.deepEqual(repairedJobs.store.jobs, loaded.store.jobs, "Doctor must preserve all job behavior");
+  assert.equal(sdk.resolveCronJobConfigRevision(repairedJobs.store.jobs.find(job => job.id === "selected")),
+    manifest.cronOperation.expectedRevision, "Doctor must not rebaseline the selected job");
+} else {
+  // Retain coverage of the narrow stopped-state SDK for current schemas.
+  const expectedBuiltIn = await executeStateMigration({ ...options, phase: "preflight" });
+  assert.equal(treeDigest(stateDir), digestBefore, "preflight must not mutate target state");
+  await executeStateMigration({ ...options, phase: "schema" });
+  await executeStateMigration({ ...options, phase: "builtin-config", expectedBuiltIn });
+}
+// The explicit silence operation below tests the targeted writer separately.
+// Native production upgrade migration does not silence or remove existing jobs.
 await executeStateMigration({ ...options, phase: "config" });
 const written = JSON.parse(readFileSync(configPath, "utf8"));
 if (mode === "legacy-config") {

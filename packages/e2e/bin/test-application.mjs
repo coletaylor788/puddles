@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import scenarios from '../scenarios/imessage.mjs';
@@ -8,8 +8,6 @@ import { treeDigest } from '../src/native-state.mjs';
 import { installSignalHandlers } from '../src/process-runner.mjs';
 
 const artifact = realpathSync(process.env.OPENCLAW_CANDIDATE_DIR);
-const plugin = join(artifact, 'plugins/communication-watcher');
-if (!existsSync(join(plugin, 'scripts/configure.mjs'))) throw new Error('Built communication plugin is required for the full application gate');
 const extension = process.env.E2E_APPLICATION_EXTENSION
   ? (await import(pathToFileURL(realpathSync(process.env.E2E_APPLICATION_EXTENSION)))).default : {};
 const root = mkdtempSync(join(dirname(artifact), 'application-checks-'));

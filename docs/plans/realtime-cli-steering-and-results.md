@@ -179,6 +179,40 @@ isolated [prototype](claude-child-sandbox-poc.md) proves the selected Docker/Cla
 path, including real child delivery and resume. Combined release qualification
 and the wider authority-loss matrix remain release gates.
 
+
+#### Native compatibility gaps found by the complete application suite
+
+The three Claude child exceptions remain unchanged. Two other native 11.5
+contracts require compatibility work before this combined upgrade can ship.
+
+The requester approved removing the forwarded-message watcher entirely after
+its replacement failed the existing interaction contract. Remove the plugin,
+its packaging requirements, dedicated tests and obsolete setup documentation.
+Preserve correspondence and user data, the ordinary reader, task reminders,
+and all unrelated Cron and heartbeat behavior. Inspect deployed configuration
+before retiring any watcher-specific state-side references.
+
+The deployed upgrade already uses native Doctor after installation, with the
+frozen predecessor and rehearsed configuration result checked before startup.
+The historical July regression still invoked a legacy direct schema adapter
+without Doctor's backup and maintenance custody. Update that regression to the
+same supported Doctor invocation. Bind the original explicit Cron partition,
+complete job fingerprint and selected revision before migration and verify
+them afterward. Keep current-schema targeted-writer coverage separate; its
+explicit one-job silence operation is not production upgrade behavior.
+
+Current production preservation remains covered by the native candidate
+rehearsal and its checks for existing Cron identities, definitions, grants,
+receipts, task runs and scratch state. Installed Workshop and heartbeat cases
+exercise the maintained migration path. No new OpenClaw patch or release
+controller change is needed.
+
+**Approval:** The original upgrade and Claude patch scope remains production
+approved. On 2026-11-22 the requester approved watcher removal: “Oh okay that
+didn’t work. Just remove it entirely”. The requester also authorized migration
+implementation while preserving data and behavior: “For migration, I don’t care
+how it’s done, don’t lose any data or behavior like crons of course”.
+
 ### Status
 
 **Approval: Production approved for the complete scope.** On 2026-11-18 the
@@ -187,19 +221,20 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-The rebuilt candidate passes all required repository checks, twelve installed
-DEV checks, real Claude subscription qualification and the sandbox boundaries.
-DEV then fails in Talk provider readiness: the selected OpenAI voice provider
-reports that it is not configured. Target and source cleanup are complete.
-Production has not received this feature.
+R19 passes DEV, all twelve installed checks, real Claude subscription and
+sandbox boundaries, and the complete installed application lane. Production
+workflow `gh-44964068110-1` failed in the source application's final candidate
+checks, before transfer. Its source queue is closed and transfer cleanup is
+already clean. There is no target deployment receipt because target deployment
+never started. Production has not received this feature.
 
-Local create/offer/close/reopen checks pass with the full Claude and Docker
-configuration. A real installed Claude turn against the existing loopback
-scripted provider also completes once and reopens successfully. The failure's
-initial-create versus reopen stage is still unresolved. The next candidate adds
-bounded phase and registration diagnostics to the existing qualifier only;
-there is no runtime repair or readiness bypass. Full CI, TEST/PROD and physical
-voice acceptance remain open.
+Watcher removal, historical Doctor migration, build-profile and Workshop
+draft-location corrections are implemented. Six candidate migration cases pass,
+including the authentic historical database. Application packaging and suite
+checks pass, and the retained independent review has no unresolved findings.
+The application has been rebuilt. Fresh configuration rehearsal, a new frozen
+candidate, DEV, full CI and TEST/PROD remain before release. Physical voice
+acceptance remains separate.
 
 ## Agent section
 
@@ -317,6 +352,38 @@ original exception and native cleanup. Ten fixture unit checks pass. Local
 ordinary and full-config reopen checks pass; real CLI loopback Talk produces
 exactly one answer from one primary request and then reopens (44.8 seconds).
 These are diagnostic observations, not a proven fix for the DEV failure.
+
+R19 production workflow `gh-44964068110-1` failed before target transfer.
+The complete installed application lane passed. Source queue closed at
+`1795308363915`; transfer cleanup reports `already-clean`. Source failures
+include retired heartbeat configuration/runtime, the moved Workshop drafts
+inbox, a new runtime-script build check, and a historical default-partition
+query. Workshop/build corrections pass three focused tests. Native sender
+memory/confinement validation passes, and communication unit/helper suites pass
+58 and 12 tests respectively.
+
+The one-way watcher prototype was withdrawn. The requester subsequently
+approved complete removal of the forwarded-message watcher. Its public plugin,
+packaging hooks and dedicated fixtures are removed from the working tree;
+private packaging and deployed-reference retirement are being reconciled.
+Generic reminders, Cron jobs, the ordinary reader and correspondence remain
+outside that removal.
+
+The historical native Doctor prototype preserved its explicit partition, full
+job fingerprint, reviewed revision, concurrent changes and SecretRefs. Retained
+review corrected the earlier ordering concern: native-activation is legacy
+recovery tooling, not this rollout's installed path. The maintained application
+post-install controls already invoke native Doctor with exact frozen config
+checks. The July fixture now follows that path; focused qualification and full
+candidate CI remain required. Migration implementation is explicitly approved
+with preservation of all data and unrelated behavior.
+
+Focused removal validation: 24 application packaging/suite tests, six candidate
+migration cases (68 seconds), and all 45 retained native pipeline cases pass
+(the corrected artifact-index case was rerun after the other 44 passed). The
+e2e type check passes. The existing handoff patch bytes and three exceptions
+remain unchanged. Packaging has changed, so installed release evidence must be
+renewed on the next frozen candidate.
 
 ### Scope and acceptance criteria
 

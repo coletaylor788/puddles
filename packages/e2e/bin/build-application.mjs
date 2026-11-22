@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, rmSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import { runCommand } from '../src/process-runner.mjs';
 import { ownApplicationOutput } from '../src/application-output.mjs';
 import { buildApplicationCore } from '../src/application-build-cache.mjs';
@@ -24,8 +23,6 @@ if (owner.uiInputs !== uiInputs || !existsSync(join(uiOutput, 'index.html')) || 
 }
 rmSync(output, { recursive: true, force: true });
 await materializeRuntimeForDev(source, output);
-const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-await materializeRuntimeForDev(join(repository, 'openclaw-plugins/communication-watcher/dist'), join(output, 'plugins/communication-watcher'));
 for (const plugin of pluginFile ? JSON.parse(readFileSync(pluginFile, 'utf8')) : []) {
   if (!/^[a-z][a-z0-9-]*$/.test(plugin.id)) throw new Error('Invalid application plugin id');
   const destination = join(output, 'dist/extensions', plugin.id);

@@ -675,7 +675,6 @@
     "tests/candidate.application-source.test.ts",
     "tests/candidate.tool-results.test.ts",
     "tests/candidate.scoped-memory.test.ts",
-    "tests/candidate.communication-watcher.test.ts",
     "tests/candidate.development-loop.test.ts",
     "tests/candidate.talk-concurrency.test.ts"
   ]

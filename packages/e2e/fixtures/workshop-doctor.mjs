@@ -31,7 +31,7 @@ if (mode === "doctor") {
   writeFileSync(join(stateDir, "openclaw.json"), JSON.stringify({ agents: { ownership: "explicit", entries: Object.fromEntries(agents.map(({ id, ...entry }) => [id, entry])) } }));
   const originalSkill = treeDigest(applied.record.target.skillDir);
   const pendingDraft = readFileSync(join(pending.directory, "PROPOSAL.md"), "utf8");
-  const archive = join(stateDir, "agents/main/agent/workshop-skills/.archive/.retired-proposals", pending.record.id, "SKILL.md");
+  const draft = join(stateDir, "agents/main/agent/workshop-skills/.drafts", pending.record.id, "SKILL.md");
   const doctor = () => JSON.parse(execFileSync(process.execPath, ["--import", join(candidate, "scripts/tsx.mjs"), import.meta.filename, "doctor", candidate, root], {
     cwd: candidate, env: { ...process.env, OPENCLAW_STATE_DIR: stateDir, OPENCLAW_CONFIG_PATH: join(stateDir, "openclaw.json") },
     encoding: "utf8", timeout: 45_000, maxBuffer: 1024 * 1024,
@@ -39,20 +39,20 @@ if (mode === "doctor") {
   const succeeded = doctor();
   assert.deepEqual(succeeded.warnings, []);
   assert.ok(succeeded.changes.some((change) => change.includes("Exported 1 pending Skill Workshop proposal draft")));
-  assert.equal(readFileSync(archive, "utf8"), pendingDraft);
+  assert.equal(readFileSync(draft, "utf8"), pendingDraft);
   assert.equal(existsSync(pending.record.target.skillDir), false);
-  assert.equal(existsSync(join(stateDir, "agents/reader/agent/workshop-skills/.archive/.retired-proposals", pending.record.id)), false);
+  assert.equal(existsSync(join(stateDir, "agents/reader/agent/workshop-skills/.drafts", pending.record.id)), false);
   assert.equal(existsSync(join(stateDir, "skill-workshop/proposals")), false);
   const db = new DatabaseSync(join(stateDir, "state/openclaw.sqlite"), { readOnly: true });
   try {
     assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_schema WHERE name LIKE 'skill_workshop_proposal%' OR name='skill_workshop_collection_reviews'").get().n, 0);
   } finally { db.close(); }
   assert.equal(treeDigest(applied.record.target.skillDir), originalSkill);
-  // Reopening the retired state is idempotent and keeps the archived draft,
+  // Reopening the retired state is idempotent and keeps the inactive draft,
   // its owning agent and the user-visible applied skill content.
   assert.deepEqual(doctor().warnings, []);
-  assert.equal(readFileSync(archive, "utf8"), pendingDraft);
+  assert.equal(readFileSync(draft, "utf8"), pendingDraft);
   assert.equal(existsSync(pending.record.target.skillDir), false);
   assert.equal(treeDigest(applied.record.target.skillDir), originalSkill);
-  process.stdout.write(JSON.stringify({ passed: true, draftArchived: true, ownershipPreserved: true, appliedContentPreserved: true, repeatable: true }));
+  process.stdout.write(JSON.stringify({ passed: true, draftRetained: true, ownershipPreserved: true, appliedContentPreserved: true, repeatable: true }));
 }

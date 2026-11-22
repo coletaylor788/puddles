@@ -22,7 +22,7 @@ describe("stopped-state operations through the actual candidate SDK", () => {
       join(repo, "packages/e2e/fixtures/state-migration.mjs"), realpathSync(candidate!), root, mode,
       join(source!, "test/fixtures/sqlite/openclaw-state-v2026.7.1-2.sqlite.gz"),
     ], {
-      encoding: "utf8", timeout: 45_000,
+      encoding: "utf8", timeout: 150_000,
       env: {
         PATH: `${dirname(process.execPath)}:/usr/bin:/bin`, HOME: join(root, "home"),
         TMPDIR: join(root, "scratch"), OPENCLAW_STATE_DIR: join(root, "state"),
@@ -31,5 +31,5 @@ describe("stopped-state operations through the actual candidate SDK", () => {
       },
     });
     expect(`${result.stdout}\n${result.stderr}`).not.toContain("Network is forbidden");
-  }, 50_000);
+  }, 160_000);
 });
