@@ -227,15 +227,16 @@ Its terminal receipt is failed, phase complete, with no child. Source queue and
 transfer cleanup are closed. Production never activated; other releases are not
 held for this repair.
 
-The native snapshot follows a stale plugin install record into a broken old
-checkout dependency. An isolated, verified recovery-backup copy proved that the
-installed native plugin relink command corrects that record. Application tables,
-including Cron data, were unchanged. Configuration changed only its native
-last-touched version; the other changes were install and diagnostic bookkeeping.
-The proof used historical stopped state, so current-production migration
-acceptance remains open. A separate controlled administrative repair is proposed
-before retrying the unchanged TEST gate. No live repair or new core patch has
-been made. Physical voice acceptance remains separate.
+The stale native plugin installation record has now been repaired in a separate,
+explicitly approved production maintenance transaction. Intake was held and
+writers stopped before capturing and verifying a fresh recovery backup. The
+installed native relink command passed the preservation comparison, and production
+restarted healthy with normal intake resumed. Cron and all other application
+data, effective configuration, plugin selections and unrelated installation
+records were preserved. Production remains on 11.4; no new core patch was added.
+R31 refreshes the affected predecessor bindings for normal DEV and production CI.
+Current-production migration rehearsal and the upgrade remain open. Physical
+voice acceptance remains separate.
 
 ## Agent section
 
@@ -253,10 +254,12 @@ DEV `gh-45143463852-1` passed with terminal cleanup complete. Production
 backup or activation. Its receipt completed at `1795430254098`; source
 `submission-1ea5d71e-104e-4601-b826-e0733952a9de` closed at
 `1795430305003`, transfer cleaned. Preserve the released native fallback and all
-existing migration assertions. The private appendix records the proved native
-record repair and the proposed separate maintenance boundary. Refresh affected
-predecessor bindings after any approved maintenance; do not treat the historical
-backup proof as current-production TEST acceptance. Earlier evidence follows.
+existing migration assertions. The requester explicitly approved the separate
+native-record maintenance on 2026-11-23. Its receipt is passed/complete/child-null,
+with normal intake resumed and the maintenance queue fence released. Fresh backup,
+state preservation and healthy restart were verified. The private appendix holds
+the target evidence. R31 refreshes affected predecessor bindings; DEV and the
+normal current-production TEST rehearsal remain required. Earlier evidence follows.
 
 DEV `gh-44801823538-1` is terminal failed with `phase=complete`, `child=null`,
 source queue closure and transfer cleanup. Installed checks and real subscription/
