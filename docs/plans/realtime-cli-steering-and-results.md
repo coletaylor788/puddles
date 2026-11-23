@@ -213,6 +213,20 @@ didn’t work. Just remove it entirely”. The requester also authorized migrati
 implementation while preserving data and behavior: “For migration, I don’t care
 how it’s done, don’t lose any data or behavior like crons of course”.
 
+#### Plugin paths in the migration rehearsal
+
+Native update preparation treats an npm-installed host as a shared code owner.
+Our custom plugins live under that host, so their projected paths can point back
+to the TEST runtime. Doctor requires those plugin entries inside its private
+update copy. The harness therefore copies the exact candidate plugin subtree
+inside the rehearsal and redirects its configuration and installation records.
+A separate, bounded process uses the source-version native metadata writer and
+closes its database owners before the unchanged candidate Doctor runs. The
+preparation preserves schema, all application tables, unrelated configuration,
+installation provenance, and native code-link receipts. DEV and TEST exercise
+this topology with synthetic existing Cron and heartbeat data before the real
+copied-production rehearsal. No production state is changed by preparation.
+
 ### Status
 
 **Approval: Production approved for the complete scope.** On 2026-11-18 the
@@ -221,22 +235,20 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-R30 passed DEV and the full application suite. Production run
-`gh-45147100574-1` then failed during the existing-production-state TEST snapshot.
-Its terminal receipt is failed, phase complete, with no child. Source queue and
-transfer cleanup are closed. Production never activated; other releases are not
-held for this repair.
+R31 passed DEV and the full application suite, then failed in the copied-state
+TEST rehearsal before production backup or activation. The terminal receipt and
+source queue are closed. Production remains healthy on 11.4, and other releases
+are free to use the queue. The earlier approved native install-record maintenance
+is complete with data and behavior preserved.
 
-The stale native plugin installation record has now been repaired in a separate,
-explicitly approved production maintenance transaction. Intake was held and
-writers stopped before capturing and verifying a fresh recovery backup. The
-installed native relink command passed the preservation comparison, and production
-restarted healthy with normal intake resumed. Cron and all other application
-data, effective configuration, plugin selections and unrelated installation
-records were preserved. Production remains on 11.4; no new core patch was added.
-R31 refreshes the affected predecessor bindings for normal DEV and production CI.
-Current-production migration rehearsal and the upgrade remain open. Physical
-voice acceptance remains separate.
+The remaining failure comes from the rehearsal projecting custom plugins through
+the installed npm host link. R32 copies the candidate plugin subtree into the
+private rehearsal and updates only its copied path references through the
+source-version native metadata API. No OpenClaw patch or live state write is
+needed. The schema-22 prototype passes unchanged 11.5 Doctor and verifies all
+application tables before migration. The installed synthetic regression passes; fresh DEV,
+current-production TEST and production rollout remain required. Physical voice
+acceptance remains separate.
 
 ## Agent section
 
@@ -247,19 +259,15 @@ approved. Public base `8394d4392d1aba03e9f85c4a1f6fcca6058e25d4`; approved nativ
 pin 11.5 `e13cf15ece9bbd969b7362927c315362c90c97ff`. This replaces the deferred
 outline in [the upgrade plan](voice-consultation-through-agent-turn.md).
 
-Current candidate R30 is
-`a750bb93d59307649171a25fd79f72ba74b06ffa3e2a82b0bf2cb61c808aa213`.
-DEV `gh-45143463852-1` passed with terminal cleanup complete. Production
-`gh-45147100574-1` passed application tests, then failed at `test-tests` before
-backup or activation. Its receipt completed at `1795430254098`; source
-`submission-1ea5d71e-104e-4601-b826-e0733952a9de` closed at
-`1795430305003`, transfer cleaned. Preserve the released native fallback and all
-existing migration assertions. The requester explicitly approved the separate
-native-record maintenance on 2026-11-23. Its receipt is passed/complete/child-null,
-with normal intake resumed and the maintenance queue fence released. Fresh backup,
-state preservation and healthy restart were verified. The private appendix holds
-the target evidence. R31 refreshes affected predecessor bindings; DEV and the
-normal current-production TEST rehearsal remain required. Earlier evidence follows.
+R31 candidate `9a3e13857c88f71b47990dd6871428f1aa56860af3647655e136b319f97bd8c8`
+passed DEV `gh-45238618009-1` and the full application suite. Production run
+`gh-45244709426-1` failed at `test-tests` before backup or activation, with
+status failed, phase complete and child null. Source queue and transfer cleanup
+closed. R32 changes only private qualification controls; runtime patches and
+application output are unchanged. The retained reviewer found no actionable defects in the complete diff. Native 11.7 plugin repair still requires private entry roots, so
+it does not remove this npm-host projection problem. No new runtime patch is
+proposed. The installed synthetic regression passed in 33.439 seconds; normal CI remains mandatory.
+Earlier evidence follows.
 
 DEV `gh-44801823538-1` is terminal failed with `phase=complete`, `child=null`,
 source queue closure and transfer cleanup. Installed checks and real subscription/
