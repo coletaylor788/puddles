@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { collectCandidates, loadCandidate, pinCandidate, publishCandidate } from '../src/ci-candidate.mjs';
 
@@ -16,6 +17,36 @@ function fixture(t) {
   const inputs = { repositories: [{ repository: 'example/app', head: '1'.repeat(40), base: '2'.repeat(40), tree: '3'.repeat(40), pullRequest: 1 }] };
   const policy = { maxBytes: 1024 * 1024, reserveBytes: 0 };
   return { root, registry, source, inputs, policy };
+}
+
+for (const state of ['available', 'pending', 'stuck']) {
+  test('candidate read handles ownership contention: ' + state, { timeout: 10000 }, async t => {
+    const f = fixture(t), manifest = await publishCandidate(f.registry, f.source, f.inputs, f.policy);
+    const writer = spawn(process.execPath, ['--input-type=module', '-e', `
+      import { DatabaseSync } from 'node:sqlite';
+      const db = new DatabaseSync(process.argv[1]);
+      db.exec('BEGIN EXCLUSIVE');
+      if (process.argv[3] === 'pending') db.prepare('INSERT INTO ownership(id,payload) VALUES (?,?)').run(process.argv[2], '{}');
+      process.stdout.write('locked\\n');
+      setTimeout(() => { db.exec('COMMIT'); db.close(); }, process.argv[3] === 'stuck' ? 60000 : 250);
+    `, join(f.registry, '.registry.lock/ownership.sqlite'), manifest.id, state],
+    { stdio: ['ignore', 'pipe', 'pipe'] });
+    const closed = once(writer, 'close');
+    try {
+      await once(writer.stdout, 'data');
+      const started = performance.now();
+      if (state === 'pending') assert.throws(() => loadCandidate(f.registry, manifest.id), /publication or retirement is incomplete/);
+      else if (state === 'stuck') {
+        assert.throws(() => loadCandidate(f.registry, manifest.id), /database is locked/);
+        assert.ok(performance.now() - started < 8000, 'Persistent contention exceeded the bounded wait');
+        assert.equal(writer.exitCode, null, 'Reader waited for the writer instead of enforcing its bound');
+      } else assert.equal(loadCandidate(f.registry, manifest.id).manifest.id, manifest.id);
+      if (state !== 'stuck') assert.deepEqual(await closed, [0, null]);
+    } finally {
+      if (writer.exitCode === null && writer.signalCode === null) writer.kill();
+      await closed;
+    }
+  });
 }
 function killed(f, action, point, before = '') {
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', `

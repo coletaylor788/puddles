@@ -40,7 +40,10 @@ function equal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 export function assertCandidateAvailable(root, id) {
   validateDatabase(root);
   if (!existsSync(databasePath(root))) return;
-  const db = new DatabaseSync(databasePath(root), { readOnly: true });
+  // Publication and maintenance briefly commit ownership records in DELETE
+  // journal mode. Read their committed result instead of failing a deployment
+  // on that short write lock; persistent contention must still fail closed.
+  const db = new DatabaseSync(databasePath(root), { readOnly: true, timeout: 5000 });
   try { if (db.prepare('SELECT id FROM ownership WHERE id = ?').get(id)) throw Error('Candidate publication or retirement is incomplete'); }
   finally { db.close(); }
 }
