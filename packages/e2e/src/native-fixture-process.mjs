@@ -5,7 +5,9 @@ import { execFileSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 
 function fixtureProcesses() {
-  return execFileSync("ps", ["-axo", "pid=,ppid=,pgid=,uid=,stat=,lstart="], {
+  // Match process.getuid(): setuid utilities (including macOS ps) can have
+  // effective UID 0 while remaining children owned by the fixture's real user.
+  return execFileSync("ps", ["-axo", "pid=,ppid=,pgid=,ruid=,stat=,lstart="], {
     encoding: "utf8", timeout: 5000,
   }).split("\n").flatMap(line => {
     const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/);
