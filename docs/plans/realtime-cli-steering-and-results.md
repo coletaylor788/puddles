@@ -235,20 +235,20 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-R31 passed DEV and the full application suite, then failed in the copied-state
-TEST rehearsal before production backup or activation. The terminal receipt and
-source queue are closed. Production remains healthy on 11.4, and other releases
-are free to use the queue. The earlier approved native install-record maintenance
-is complete with data and behavior preserved.
+R32 passed DEV and the full application suite, then failed during the copied-state
+TEST rehearsal before production backup or activation. Cleanup and the source
+queue are closed, so other releases can proceed. Production remains on 11.4.
+The custom-plugin path rehearsal now passes.
 
-The remaining failure comes from the rehearsal projecting custom plugins through
-the installed npm host link. R32 copies the candidate plugin subtree into the
-private rehearsal and updates only its copied path references through the
-source-version native metadata API. No OpenClaw patch or live state write is
-needed. The schema-22 prototype passes unchanged 11.5 Doctor and verifies all
-application tables before migration. The installed synthetic regression passes; fresh DEV,
-current-production TEST and production rollout remain required. Physical voice
-acceptance remains separate.
+The remaining assertion treated native heartbeat conversion as data loss because
+Doctor intentionally removes the generated ownership marker. R33 checks the
+converted behavior against the frozen configuration and native migration receipt.
+Ordinary jobs remain subject to exact preservation checks. Existing heartbeat
+identities, cadence, enabled state, history, scratch and execution authority must
+survive. This changes qualification controls only; the application is unchanged.
+The 54 focused tests, expanded installed regression and retained review pass.
+Fresh DEV, current-production TEST and production rollout remain required.
+Physical voice acceptance remains separate.
 
 ## Agent section
 
@@ -267,6 +267,18 @@ closed. R32 changes only private qualification controls; runtime patches and
 application output are unchanged. The retained reviewer found no actionable defects in the complete diff. Native 11.7 plugin repair still requires private entry roots, so
 it does not remove this npm-host projection problem. No new runtime patch is
 proposed. The installed synthetic regression passed in 33.439 seconds; normal CI remains mandatory.
+R32 candidate `20f204be69e04d3f29dbc731fa0a1ba75e2e8bf53a7a85294fdf03bcc7f9cb0e`
+passed DEV `gh-45265124065-1` and the full suite. Production run
+`gh-45270841675-1` failed at `test-tests`, with phase complete and child null.
+Source closure and transfer cleanup are verified. No backup or activation ran.
+R33 retains exact checks for ordinary jobs and validates generated-heartbeat
+conversion using native read-only loading, frozen configuration, completed
+cutover receipts and retained authority. The installed regression passed in
+37.546 seconds, including persisted enabled and disabled monitors, execution
+history, scratch, authority and an unrelated declaration. All 54 focused tests
+pass; retained review has no actionable findings. Runtime output is unchanged.
+Fresh DEV and copied-production TEST are still required.
+
 Earlier evidence follows.
 
 DEV `gh-44801823538-1` is terminal failed with `phase=complete`, `child=null`,
