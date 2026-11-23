@@ -221,20 +221,14 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-R19 passes DEV, all twelve installed checks, real Claude subscription and
-sandbox boundaries, and the complete installed application lane. Production
-workflow `gh-44964068110-1` failed in the source application's final candidate
-checks, before transfer. Its source queue is closed and transfer cleanup is
-already clean. There is no target deployment receipt because target deployment
-never started. Production has not received this feature.
-
-Watcher removal, historical Doctor migration, build-profile and Workshop
-draft-location corrections are implemented. Six candidate migration cases pass,
-including the authentic historical database. Application packaging and suite
-checks pass, and the retained independent review has no unresolved findings.
-The application has been rebuilt. Fresh configuration rehearsal, a new frozen
-candidate, DEV, full CI and TEST/PROD remain before release. Physical voice
-acceptance remains separate.
+The combined change passes DEV, including migration, real Claude subscription,
+sandbox boundaries and Talk, with teardown and source cleanup complete. This
+feature has not deployed to production. The next candidate reuses a reviewed
+test-helper correction: process ownership compares real user IDs consistently,
+so native setuid utilities are not rejected as foreign descendants. All 35
+focused process tests and the package type check pass. Runtime patches, sandbox
+enforcement and recovery assertions remain unchanged. Fresh DEV, full CI and
+TEST/PROD remain before release; physical voice acceptance is separate.
 
 ## Agent section
 
@@ -244,6 +238,17 @@ Original Phase 2 scope and the three Claude admission exceptions are production
 approved. Public base `fc295c9e8a0c2545181c62809783534c8f68a4e4`; approved native
 pin 11.5 `e13cf15ece9bbd969b7362927c315362c90c97ff`. This replaces the deferred
 outline in [the upgrade plan](voice-consultation-through-agent-turn.md).
+
+Current qualification: R26 candidate
+`179e5fb40ba2692d59dc41009886d329db7a833604becdd654a9beadba43d966`
+passes DEV `gh-45097241517-1`, terminal complete with no child process.
+Source cleanup is closed. R27 reuses the exact reviewed process ownership
+correction from `a9536a2b96f62922c3bf4e353c96b7212072cf9d` before the next full
+suite. `ps ruid` now matches `process.getuid`; ancestry, process-start identity,
+foreign-owner refusal and bounded cleanup remain intact. All 35 focused
+process tests and e2e type checking pass; retained review reports no findings.
+Create a new immutable candidate and repeat DEV for the changed helper inputs.
+Earlier qualification evidence follows.
 
 DEV `gh-44801823538-1` is terminal failed with `phase=complete`, `child=null`,
 source queue closure and transfer cleanup. Installed checks and real subscription/
