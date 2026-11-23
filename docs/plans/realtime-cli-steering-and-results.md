@@ -2,7 +2,7 @@
 
 Status: Production approved; combined candidate qualification in progress
 Issue: https://github.com/coletaylor788/puddles/issues/377
-Last updated: 2026-11-22
+Last updated: 2026-11-23
 
 ## Human section
 
@@ -221,14 +221,21 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-The upgrade is rebased on current main and is being qualified again. Earlier
-DEV runs passed migration, subscription, sandbox and Talk checks; those runs do
-not qualify the rebased candidate. This feature has not deployed to production.
-The rebase preserves the newly landed native fallback behavior, separate
-migration test groups and both obsolete plugin removals. All 88 focused
-configuration and integration tests pass, and retained review has no findings.
-Fresh runtime migration proofs, DEV, full CI and TEST/PROD remain before release.
-Physical voice acceptance is separate.
+R30 passed DEV and the full application suite. Production run
+`gh-45147100574-1` then failed during the existing-production-state TEST snapshot.
+Its terminal receipt is failed, phase complete, with no child. Source queue and
+transfer cleanup are closed. Production never activated; other releases are not
+held for this repair.
+
+The native snapshot follows a stale plugin install record into a broken old
+checkout dependency. An isolated, verified recovery-backup copy proved that the
+installed native plugin relink command corrects that record. Application tables,
+including Cron data, were unchanged. Configuration changed only its native
+last-touched version; the other changes were install and diagnostic bookkeeping.
+The proof used historical stopped state, so current-production migration
+acceptance remains open. A separate controlled administrative repair is proposed
+before retrying the unchanged TEST gate. No live repair or new core patch has
+been made. Physical voice acceptance remains separate.
 
 ## Agent section
 
@@ -239,15 +246,17 @@ approved. Public base `8394d4392d1aba03e9f85c4a1f6fcca6058e25d4`; approved nativ
 pin 11.5 `e13cf15ece9bbd969b7362927c315362c90c97ff`. This replaces the deferred
 outline in [the upgrade plan](voice-consultation-through-agent-turn.md).
 
-Current integration: R29 rebases the feature onto the landed native fallback
-release. R28 was rejected before dispatch because main changed; its queue is
-closed and it created no target transaction. Preserve the new native fallback
-configuration and remove the capacity plugin alongside the forwarded-message
-watcher. The ten installed test groups retain separate wiki and reader migration
-budgets, heartbeat and Talk coverage. Retained review reports no regressions;
-88 focused configuration and integration tests pass. Refresh the complete frozen
-configuration and source closure, build in the existing workspace, and repeat
-DEV before production submission. Earlier qualification evidence follows.
+Current candidate R30 is
+`a750bb93d59307649171a25fd79f72ba74b06ffa3e2a82b0bf2cb61c808aa213`.
+DEV `gh-45143463852-1` passed with terminal cleanup complete. Production
+`gh-45147100574-1` passed application tests, then failed at `test-tests` before
+backup or activation. Its receipt completed at `1795430254098`; source
+`submission-1ea5d71e-104e-4601-b826-e0733952a9de` closed at
+`1795430305003`, transfer cleaned. Preserve the released native fallback and all
+existing migration assertions. The private appendix records the proved native
+record repair and the proposed separate maintenance boundary. Refresh affected
+predecessor bindings after any approved maintenance; do not treat the historical
+backup proof as current-production TEST acceptance. Earlier evidence follows.
 
 DEV `gh-44801823538-1` is terminal failed with `phase=complete`, `child=null`,
 source queue closure and transfer cleanup. Installed checks and real subscription/
