@@ -235,18 +235,18 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-R34 passed DEV but failed the local application suite before transfer or target
-deployment. Its source queue and transfer cleanup are closed. The Talk fixture
-passes unchanged on rerun. The memory fixture hit an agent database admission
-race after channel startup; R35 waits for native readiness within the existing
-startup deadline. Five focused regressions pass and retained review is clear.
-Final installed validation passes across restart and access-denial cases. The
-application artifact and approved patches remain unchanged.
+R35 passed DEV but failed the full installed suite before transfer or target
+deployment. Its source queue and transfer cleanup are closed. The memory repair
+passes both installed variants. R36 adds the standard MCP ping response to the
+synthetic provider and runs the dependency-heavy Talk check in the existing
+preflight lane before concurrent suites. The delayed native ping case passes
+with all access denials intact; retained review is clear. Talk preflight
+qualification passes in 56 seconds. Runtime output and approved patches are unchanged.
 
 The preserved heartbeat job-definition mismatch remains unresolved. Field-level
-diagnostics retain all preservation checks and omit private values. A fresh
-DEV pass and copied-production TEST are required to identify that difference.
-No production activation occurred; the release lane is free for other features.
+diagnostics retain all preservation checks and omit private values. Fresh DEV
+and copied-production TEST are required to identify that difference. No
+production activation occurred; the release lane is free for other features.
 Physical voice acceptance remains separate.
 
 ## Agent section
@@ -304,6 +304,27 @@ pass, retained review has no findings, and final-helper installed validation
 passed in 183.913 seconds. The initial readiness correction passed the complete keyword-memory
 case in 184.887 seconds. Unchanged Talk rerun passed in 51.508 seconds. Both
 main references remain at the bases above.
+
+R35 candidate `adfd5021a77efb251d681298e19ec47cc599ea5b78a28f2d1efc3e67a0cda3a1`
+passed DEV `gh-45318096597-1`, complete/child-null at `1795491545547`;
+source closed at `1795491596240`, transfer cleaned. PROD workflow
+`gh-45321193921-1` failed the local installed suite; its production job was
+skipped and no target receipt exists. Source closed at `1795495744542`, transfer
+already clean. Keyword memory passed in 198.409 seconds and warmed local memory
+in 100.737 seconds. Talk dependency capture was still copying files near the
+120-second startup limit while source tests ran concurrently. The separate
+household failure reproduced when a delayed model response kept MCP alive long
+enough for a native ping, which the synthetic provider rejected.
+
+R36 returns an empty MCP ping result without consuming a model turn or exposing
+tools. Unknown operations still fail. The delayed native case confirms a real
+ping and passes all cross-tier denials in 96.765 seconds. Thirteen synthetic
+provider tests, six inventory tests and seventeen public suite tests pass.
+Talk moves to the existing preflight lane; preflight and remaining inventory
+entries partition the original set, with standalone callers running all checks.
+Every phase retains cleanup and output-integrity checks. Talk deadlines and
+assertions are unchanged. Retained review is clear; actual Talk preflight passed in 56.031 seconds,
+including cleanup and unchanged output verification. Fresh DEV and the full suite remain required.
 
 Earlier evidence follows.
 
