@@ -1920,10 +1920,10 @@ index aa701b718..2d569b5a0 100644
      },
    );
 diff --git a/src/gateway/talk/client-gateway-control.mailbox.test.ts b/src/gateway/talk/client-gateway-control.mailbox.test.ts
-index dc40398fc..cfc79e5b2 100644
+index dc40398fc..330a908ac 100644
 --- a/src/gateway/talk/client-gateway-control.mailbox.test.ts
 +++ b/src/gateway/talk/client-gateway-control.mailbox.test.ts
-@@ -13,6 +13,7 @@ const { config, coreParams, mocks } = await vi.hoisted(
+@@ -13,6 +13,7 @@
  
  // mock-isolation: Mailbox ordering uses fixture-owned run admission instead of the process-wide model and tool authority context.
  vi.mock("../../agents/admitted-run-context.js", () => ({
@@ -1931,7 +1931,7 @@ index dc40398fc..cfc79e5b2 100644
    createOperationalRunInstanceRef: mocks.createOperationalRunInstanceRef,
    prepareAgentRunAdmission: mocks.prepareAgentRunAdmission,
  }));
-@@ -20,9 +21,21 @@ vi.mock("../../agents/admitted-run-context.js", () => ({
+@@ -20,9 +21,21 @@
  vi.mock("../../agents/embedded-agent.js", () => ({
    runEmbeddedAgent: mocks.runEmbeddedAgentCore,
  }));
@@ -1954,6 +1954,16 @@ index dc40398fc..cfc79e5b2 100644
  }));
  
  import { parseRealtimeVoiceAgentConsultArgs } from "../../talk/agent-consult-tool.js";
+@@ -162,7 +175,8 @@
+   const { enqueue, owner, expectResults } = createOwner(undefined, true);
+   const task = enqueue("consult", "configure the Dial");
+   try {
+-    await vi.waitFor(() => expect(order).toEqual(["configure the Dial"]));
++    await task.started.promise;
++    expect(order).toEqual(["configure the Dial"]);
+     task.release();
+     await expectResults("configure the Dial");
+   } finally {
 diff --git a/src/gateway/talk/client-permission-parity.test.ts b/src/gateway/talk/client-permission-parity.test.ts
 index e247e6d..d6c1ed1 100644
 --- a/src/gateway/talk/client-permission-parity.test.ts

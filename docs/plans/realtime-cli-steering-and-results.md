@@ -235,19 +235,19 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-R35 passed DEV but failed the full installed suite before transfer or target
-deployment. Its source queue and transfer cleanup are closed. The memory repair
-passes both installed variants. R36 adds the standard MCP ping response to the
-synthetic provider and runs the dependency-heavy Talk check in the existing
-preflight lane before concurrent suites. The delayed native ping case passes
-with all access denials intact; retained review is clear. Talk preflight
-qualification passes in 56 seconds. Runtime output and approved patches are unchanged.
+R36 passed DEV but failed the full source and installed suites before transfer
+or deployment. Source cleanup is closed, and its Talk-startup and MCP repairs
+pass. R37 replaces an incidental polling timeout in the Talk mailbox test with
+its existing start signal and moves offline Doctor checks before concurrent
+suites. All 55 affected Talk tests and five standalone Doctor cases pass; review
+is clear. The earlier Doctor exit cause remains unproven, so process diagnostics
+are retained. Runtime behavior, per-test deadlines and preservation checks are
+unchanged.
 
-The preserved heartbeat job-definition mismatch remains unresolved. Field-level
-diagnostics retain all preservation checks and omit private values. Fresh DEV
-and copied-production TEST are required to identify that difference. No
-production activation occurred; the release lane is free for other features.
-Physical voice acceptance remains separate.
+The heartbeat job-definition mismatch still requires copied-production TEST.
+Fresh DEV and the full suite must pass before that rehearsal. No production
+activation occurred, and the release lane is free for other features. Physical
+voice acceptance remains separate.
 
 ## Agent section
 
@@ -324,7 +324,26 @@ Talk moves to the existing preflight lane; preflight and remaining inventory
 entries partition the original set, with standalone callers running all checks.
 Every phase retains cleanup and output-integrity checks. Talk deadlines and
 assertions are unchanged. Retained review is clear; actual Talk preflight passed in 56.031 seconds,
-including cleanup and unchanged output verification. Fresh DEV and the full suite remain required.
+including cleanup and unchanged output verification.
+
+R36 candidate `4a44875fef939efc064c422e869470f612c9289e50dab39ed81203b959b75bf4`
+passed DEV `gh-45331451762-1`, complete/child-null at `1795498491247`, with
+source closure at `1795498554344` and cleaned transfer. PROD workflow
+`gh-45335110408-1` failed before transfer; production was skipped and no target
+receipt exists. Source closed at `1795502930714`, transfer already clean.
+The Talk mailbox test observed no start within its default polling interval;
+R37 waits on its existing start promise, then retains the same order assertion,
+release and cleanup. The maintained Talk patch changes only this test and its
+private hash binding. All 55 affected Gateway tests pass in 27.14 seconds.
+
+The installed orphan-removal Doctor case exited 141 near its 60-second command
+limit. The prior fixture discarded process error metadata, so timeout is not
+proven. All five standalone Doctor cases pass in 243.679 seconds, including
+orphan removal in 34.064 seconds. R37 retains status, signal, error code and
+elapsed time and moves the entire offline Doctor file to existing preflight.
+All cases, deadlines, output checks and cleanup remain. Six phase-partition
+regressions pass, and retained review has no findings. Fresh DEV and the full
+suite remain required; the scheduling change is a mitigation to qualify.
 
 Earlier evidence follows.
 
