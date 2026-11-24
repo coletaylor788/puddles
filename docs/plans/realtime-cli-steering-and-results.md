@@ -235,14 +235,20 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-R36 passed DEV but failed the full source and installed suites before transfer
-or deployment. Source cleanup is closed, and its Talk-startup and MCP repairs
-pass. R37 replaces an incidental polling timeout in the Talk mailbox test with
-its existing start signal and moves offline Doctor checks before concurrent
-suites. All 55 affected Talk tests and five standalone Doctor cases pass; review
-is clear. The earlier Doctor exit cause remains unproven, so process diagnostics
-are retained. Runtime behavior, per-test deadlines and preservation checks are
-unchanged.
+R37 passed DEV but failed the full application suite before transfer or
+production deployment. Cleanup is closed and the release lane is free. R38
+corrects a stale diagnostic test and moves the complete reader migration group
+before concurrent source tests. Its unchanged three installed tests pass,
+including history, explicit selection and rollback checks.
+
+The direct-tool fixture also released input while a sibling database was still
+being inspected. It now waits for the native startup probe after channel
+subscription, within the original startup deadline. The installed main and
+reader tool flow passes. Startup settlement is not a claim that every agent is
+healthy; the real tool assertions still enforce that. The complete cause of the
+observed database custody warning remains unproven. Runtime behavior,
+individual deadlines and preservation checks remain unchanged. Retained review
+has no actionable findings.
 
 The heartbeat job-definition mismatch still requires copied-production TEST.
 Fresh DEV and the full suite must pass before that rehearsal. No production
@@ -344,6 +350,27 @@ elapsed time and moves the entire offline Doctor file to existing preflight.
 All cases, deadlines, output checks and cleanup remain. Six phase-partition
 regressions pass, and retained review has no findings. Fresh DEV and the full
 suite remain required; the scheduling change is a mitigation to qualify.
+
+R37 failed before transfer with a stale diagnostic inventory expectation,
+a 60-second reader Doctor timeout, and an initial direct-tool turn timeout.
+R38 covers diagnostic retention for all, preflight and remaining phases. The
+complete reader group moves to preflight with its existing 315-second allowance;
+all per-case and Doctor limits remain. Unchanged standalone reader tests pass in
+148.310 seconds, with history, selection and rollback assertions intact.
+
+The shared native fixture waits on `/startupz` after every fresh subscription,
+including restart. Native startup waits for pending sibling database inspection;
+`/readyz` excludes isolatable siblings. The existing bounded probe helper moves
+to the public fixture package, while memory checks keep their `/readyz` behavior.
+Each startup retains one absolute deadline spanning spawn, subscription and
+probe. Non-200 responses, child exit and provider errors cannot release ingress.
+Startup settlement does not certify every agent or deferred maintenance task.
+The database custody warning's full cause remains unproven. The unchanged
+programmatic test passes in 30.901 seconds; with the startup gate it passes in
+29.725 seconds. Eight public probe tests, fifteen private inventory/readiness/
+diagnostic tests and public fixture type checking pass. Retained review has no
+findings. Fresh DEV and the full application suite remain required before
+copied-production TEST.
 
 Earlier evidence follows.
 

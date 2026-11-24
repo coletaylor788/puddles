@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { performance } from "node:perf_hooks";
+import { waitForNativeGatewayReadiness } from "./native-gateway-readiness.mjs";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { createServer } from "node:http";
@@ -307,6 +309,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
     log = openSync(join(root, "gateway.log"), "w", 0o600);
     const timeout = options.timeoutMs ?? 90_000;
     const startGateway = async () => {
+      const deadline = performance.now() + timeout;
       const readyCount = records(join(context.recordingsDir, "imsg-ready.jsonl")).length;
       child = spawnFixtureProcess(process.execPath, [join(installedDir, "openclaw.mjs"), "gateway", "run", "--port", String(port), "--bind", "loopback"], {
         cwd: context.workspace, env: environment, detached: true, stdio: ["ignore", log, log],
@@ -318,7 +321,19 @@ export async function runScenario(installedDir, scenario, options = {}) {
       await until(() => {
         if (spawnError) throw spawnError;
         return records(join(context.recordingsDir, "imsg-ready.jsonl")).length > readyCount;
-      }, "real iMessage subscription", timeout, child);
+      }, "real iMessage subscription", Math.max(0, deadline - performance.now()), child);
+      // A channel can subscribe while a sibling database is still being inspected.
+      // Native startup settlement gates ingress, including after a fixture restart.
+      // It does not certify agent health; the real turn/tool assertions do that.
+      await waitForNativeGatewayReadiness({
+        port, deadline, endpoint: "/startupz",
+        assertAlive: () => {
+          if (spawnError) throw spawnError;
+          if (modelError) throw modelError;
+          provider?.assertHealthy();
+          if (child.exitCode !== null || child.signalCode !== null) throw new Error("Gateway exited before native startup settlement");
+        },
+      });
     };
     await startGateway();
     if (scenario.heartbeat) {
