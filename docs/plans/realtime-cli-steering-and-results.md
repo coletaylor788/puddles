@@ -2,7 +2,7 @@
 
 Status: Production approved; combined candidate qualification in progress
 Issue: https://github.com/coletaylor788/puddles/issues/377
-Last updated: 2026-11-23
+Last updated: 2026-11-24
 
 ## Human section
 
@@ -235,25 +235,24 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-R37 passed DEV but failed the full application suite before transfer or
-production deployment. Cleanup is closed and the release lane is free. R38
-corrects a stale diagnostic test and moves the complete reader migration group
-before concurrent source tests. Its unchanged three installed tests pass,
-including history, explicit selection and rollback checks.
+R38 passed DEV. Its first production attempt passed installed checks but hit
+the source suite's disk-capacity guard; guarded cleanup reclaimed completed
+fixture data. The retry passed the complete source lane but failed installed
+checks before deployment. Both source transactions are closed, and the release
+lane is free.
 
-The direct-tool fixture also released input while a sibling database was still
-being inspected. It now waits for the native startup probe after channel
-subscription, within the original startup deadline. The installed main and
-reader tool flow passes. Startup settlement is not a claim that every agent is
-healthy; the real tool assertions still enforce that. The complete cause of the
-observed database custody warning remains unproven. Runtime behavior,
-individual deadlines and preservation checks remain unchanged. Retained review
-has no actionable findings.
+The child completed successfully, but its result did not reach the parent within
+the fixture's observation window. A separate household case stalled before any
+model request. R39 moves both complete files before concurrent source tests,
+with separate groups sized for their existing case deadlines. Assertions,
+per-case limits, tool permissions and cleanup are unchanged. This mitigates
+contention and fixes the shared group's insufficient budget; it does not prove
+a native delivery or SDK defect is resolved. All thirteen unchanged checks pass serially in 287.831 seconds, and retained
+review has no actionable findings.
 
 The heartbeat job-definition mismatch still requires copied-production TEST.
 Fresh DEV and the full suite must pass before that rehearsal. No production
-activation occurred, and the release lane is free for other features. Physical
-voice acceptance remains separate.
+activation occurred. Physical voice acceptance remains separate.
 
 ## Agent section
 
@@ -369,8 +368,34 @@ The database custody warning's full cause remains unproven. The unchanged
 programmatic test passes in 30.901 seconds; with the startup gate it passes in
 29.725 seconds. Eight public probe tests, fifteen private inventory/readiness/
 diagnostic tests and public fixture type checking pass. Retained review has no
-findings. Fresh DEV and the full application suite remain required before
-copied-production TEST.
+findings. The first R38 full installed lane subsequently passed.
+
+R38 passed DEV. The first production application run passed the entire installed
+lane, then failed the source canonical-workspace test at the existing free-space
+guard. Guarded retirement reclaimed 3.33 GB from completed task fixtures while
+preserving diagnostics and all referenced output. The unchanged selected source
+case passed in 12.344 seconds. The retry passed the entire source lane, but the
+installed group failed on parent delivery and household startup, then reached
+its shared 900-second deadline. Production was skipped; cleanup is closed.
+
+The child terminal record is successful and contains its synthetic report.
+Native announce began, but no resumed inference reached the provider during the
+20-second observation window. The household failure recorded only session
+startup and shutdown, with no model request. The unchanged selected household
+case passed alone in 23.398 seconds. These traces support scheduling mitigation,
+not a proven native runtime fix.
+
+R39 moves the complete boundary and household-return files into existing serial
+preflight. Their separate group deadlines are 735 and 855 seconds, derived from
+the unchanged four 180-second and seven 120-second cases plus exit margin. The
+remaining twelve-file group retains 900 seconds. All cases, assertions, fixture
+inputs and cleanup remain. Ten inventory and diagnostic regressions pass,
+including exact phase partition and the aggregate timeout covering every group.
+The aggregate allowance remains below the runner's six-hour check limit.
+All thirteen unchanged checks pass serially against the exact artifact in
+287.831 seconds, including both Claude wrapping modes, native parent
+continuation and all seven household permission cases. Retained review has no
+actionable findings. Fresh DEV and full CI remain required.
 
 Earlier evidence follows.
 
