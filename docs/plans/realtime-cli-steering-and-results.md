@@ -235,20 +235,19 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-R33 passed DEV and the full application suite, then failed in copied-state TEST
-before production backup or activation. The target receipt, source queue and
-transfer cleanup are closed. Production remains on 11.4 and the release lane is
-free for other features.
+R34 passed DEV but failed the local application suite before transfer or target
+deployment. Its source queue and transfer cleanup are closed. The Talk fixture
+passes unchanged on rerun. The memory fixture hit an agent database admission
+race after channel startup; R35 waits for native readiness within the existing
+startup deadline. Five focused regressions pass and retained review is clear.
+Final installed validation passes across restart and access-denial cases. The
+application artifact and approved patches remain unchanged.
 
-The heartbeat check detected a difference in the preserved job definition. The
-retained report contains hashes, and the test snapshot was cleaned up. Read-only
-metadata checks have not identified the changed field. R34 adds field-level
-failure diagnostics without exposing private values or relaxing any check.
-All 58 focused tests pass and retained review found no defects. This is diagnostic
-qualification work, not a claimed migration fix. Fresh DEV and copied-production
-TEST are required to identify the mismatch before choosing a repair. The
-application artifact and approved patches remain unchanged. Physical voice
-acceptance remains separate.
+The preserved heartbeat job-definition mismatch remains unresolved. Field-level
+diagnostics retain all preservation checks and omit private values. A fresh
+DEV pass and copied-production TEST are required to identify that difference.
+No production activation occurred; the release lane is free for other features.
+Physical voice acceptance remains separate.
 
 ## Agent section
 
@@ -291,6 +290,20 @@ equality criteria remain unchanged. Four new rejection/redaction regressions
 bring the focused suite to 58 passing tests. Retained review has no findings.
 Read-only normalization and digest comparisons did not establish the cause.
 The next copied-production rehearsal must identify it before any exception.
+
+R34 candidate `ab1bd8854dea9ac81db974583bf6a5a81fdbcaaf437f938e70cca811ed88bbaf`
+passed DEV `gh-45305203187-1`. PROD workflow `gh-45308413270-1` failed its local
+application suite; the production job was skipped and no target receipt exists.
+Source closure is `1795488970131`, with transfer already clean. The memory
+positive control received HTTP 400 while native agent database preparation was
+pending; iMessage subscription alone did not prove readiness. R35 waits for
+native `/readyz` after each restart, sharing the original absolute 91-second
+startup deadline. Only readiness transport failures retry. Tool assertions,
+model errors and child-exit failures are unchanged. Five focused regressions
+pass, retained review has no findings, and final-helper installed validation
+passed in 183.913 seconds. The initial readiness correction passed the complete keyword-memory
+case in 184.887 seconds. Unchanged Talk rerun passed in 51.508 seconds. Both
+main references remain at the bases above.
 
 Earlier evidence follows.
 
