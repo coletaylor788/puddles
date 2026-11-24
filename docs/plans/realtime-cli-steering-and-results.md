@@ -235,20 +235,20 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-R38 passed DEV. Its first production attempt passed installed checks but hit
-the source suite's disk-capacity guard; guarded cleanup reclaimed completed
-fixture data. The retry passed the complete source lane but failed installed
-checks before deployment. Both source transactions are closed, and the release
-lane is free.
+R39 passed DEV. Its latest production retry passed the complete source lane but
+failed one installed reader-guidance collector check before deployment. Cleanup
+is closed. The collector runs sixteen isolated native stages serially, each
+with an existing 75-second command limit, but the enclosing test stopped the
+whole collection after 220 seconds while the thirteenth stage was starting.
 
-The child completed successfully, but its result did not reach the parent within
-the fixture's observation window. A separate household case stalled before any
-model request. R39 moves both complete files before concurrent source tests,
-with separate groups sized for their existing case deadlines. Assertions,
-per-case limits, tool permissions and cleanup are unchanged. This mitigates
-contention and fixes the shared group's insufficient budget; it does not prove
-a native delivery or SDK defect is resolved. All thirteen unchanged checks pass serially in 287.831 seconds, and retained
-review has no actionable findings.
+R41 derives the success-path test budget from all sixteen stage limits plus
+setup and cleanup allowances. Native stage limits, the negative case, request
+counts, protocol coverage and guidance assertions remain unchanged. The reader
+group and application budgets include the full serial case budgets. No runtime
+patch, retry loop or additional serialization is introduced. All 27 focused inventory,
+diagnostic and quality-gate regressions pass. The full installed collector and
+negative case pass in 201.161 seconds, with cleanup complete. Retained review
+has no actionable findings.
 
 The heartbeat job-definition mismatch still requires copied-production TEST.
 Fresh DEV and the full suite must pass before that rehearsal. No production
@@ -370,32 +370,25 @@ programmatic test passes in 30.901 seconds; with the startup gate it passes in
 diagnostic tests and public fixture type checking pass. Retained review has no
 findings. The first R38 full installed lane subsequently passed.
 
-R38 passed DEV. The first production application run passed the entire installed
-lane, then failed the source canonical-workspace test at the existing free-space
-guard. Guarded retirement reclaimed 3.33 GB from completed task fixtures while
-preserving diagnostics and all referenced output. The unchanged selected source
-case passed in 12.344 seconds. The retry passed the entire source lane, but the
-installed group failed on parent delivery and household startup, then reached
-its shared 900-second deadline. Production was skipped; cleanup is closed.
+R39's latest production application run passed the source lane in 3501.278
+seconds. The installed reader group passed ten checks and failed its successful
+quality collector at 220.434 seconds. Progress ordinal 12 proves twelve prior
+stages completed; the outer process deadline terminated the thirteenth before
+its provider received a request. This is an aggregate deadline mismatch, not
+evidence that an individual provider stage exceeded its existing limit.
 
-The child terminal record is successful and contains its synthetic report.
-Native announce began, but no resumed inference reached the provider during the
-20-second observation window. The household failure recorded only session
-startup and shutdown, with no model request. The unchanged selected household
-case passed alone in 23.398 seconds. These traces support scheduling mitigation,
-not a proven native runtime fix.
-
-R39 moves the complete boundary and household-return files into existing serial
-preflight. Their separate group deadlines are 735 and 855 seconds, derived from
-the unchanged four 180-second and seven 120-second cases plus exit margin. The
-remaining twelve-file group retains 900 seconds. All cases, assertions, fixture
-inputs and cleanup remain. Ten inventory and diagnostic regressions pass,
-including exact phase partition and the aggregate timeout covering every group.
-The aggregate allowance remains below the runner's six-hour check limit.
-All thirteen unchanged checks pass serially against the exact artifact in
-287.831 seconds, including both Claude wrapping modes, native parent
-continuation and all seven household permission cases. Retained review has no
-actionable findings. Fresh DEV and full CI remain required.
+R41 retains native `--timeout 60` and the 75-second command limit. The successful
+collector budget is `16 * (75 + 15) + 15 = 1455` seconds, allowing stage setup
+and cleanup plus collector startup/final evidence. Its enclosing test permits
+another 20 seconds. The failure path retains its 220-second process and
+240-second test limits. The reader group totals every serial case plus exit
+margin at 3590 seconds. The installed inventory remains below the unchanged
+six-hour application gate. All sixteen receipts, sixteen requests, both provider
+protocols, scoped guidance and redaction assertions remain required. Twenty-seven
+inventory, diagnostic and quality-gate tests pass. Installed validation passes
+both cases: the full sixteen-stage collector in 187.444 seconds and the negative
+case in 13.618 seconds (201.161 seconds overall), with cleanup complete. Retained
+review has no actionable findings.
 
 Earlier evidence follows.
 
