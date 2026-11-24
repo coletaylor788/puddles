@@ -235,20 +235,20 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-R32 passed DEV and the full application suite, then failed during the copied-state
-TEST rehearsal before production backup or activation. Cleanup and the source
-queue are closed, so other releases can proceed. Production remains on 11.4.
-The custom-plugin path rehearsal now passes.
+R33 passed DEV and the full application suite, then failed in copied-state TEST
+before production backup or activation. The target receipt, source queue and
+transfer cleanup are closed. Production remains on 11.4 and the release lane is
+free for other features.
 
-The remaining assertion treated native heartbeat conversion as data loss because
-Doctor intentionally removes the generated ownership marker. R33 checks the
-converted behavior against the frozen configuration and native migration receipt.
-Ordinary jobs remain subject to exact preservation checks. Existing heartbeat
-identities, cadence, enabled state, history, scratch and execution authority must
-survive. This changes qualification controls only; the application is unchanged.
-The 54 focused tests, expanded installed regression and retained review pass.
-Fresh DEV, current-production TEST and production rollout remain required.
-Physical voice acceptance remains separate.
+The heartbeat check detected a difference in the preserved job definition. The
+retained report contains hashes, and the test snapshot was cleaned up. Read-only
+metadata checks have not identified the changed field. R34 adds field-level
+failure diagnostics without exposing private values or relaxing any check.
+All 58 focused tests pass and retained review found no defects. This is diagnostic
+qualification work, not a claimed migration fix. Fresh DEV and copied-production
+TEST are required to identify the mismatch before choosing a repair. The
+application artifact and approved patches remain unchanged. Physical voice
+acceptance remains separate.
 
 ## Agent section
 
@@ -278,6 +278,19 @@ cutover receipts and retained authority. The installed regression passed in
 history, scratch, authority and an unrelated declaration. All 54 focused tests
 pass; retained review has no actionable findings. Runtime output is unchanged.
 Fresh DEV and copied-production TEST are still required.
+
+R33 candidate `c04a19b19b3995a5ebc520ab7ad41de1d3fe98340bada0c66ad24fafb9077df5`
+passed DEV `gh-45288421439-1` and the full application suite. Production run
+`gh-45292757500-1` failed in `test-tests`, phase complete, child null. Target
+completion is `1795482769173`; source queue closure is `1795482820407` and
+transfer cleanup is complete. No backup or production activation occurred.
+The preserved job-definition assertion failed after native Doctor. R34 changes
+only its diagnostic message to identify added, removed or changed allowlisted
+schema fields, with unknown names redacted and all values omitted. Existing
+equality criteria remain unchanged. Four new rejection/redaction regressions
+bring the focused suite to 58 passing tests. Retained review has no findings.
+Read-only normalization and digest comparisons did not establish the cause.
+The next copied-production rehearsal must identify it before any exception.
 
 Earlier evidence follows.
 
