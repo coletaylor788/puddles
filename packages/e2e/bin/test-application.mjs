@@ -1,24 +1,23 @@
 #!/usr/bin/env node
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import scenarios from '../scenarios/imessage.mjs';
-import { cleanupNativeFixtures, runScenario } from '../src/native-fixture.mjs';
+import { runScenario } from '../src/native-fixture.mjs';
 import { treeDigest } from '../src/native-state.mjs';
-import { installSignalHandlers } from '../src/process-runner.mjs';
+import { withApplicationCheckCleanup } from '../src/application-check-cleanup.mjs';
 
 const artifact = realpathSync(process.env.OPENCLAW_CANDIDATE_DIR);
 const extension = process.env.E2E_APPLICATION_EXTENSION
   ? (await import(pathToFileURL(realpathSync(process.env.E2E_APPLICATION_EXTENSION)))).default : {};
 const root = mkdtempSync(join(dirname(artifact), 'application-checks-'));
 const before = treeDigest(artifact, { portable: true });
-installSignalHandlers({ cleanup: cleanupNativeFixtures });
 async function check(name, run) {
   const started = Date.now();
   try { return await run(); }
   finally { console.log(JSON.stringify({ check: name, durationMs: Date.now() - started })); }
 }
-try {
+await withApplicationCheckCleanup(root, async () => {
   const selected = [...scenarios, ...(extension.scenarios ?? [])];
   // Each scenario owns state, ports and children. Join a batch before cleanup.
   for (let index = 0; index < selected.length; index += 2) {
@@ -28,8 +27,4 @@ try {
     if (failures.length) throw new AggregateError(failures, 'Installed application scenarios failed');
   }
   if (treeDigest(artifact, { portable: true }) !== before) throw new Error('Installed checks changed the frozen application');
-} finally {
-  const failures = await cleanupNativeFixtures();
-  if (failures.length) throw new AggregateError(failures, 'Application fixtures did not stop');
-  rmSync(root, { recursive: true, force: true });
-}
+});

@@ -235,20 +235,22 @@ repair and extension-only FaceTime attachment through shipping and cleanup.
 That approval remains valid. No new FaceTime Gateway entrypoint is allowed.
 On 2026-11-20 the requester approved adding the three Claude-specific guard exceptions to the existing patch and rolling it out: “Okay approved to add these guard exceptions into the patch and roll it out.”
 
-R39 passed DEV. Its latest production retry passed the complete source lane but
-failed one installed reader-guidance collector check before deployment. Cleanup
-is closed. The collector runs sixteen isolated native stages serially, each
-with an existing 75-second command limit, but the enclosing test stopped the
-whole collection after 220 seconds while the thirteenth stage was starting.
+R41 passed DEV, including live Claude qualification. Its production attempts
+stopped in local application checks before transfer. Source tests passed; the
+reader budget repair also passed its full installed group. The first attempt's
+Docker startup and iMessage acknowledgment failures passed unchanged focused
+reproduction. The next attempt failed in the initial synthetic scenario group,
+but that runner deleted its diagnostics and subsequent source output displaced
+the error from the bounded CI log tail. The exact original scenario failure is
+not recoverable from retained evidence. Both source queues and cleanup closed.
 
-R41 derives the success-path test budget from all sixteen stage limits plus
-setup and cleanup allowances. Native stage limits, the negative case, request
-counts, protocol coverage and guidance assertions remain unchanged. The reader
-group and application budgets include the full serial case budgets. No runtime
-patch, retry loop or additional serialization is introduced. All 27 focused inventory,
-diagnostic and quality-gate regressions pass. The full installed collector and
-negative case pass in 201.161 seconds, with cleanup complete. Retained review
-has no actionable findings.
+R42 replaces that runner's unconditional scratch deletion with the existing
+application cleanup helper. Failed fixtures retain protected diagnostics;
+successful fixtures are still removed after child cleanup. Scenario batches,
+assertions, deadlines and artifact-integrity checks are unchanged. This is a
+test-harness diagnostic repair, not a runtime repair. All 27 cleanup and suite-ordering regressions pass, including failed diagnostic
+retention, successful removal, interruption and descendant joining. All fifteen unchanged initial scenarios pass in reproduction, with child
+cleanup complete and diagnostics retained.
 
 The heartbeat job-definition mismatch still requires copied-production TEST.
 Fresh DEV and the full suite must pass before that rehearsal. No production
@@ -389,6 +391,17 @@ inventory, diagnostic and quality-gate tests pass. Installed validation passes
 both cases: the full sixteen-stage collector in 187.444 seconds and the negative
 case in 13.618 seconds (201.161 seconds overall), with cleanup complete. Retained
 review has no actionable findings.
+
+R41 production retry `gh-45476834918-1` passed its source lane in 3008.174
+seconds and failed the installed lane after 470.655 seconds. Transfer and
+production were skipped; no target transaction existed. Source queue closed at
+1795554754183, with transfer already-clean and the profile hold released.
+The deleted `application-checks-*` directory contained the only full scenario
+failure evidence; the retained receipt has only bounded output tails.
+R42 adopts `withApplicationCheckCleanup` in `bin/test-application.mjs` to keep
+failed diagnostics using the same lifecycle helper as companion installed
+checks. Retained review has no findings. Runtime artifact and approved patch
+scope remain unchanged.
 
 Earlier evidence follows.
 
