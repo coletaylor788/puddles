@@ -241,3 +241,17 @@ test('DEV failure retains its callback phase after successful teardown', async t
   await reconcileCI(f.config);
   assert.equal(readJson(path).status,'admitted');
 });
+
+ test('DEV requires qualification before deployment and closes a rejected run', async t => {
+  const f = await fixture(t); await f.request('unqualified');
+  rmSync(join(f.config.registry, f.manifest.id, 'gates/dev.json'));
+  const result = await executeCI(f.config, 'unqualified', async (cmd, env) => {
+    if (cmd.env.ACTION === 'applicationTests') throw Error('No full qualification');
+    await f.execute(cmd, env);
+  });
+  assert.equal(result.status, 'failed');
+  assert.equal(result.phase, 'complete');
+  assert.equal(result.child, null);
+  assert.ok(!f.seen.includes('dev-start'));
+  assert.equal(existsSync(join(f.config.registry, f.manifest.id, 'gates/dev.json')), false);
+});

@@ -7,7 +7,8 @@ import { command, stopInterruptedChild } from '../../release/src/commands.mjs';
 
 // One bounded sibling workspace; SQLite commits preserve ownership through
 // SIGKILL without creating random temporary metadata outside the owned tree.
-export async function applicationTestOperation({ source, artifact, env = process.env }, execute = command) {
+export async function applicationTestOperation({ source, artifact, action = 'ci', env = process.env }, execute = command) {
+  if (!['ci', 'ci-focus'].includes(action)) throw Error('Unknown application operation');
   canonical(source); canonical(artifact);
   const root = artifact + '.tests', scratch = join(root, 'scratch'), control = root + '.lock';
   const tool = fileURLToPath(new URL('../bin/openclaw-test-env.mjs', import.meta.url));
@@ -33,7 +34,7 @@ export async function applicationTestOperation({ source, artifact, env = process
     save(); // Durable ownership precedes all generated allocation.
     mkdirSync(scratch, { recursive: true, mode: 0o700 });
     try {
-      await execute({ command: process.execPath, args: [tool, 'ci'], cwd: process.cwd(), timeoutMs: 6 * 60 * 60_000,
+      await execute({ command: process.execPath, args: [tool, action], cwd: process.cwd(), timeoutMs: 6 * 60 * 60_000,
         env: { ...env, OPENCLAW_SRC: source, OPENCLAW_CANDIDATE_DIR: artifact, OPENCLAW_APPLICATION_TEST_SCRATCH: scratch } }, {}, child => { state.child = child; save(); });
     } finally {
       // A failed process join deliberately retains all recovery ownership.

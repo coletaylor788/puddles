@@ -135,3 +135,17 @@ it('killed SQLite metadata replacement recovers without random sibling temporary
   expect(existsSync(f.artifact+'.tests')).toBe(false);
   expect(existsSync(path+'-journal')).toBe(false);
 });
+
+it('focused operation forwards its selection through the same scratch owner and cleanup', async () => {
+  const f=fixture(), source=join(f.root,'source'); mkdirSync(source);
+  const selection=JSON.stringify({kind:'installed',files:['installed/example']});
+  await applicationTestOperation({source,artifact:f.artifact,action:'ci-focus',env:{PUDDLES_APPLICATION_FOCUS:selection,E2E_TEST_WORKERS:'2'}}, async(spec:{args:string[],env:Record<string,string>})=>{
+    expect(spec.args.at(-1)).toBe('ci-focus');
+    expect(spec.env.PUDDLES_APPLICATION_FOCUS).toBe(selection);
+    expect(spec.env.E2E_TEST_WORKERS).toBe('2');
+    expect(existsSync(spec.env.OPENCLAW_APPLICATION_TEST_SCRATCH)).toBe(true);
+    writeFileSync(join(spec.env.OPENCLAW_APPLICATION_TEST_SCRATCH,'owned'),'selected');
+  });
+  expect(existsSync(f.artifact+'.tests')).toBe(false);
+  await expect(applicationTestOperation({source,artifact:f.artifact,action:'other',env:{}},()=>{})).rejects.toThrow('Unknown application operation');
+});
