@@ -178,10 +178,14 @@ GitHub CI and the installed host service own deployment execution. Follow
 [triggered CI](../packages/release/CI.md) and its cutover checkpoint. The release
 manager and its automation are retired; do not recreate them. Refresh paired
 branches from main before queueing, rebuild changed inputs, and repeat affected
-review and DEV checks. CI rejects stale candidates at dequeue. It runs the full
-suite, TEST, backup, PROD checks, and exact PR merge on the submitted output.
+review and DEV checks. CI rejects stale candidates at dequeue. The shared candidate workflow qualifies the full suite before DEV success and
+reuses its closed result for unchanged inputs before TEST, backup, PROD checks,
+and exact PR merge on the submitted output.
 One source queue admits DEV or PROD only after the previous run and cleanup close.
-DEV CI runs only deployment-dependent checks and holds its slot through teardown.
+The full suite runs on the development host outside the Mini slot. DEV holds
+its deployment slot only for installed checks and teardown. Use the same
+configuration, deploy and acceptance implementations across DEV, TEST and PROD,
+with explicit environment bindings and necessary live-production lifecycle steps.
 
 A failed feature recovers and leaves the lane. Its owner fixes it in DEV and
 rejoins at the back. A failed final merge keeps the ticket until its exact source
@@ -191,7 +195,9 @@ a rollback operation. Scripts bound child processes and recover interrupted
 operations; an absent agent must not leave production stopped indefinitely.
 
 Application code and release tooling are separate products. Application changes
-run the complete application suite before PROD, plus TEST and PROD checks.
+require the complete application suite before DEV success, plus deployed
+DEV, TEST and PROD checks. Unchanged, cleanup-closed qualification is reusable;
+focused runs and partial passes are not full qualification.
 Changes to `packages/release` run its complete independent suite and install the
 tool between tickets. They do not require an application build or joint gate.
 Commands and adoption status are in [release tooling](../packages/release/README.md)

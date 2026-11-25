@@ -28,18 +28,18 @@ async function repositoryGates(run) {
 
 // The standalone outer wrapper uses command() as its sole signal owner.
 // The inner suite still owns its native fixture and command process groups.
-if (process.argv[2] !== 'ci' || process.env.OPENCLAW_APPLICATION_TEST_SCRATCH) {
+if (!['ci', 'ci-focus'].includes(process.argv[2]) || process.env.OPENCLAW_APPLICATION_TEST_SCRATCH) {
   installSignalHandlers({ cleanup: cleanupNativeFixtures });
 }
 try {
   const command = process.argv[2];
-  if (command === "ci") {
+  if (["ci", "ci-focus"].includes(command)) {
     if (!process.env.OPENCLAW_APPLICATION_TEST_SCRATCH) {
       const { applicationTestOperation } = await import('../src/application-test-operation.mjs');
-      await applicationTestOperation({ source: process.env.OPENCLAW_SRC, artifact: process.env.OPENCLAW_CANDIDATE_DIR });
+      await applicationTestOperation({ action: command, source: process.env.OPENCLAW_SRC, artifact: process.env.OPENCLAW_CANDIDATE_DIR });
     } else console.log(JSON.stringify(await applicationSuite({ source: process.env.OPENCLAW_SRC,
       artifact: process.env.OPENCLAW_CANDIDATE_DIR, extensionPath: process.env.E2E_APPLICATION_EXTENSION,
-      workers: Number(process.env.E2E_TEST_WORKERS ?? 4) })));
+      focus: command === 'ci-focus' ? JSON.parse(process.env.PUDDLES_APPLICATION_FOCUS ?? 'null') : undefined, workers: Number(process.env.E2E_TEST_WORKERS ?? 4) })));
   } else if (["patches", "native", "build", "source-gate"].includes(command)) {
     const { nativePipeline } = await import("../src/native-pipeline.mjs");
     await nativePipeline(command, repositoryGates);
