@@ -135,6 +135,7 @@ export async function executeCI(config, id, execute = command) {
       } else if (state.mode === 'dev') {
         if (interrupted || cancel) throw new Error(cancel ? 'cancelled' : 'DEV interrupted');
         const candidate = loadCandidate(config.registry, state.candidate);
+        await run(config.applicationTests, 'application-tests');
         await deployDev(config.controller, {
           id, workspace: candidate.directory, artifact: candidate.artifact, frozenDigest: candidate.manifest.artifactDigest,
           preflight: config.preflight, applicationTests: config.applicationTests, merge: config.merge,

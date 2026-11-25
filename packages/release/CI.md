@@ -14,9 +14,12 @@ agent to hand failures to, and no manager heartbeat is needed.
    The build registers a small reference to its output and controls; it does not
    create another full copy. Different worktrees can build concurrently. Leave
    the submitted output unchanged until CI closes. Private paths stay on the hosts.
-2. Call DEV CI with that build ID. It deploys and runs installed checks while
-   holding DEV, then stops test processes and cleans the environment. Broad
-   source tests belong to implementation and production CI, not the DEV slot.
+2. Call DEV CI with that build ID. The shared candidate workflow first qualifies
+   the full application on the development host, outside the Mini slot. It then
+   deploys DEV, runs installed acceptance and cleans the environment. DEV passes
+   only when both full qualification and deployed acceptance have closed cleanly.
+   Use the maintained focused runner between edits; focused success is diagnostic,
+   not a full qualification or a deployed DEV pass.
 3. Complete review and repository checks. Before submitting production CI, merge
    or rebase current main into each feature branch; rebuild and repeat affected
    review and DEV checks whenever inputs change. Submit the resulting build ID.
@@ -25,8 +28,11 @@ agent to hand failures to, and no manager heartbeat is needed.
    close. GitHub uses one shared concurrency group as an additional guard. At
    dequeue, stale bases fail and notify the owner; insufficient space holds the
    waiting request with a reason before expensive testing or transfer begins.
-5. Production CI runs the full application suite on the development host, checks
-   the bound result on the target, and deploys the same output to TEST. It runs
+5. Production CI uses the same qualification, transfer and deployment workflow.
+   It reuses a full passed result only for unchanged candidate, source, artifact,
+   tests, tooling and host/test environment, after process and scratch cleanup.
+   Otherwise it requalifies on the development host. The target checks the bound
+   result and deploys the same output to TEST. It runs
    installed tests, holds production intake, replaces and verifies the one backup,
    deploys PROD, runs read-only tests, merges the exact tested PR heads, and resumes
    intake. TEST teardown must finish before a terminal deployment result.
@@ -181,3 +187,37 @@ verifies the runtime archive against an already-present image and exercises a
 cleanup-owned sandbox container. Missing images fail acceptance without an
 implicit load. Recipe and sandbox checks must both pass before the phase receipt
 is recorded.
+
+## Qualification and environment parity
+
+The shared workflow is the implementation for both `ci-dev` and `ci-prod`.
+Their wrappers supply only the mode and dispatch identity. The shared controller
+uses one deploy function for DEV, TEST and PROD: prepare, stop, install,
+post-install migration, start, health, and applicable acceptance. The application
+must use the same configuration renderer and behavior controls in each environment.
+Only explicit state paths, ports, service names, credentials and delivery bindings
+differ. DEV and TEST rehearse current production state through the same migration
+logic; TEST refreshes the copy to catch state changes after DEV.
+
+PROD additionally holds intake, replaces the verified backup, activates live
+services, performs read-only acceptance, merges exact tested heads, and resumes
+intake. Synthetic writes and recorded external delivery run in DEV/TEST rather
+than against live PROD data. These are lifecycle differences, not separate feature
+implementations. A later-stage failure should become an earlier regression where
+it can run safely. Host capacity and production state changes still need fresh
+checks at the point of use.
+
+The installed adapter's `qualify <candidate> <run>` command runs or reuses the full
+suite. `application-tests <candidate> <run>` deliberately runs it afresh.
+`application-focus <candidate> <run> <installed|source|mapped> <files...>` uses the
+same runner, fixture configuration, worker limits and process cleanup for selected
+checks. It emits `application-focused`, which deployment receipt validation rejects.
+A fresh full or focused invocation invalidates prior reusable qualification;
+partial passes and failed or cleanup-incomplete runs never qualify DEV.
+
+Qualification receipts bind the candidate and original test run; a reused receipt
+also names that original run. Reuse rechecks source freshness and host inputs.
+Existing pre-cutover receipts without explicit full-suite and cleanup evidence must
+be replaced by qualification. Install the matched public/private tooling and shared
+workflow together between closed tickets; do not change an active transaction's
+configuration or frozen controls.

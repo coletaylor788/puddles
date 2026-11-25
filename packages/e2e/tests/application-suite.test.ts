@@ -255,3 +255,30 @@ it('rejects invalid companion lanes before executing any preparation or tests', 
   const unexpected = async () => { throw new Error('unexpected command'); };
   await expect(applicationSuite({ source: root, artifact: root, extensionPath }, unexpected, unexpected)).rejects.toThrow('Unknown application companion lane');
 });
+
+for (const kind of ['source', 'installed']) it(`focused ${kind} selection uses maintained environment without full qualification`, async () => {
+  const root = source(['dist/ready', 'openclaw.mjs']);
+  const extension = join(root, 'extension.mjs');
+  writeFileSync(extension, `export default { focusedChecks(focus) { return [{command: process.execPath, args: ['selected', ...focus.files], cwd: ${JSON.stringify(root)}, env: { FIXTURE: 'same' }, timeoutMs: 12345}]; } };`);
+  const calls: any[] = [];
+  const result = await applicationSuite({source: root, artifact: root, extensionPath: extension, workers: 2,
+    focus: {kind, files: ['selected-test']}, env: { HOST_FIXTURE: 'kept' }}, async (command: string, args: string[], options: any) => {
+      calls.push({command, args, options}); return '';
+    }, preparedPython);
+  expect(result.suite).toBe('application-focused');
+  expect(calls).toHaveLength(1);
+  expect(calls[0].args).toEqual(['selected', 'selected-test']);
+  expect(calls[0].options.timeoutMs).toBe(12345);
+  expect(calls[0].options.env).toMatchObject({ HOST_FIXTURE: 'kept', FIXTURE: 'same', OPENCLAW_SRC: root,
+    OPENCLAW_CANDIDATE_DIR: root, OPENCLAW_VITEST_MAX_WORKERS: '2', OPENCLAW_E2E_USE_PREBUILT_DIST: '1' });
+  expect(calls[0].options.env.OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT.endsWith(kind === 'installed' ? '/installed-vitest-cache' : '/vitest-cache')).toBe(true);
+});
+it('focused selection rejects empty, unknown or escaping tests and propagates failures', async () => {
+  const root = source(['dist/ready', 'openclaw.mjs']);
+  for (const focus of [{kind:'mapped', files:[]}, {kind:'mapped', files:['unknown.test.ts']}, {kind:'source', files:['../outside']}]) {
+    await expect(applicationSuite({source:root, artifact:root, focus}, async () => { throw Error('unexpected command'); }, preparedPython)).rejects.toThrow();
+  }
+  const extension = join(root, 'extension.mjs');
+  writeFileSync(extension, `export default { focusedChecks() { return [{command: process.execPath, args: ['selected'], cwd: ${JSON.stringify(root)}}]; } };`);
+  await expect(applicationSuite({source:root, artifact:root, extensionPath:extension, focus:{kind:'source', files:['selected']}}, async () => { throw Error('selected failed'); }, preparedPython)).rejects.toThrow('selected failed');
+});

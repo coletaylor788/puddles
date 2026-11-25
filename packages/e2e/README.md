@@ -162,3 +162,26 @@ runner commands](LEGACY_README.md), [legacy
 coordination](LEGACY_DEPLOYMENT_COORDINATION.md), and [legacy
 storage](LEGACY_DEVELOPMENT_STORAGE.md). Do not run both controllers against the
 same environments. Recovery cleanup does not reserve the ready queue.
+### Focused checks through the maintained runner
+
+Use `ci-focus` with the same source, output, companion, fixture environment and
+scratch owner as `ci`. Selection only changes which maintained checks run:
+
+```sh
+PUDDLES_APPLICATION_FOCUS='{"kind":"installed","files":["installed/reader-model-default-migration"]}' \
+  node packages/e2e/bin/openclaw-test-env.mjs ci-focus
+```
+
+This example assumes the same `OPENCLAW_SRC`, `OPENCLAW_CANDIDATE_DIR`,
+`E2E_APPLICATION_EXTENSION` and host fixture settings as the full command above.
+The installed CI adapter's `application-focus` command supplies those settings from
+the registered candidate and host config, so owners need not reconstruct them.
+Use a unique run ID and leave a submitted candidate idle until its queue closes.
+
+`installed` selects private installed inventory names without `.test.mjs`;
+`source` selects filenames from the companion's `tests/application-suite.json`;
+`mapped` selects relative upstream test paths from the public/private regression
+maps. Unknown selections fail. Installed checks preserve every fixture variant
+for the selected file. The same worker limits, environment and process/scratch
+cleanup apply. Focused success is diagnostic only. It cannot authorize DEV or
+production; full qualification must still pass before DEV success.

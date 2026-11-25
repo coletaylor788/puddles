@@ -447,7 +447,9 @@ investigating instead of asking.
      the installed build entrypoint; use `ci-dev` for shared target deployment,
      installed checks and teardown. Complete retained review and required checks
      before `ci-prod`. Leave queued output idle until the submission closes.
-     Production CI runs the full suite on that same output before TEST.
+     DEV CI runs full qualification on the development host before deployed DEV
+     success. Production CI reuses that closed result only for unchanged inputs;
+     otherwise it requalifies before TEST.
      CI owns one DEV/PROD queue and removes temporary Mini payloads after closure. Focused local tests do not require deployment.
    - Use mocks or fakes for local testing and iteration when exercising a live
      dependency is unnecessary.
@@ -517,7 +519,8 @@ investigating instead of asking.
    - Before queueing, refresh from main, resolve conflicts, rebuild in the same
      workspace, and repeat affected review and DEV checks. Paired repositories
      travel as one candidate. CI rechecks main at dequeue and rejects stale builds.
-   - Application changes run the entire application suite before PROD. Tooling
+   - Application changes require full application qualification before DEV success.
+     Reuse a closed passing result for unchanged inputs before PROD. Tooling
      changes run the independent release package's entire suite before installing
      the tool between tickets. Neither requires the other's build or tests.
 
@@ -605,11 +608,16 @@ Measure actual host contention before tuning concurrent builders.
 
 A ready feature is reviewed, committed, refreshed from main, and tested in DEV.
 Submit its frozen build to GitHub CI. The service rejects a changed base and wakes
-the owner. Production CI runs the full suite, then TEST and PROD acceptance.
+the owner. The shared workflow qualifies before DEV success and reuses only unchanged,
+cleanup-closed full results before TEST and PROD acceptance.
 Print timings to the conversation; do not keep a second test-report archive.
 
 Use the same application configuration renderer, preparation, startup, health,
-and feature acceptance commands in DEV and TEST. Only environment bindings differ.
+and applicable feature acceptance in DEV, TEST and PROD. Only environment bindings
+and required live-production operations differ. DEV and TEST use the same
+copied-production rehearsal, refreshed for TEST. Focused local checks use the
+maintained runner, fixture environment and cleanup; they never replace full
+qualification. PROD keeps live read-only acceptance, backup and rollback safeguards.
 Run the changed feature's installed use cases before declaring ready, including
 real provider output when model behavior changes. Focused probes remain useful
 but do not replace deployed DEV checks. When a later stage fails, close the missing

@@ -103,7 +103,7 @@ export async function runApplicationLanes(source, installed) {
   return results[0].value;
 }
 
-export async function applicationSuite({ source, artifact, extensionPath, workers = 4, env = process.env, scratch = env.OPENCLAW_APPLICATION_TEST_SCRATCH }, execute = runCommand, preparePython = prepareApplicationPython) {
+export async function applicationSuite({ source, artifact, extensionPath, focus, workers = 4, env = process.env, scratch = env.OPENCLAW_APPLICATION_TEST_SCRATCH }, execute = runCommand, preparePython = prepareApplicationPython) {
   if (!safeNode()) throw new Error('Application checks require SQLite-safe Node 24.16+ or 26.1+');
   if (!isAbsolute(source ?? '') || !existsSync(join(source, 'dist'))) throw new Error('OPENCLAW_SRC must name the prepared, incrementally built feature source');
   if (!isAbsolute(artifact ?? '') || !existsSync(join(artifact, 'openclaw.mjs'))) throw new Error('OPENCLAW_CANDIDATE_DIR must name the complete built feature output');
@@ -146,10 +146,29 @@ export async function applicationSuite({ source, artifact, extensionPath, worker
         ...(check.timeoutMs === undefined ? {} : { timeoutMs: check.timeoutMs }) });
     }
   };
-  await companionChecks('preflight');
   const installedEnv = { ...testEnv,
     OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT: join(scratch, 'installed-vitest-cache'),
     OPENCLAW_VITEST_FS_MODULE_CACHE_PATH: join(scratch, 'installed-vitest-direct-cache') };
+  if (focus !== undefined) {
+    if (!focus || !['source', 'installed', 'mapped'].includes(focus.kind) || !Array.isArray(focus.files) || !focus.files.length) throw Error('Explicit focused test selection required');
+    focus.files.forEach(relativeFile);
+    if (focus.kind === 'mapped') {
+      const available = new Set(manifests.flatMap(manifest => nativeRegressionTargets(manifest).tests));
+      if (focus.files.some(file => !available.has(file))) throw Error('Unknown mapped regression');
+      const selected = manifests.map(manifest => ({ ...manifest, patches: [], tests: nativeRegressionTargets(manifest).tests.filter(file => focus.files.includes(file)) }));
+      await runMappedTests(source, selected, run, workers);
+    } else {
+      if (typeof extension.focusedChecks !== 'function') throw Error('Application companion does not support focused checks');
+      const focused = extension.focusedChecks(focus);
+      if (!Array.isArray(focused) || !focused.length) throw Error('Focused selection has no checks');
+      for (const check of focused) {
+        if (!Array.isArray(check.args) || !isAbsolute(check.cwd ?? '')) throw Error('Focused check requires explicit command and working directory');
+        await run(check.command, check.args, { cwd: check.cwd, env: { ...(focus.kind === 'installed' ? installedEnv : testEnv), ...check.env }, ...(check.timeoutMs === undefined ? {} : { timeoutMs: check.timeoutMs }) });
+      }
+    }
+    return { status: 'passed', suite: 'application-focused', selection: focus };
+  }
+  await companionChecks('preflight');
   const mapped = await runApplicationLanes(async () => {
     // Build belongs to the feature's incremental loop. This command only tests its output.
     await run('corepack', ['pnpm', 'lint']);
