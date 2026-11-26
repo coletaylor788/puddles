@@ -2540,3 +2540,122 @@ index b34c619db..6eba36aab 100644
        return {
          status: "forbidden",
          error: `This spawn targets a sandboxed child, but model "${resolvedModel}" runs on host-executed CLI backend "${cliExecutionProvider}" and cannot honor the sandbox. Choose a sandbox-compatible (embedded/API) model for the child, or change the agent's sandbox policy explicitly.`,
+diff --git a/src/cron/isolated-agent/run-admission.ts b/src/cron/isolated-agent/run-admission.ts
+index 20bc030ab20..9321c8399b0 100644
+--- a/src/cron/isolated-agent/run-admission.ts
++++ b/src/cron/isolated-agent/run-admission.ts
+@@ -43,18 +43,11 @@ export function resolveCronSandboxPlacement(
+ }
+ 
+ /**
+- * Sandboxed sessions never dispatch to host-executed CLI backends.
+- *
+- * A CLI backend spawns a local AI CLI on the gateway host; its native tools run
+- * with the gateway OS user outside any configured Docker sandbox. When this
+- * session is classified as sandboxed (the configured sandbox mode covers this
+- * session key) or carries required sandbox isolation (a creator-mandated
+- * containment), admitting a CLI candidate would silently move tool execution
+- * from the container to the host while `openclaw sandbox explain` still
+- * reports the session as sandboxed. Fail closed instead of dispatching: override
+- * `agents.entries.<id>.subagents.model`, `agents.defaults.subagents.model`, or
+- * the automation payload `model` to a sandbox-compatible runtime (clearing any
+- * pinned CLI runtime override), or change the agent's sandbox policy explicitly.
++ * CLI native tools normally run on the host and cannot honor a sandbox.
++ * Bundled Claude is admitted only for established sandbox placement: its
++ * prepared tool path disables native coding tools and mediates them through
++ * the existing sandbox/MCP owner. Other backends and inherited requirements
++ * without established placement remain refused before dispatch.
+  */
+ export function assertCronCandidateSandboxPlacement(params: {
+   sessionSandboxRequired?: boolean | undefined;
+@@ -71,6 +64,11 @@ export function assertCronCandidateSandboxPlacement(params: {
+   if (!params.sessionSandboxed && !params.sessionSandboxRequired) {
+     return;
+   }
++  // Bundled Claude uses the existing prepared Docker/MCP tool handoff.
++  // An inherited requirement alone does not establish sandbox placement.
++  if (params.executionProvider === "claude-cli" && params.sessionSandboxed) {
++    return;
++  }
+   throw new AgentHarnessPreflightError(
+     `This automation belongs to a sandboxed session, but resolved execution provider ${params.executionProvider} runs on the host and cannot honor the sandbox. Override agents.entries.<id>.subagents.model, agents.defaults.subagents.model, or the automation payload model with an API-backed provider (and clear any pinned CLI runtime override), or change the agent's sandbox policy explicitly.`,
+   );
+diff --git a/src/cron/isolated-agent/run.sandbox-admission.test.ts b/src/cron/isolated-agent/run.sandbox-admission.test.ts
+index 14a00ca708b..a1ee816fb73 100644
+--- a/src/cron/isolated-agent/run.sandbox-admission.test.ts
++++ b/src/cron/isolated-agent/run.sandbox-admission.test.ts
+@@ -11,6 +11,10 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
+ import type { ScheduledOccurrence } from "../scheduled-occurrence.js";
+ import { TEST_SCHEDULED_OCCURRENCE } from "../scheduled-occurrence.test-support.js";
+ import { makeIsolatedAgentJobFixture, makeIsolatedAgentParamsFixture } from "./job-fixtures.js";
++import {
++  assertCronCandidateSandboxPlacement,
++  assertCronRuntimeAuthorityCandidate,
++} from "./run-admission.js";
+ import { setupRunCronIsolatedAgentTurnSuite } from "./run.suite-helpers.js";
+ import * as harness from "./run.test-harness.js";
+ 
+@@ -240,3 +244,63 @@ describe("cron isolated-agent sandbox placement admission", () => {
+     expect(fs.existsSync(markerPath)).toBe(true);
+   });
+ });
++
++describe("managed Claude cron admission", () => {
++  it.each([false, true])("admits contained Claude with inherited requirement=%s", (required) => {
++    expect(() =>
++      assertCronCandidateSandboxPlacement({
++        sessionSandboxed: true,
++        sessionSandboxRequired: required,
++        cliExecution: true,
++        executionProvider: "claude-cli",
++      }),
++    ).not.toThrow();
++  });
++  it("keeps inherited-only unstamped Claude roots refused", () => {
++    expect(() =>
++      assertCronCandidateSandboxPlacement({
++        sessionSandboxed: false,
++        sessionSandboxRequired: true,
++        cliExecution: true,
++        executionProvider: "claude-cli",
++      }),
++    ).toThrow("cannot honor the sandbox");
++  });
++  it.each(["test-cli", "codex-cli", "copilot", "claude-cli-custom"])(
++    "keeps unsupported %s refused",
++    (executionProvider) => {
++      expect(() =>
++        assertCronCandidateSandboxPlacement({
++          sessionSandboxed: true,
++          cliExecution: true,
++          executionProvider,
++        }),
++      ).toThrow("cannot honor the sandbox");
++    },
++  );
++  it("keeps another CLI refused after admitting managed Claude", () => {
++    expect(() =>
++      assertCronCandidateSandboxPlacement({
++        sessionSandboxed: true,
++        cliExecution: true,
++        executionProvider: "claude-cli",
++      }),
++    ).not.toThrow();
++    expect(() =>
++      assertCronCandidateSandboxPlacement({
++        sessionSandboxed: true,
++        cliExecution: true,
++        executionProvider: "test-cli",
++      }),
++    ).toThrow("cannot honor the sandbox");
++  });
++  it("does not let CLI reuse captured runtime authority", () => {
++    expect(() =>
++      assertCronRuntimeAuthorityCandidate({
++        authority: { version: 1, namespace: "fixture", runtimeId: "claude-cli", payload: {} },
++        candidateRuntime: "claude-cli",
++        cliExecution: true,
++      }),
++    ).toThrow("authority captured");
++  });
++});
