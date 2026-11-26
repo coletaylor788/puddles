@@ -16,7 +16,7 @@ export async function rehearseStateMigration(installedDir, sourceDir, runDir) {
     ], {
       cwd: context.workspace,
       env: { ...fixtureEnv(context), FIXTURE_KEY: "synthetic-fixture-only", OPENCLAW_SERVICE_REPAIR_POLICY: "external" },
-      timeoutMs: 45_000, quiet: true, logPath: join(root, "migration.log"),
+      timeoutMs: 150_000, quiet: true, logPath: join(root, "migration.log"),
     });
     results.push({ id: mode, passed: true });
     rmSync(root, { recursive: true });

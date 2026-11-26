@@ -256,6 +256,23 @@ it('rejects invalid companion lanes before executing any preparation or tests', 
   await expect(applicationSuite({ source: root, artifact: root, extensionPath }, unexpected, unexpected)).rejects.toThrow('Unknown application companion lane');
 });
 
+
+it('a failed preflight joins before either concurrent lane can start', async () => {
+  const root = source(['dist/ready', 'openclaw.mjs']);
+  const extensionPath = join(root, 'failed-preflight.mjs');
+  writeFileSync(extensionPath, `export default ${JSON.stringify({ checks: [
+    { lane: 'preflight', command: 'fixture-preflight', args: [], cwd: root },
+    { lane: 'source', command: 'source-extra', args: [], cwd: root },
+    { lane: 'installed', command: 'installed-extra', args: [], cwd: root },
+  ] })}`);
+  const calls: string[] = [];
+  await expect(applicationSuite({ source: root, artifact: root, extensionPath }, async (command: string) => {
+    calls.push(command);
+    throw new Error('preflight failed after cleanup');
+  }, preparedPython)).rejects.toThrow('preflight failed after cleanup');
+  expect(calls).toEqual(['fixture-preflight']);
+});
+
 for (const kind of ['source', 'installed']) it(`focused ${kind} selection uses maintained environment without full qualification`, async () => {
   const root = source(['dist/ready', 'openclaw.mjs']);
   const extension = join(root, 'extension.mjs');

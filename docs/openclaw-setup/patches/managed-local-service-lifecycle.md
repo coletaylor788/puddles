@@ -1,6 +1,6 @@
 # Join gateway-owned local services
 
-OpenClaw v2026.11.3 starts provider services through its service-child relay.
+OpenClaw v2026.11.5 starts provider services through its service-child relay.
 A model child can outlive its router, and launchd label removal does not prove
 either process has exited. This patch adds durable local-service ownership to
 the current relay and group-anchor flow. Its independent group anchor owns
@@ -31,8 +31,11 @@ records, and activation failure before the state snapshot. The cumulative
 manifest also retains the existing generic relay lifetime cases. This patch
 does not change embedding request timeouts or claim model readiness.
 
-The 2026.11.3 relay returns its adapter before readiness settles. The local
+The 2026.11.5 relay returns its adapter before readiness settles. The local
 service owner retains that adapter and joins preparation before stopping it.
+The exact native diagnostic lease also records whether the gateway owns a live
+process or relay. Callers can distinguish that custody from an already-running
+external endpoint without wrapping the lease or losing its bounded diagnostics.
 Upstream's protections for late lease release, concurrent reacquisition and
 failed exit observation stay in place. Its current lineage and closing
 acknowledgment protocol owns group cleanup.

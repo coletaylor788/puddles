@@ -53,17 +53,23 @@ export default [
   },
   {
     id: "direct-silent-continuation",
-    steps: [{
-      incoming: [{ text: "A direct turn requires a visible answer." }],
-      responses: [{ text: "NO_REPLY" }, { text: "Recovered visible answer." }],
-      expect: { sends: ["Recovered visible answer."] },
-    }],
+    steps: [
+      {
+        incoming: [{ text: "Stay silent for this synthetic direct message." }],
+        responses: [{ text: "NO_REPLY" }],
+        expect: { sends: [], quietMs: 1800 },
+      },
+      {
+        incoming: [{ text: "Now answer this follow-up." }],
+        responses: [{ text: "Visible follow-up answer." }],
+        expect: { sends: ["Visible follow-up answer."], promptIncludes: ["Now answer this follow-up."] },
+      },
+    ],
   },
   {
     id: "model-error",
     steps: [{ incoming: [{ text: "Exercise a model failure." }], responses: [{ error: "Synthetic model failure" }], expect: {
-      sends: [["LLM request failed: provider rejected the request schema or tool payload.", "Agent couldn't generate a response. Please try again."]],
-      sendsExclude: ["Synthetic model failure"],
+      sends: [["LLM request rejected: Synthetic model failure", "No answer was returned. Ask again if you still need one."]],
     } }],
   },
   reply("fresh-state-reuses-guid", "This run must not inherit the prior replay cursor."),

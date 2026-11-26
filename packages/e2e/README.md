@@ -129,6 +129,10 @@ shared prerequisites. An omitted lane defaults to installed, after scenarios,
 preserving legacy companion ordering. Source checks must not depend on installed
 checks or mutate the frozen output. Keep writable fixture state and process
 ownership separate. This does not share fixtures or remove restart coverage.
+Failed synthetic scenarios retain their protected `application-checks-*` fixture
+directory beside the owned artifact after child cleanup. Successful scenarios
+remove that directory. Retained state belongs to the feature workspace and is
+not part of the immutable artifact.
 
 Every changed behavior needs a committed regression. Use package tests for local
 behavior and `openclaw-patch-suite.json` for upstream patches and cross-component

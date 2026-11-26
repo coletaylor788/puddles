@@ -1,8 +1,8 @@
 diff --git a/docs/tools/subagents/thread-bound-sessions.md b/docs/tools/subagents/thread-bound-sessions.md
-index 7ac94c6750a..d96926e9c98 100644
+index 15abb28e5..f36a7d76c 100644
 --- a/docs/tools/subagents/thread-bound-sessions.md
 +++ b/docs/tools/subagents/thread-bound-sessions.md
-@@ -76,7 +76,7 @@ See [Configuration reference](/gateway/configuration-reference) and
+@@ -81,7 +81,7 @@ See [Configuration reference](/gateway/configuration-reference) and
    Default configured target-agent allowlist used when the requester agent does not set its own `subagents.allowAgents`.
  </ParamField>
  <ParamField path="agents.defaults.subagents.requireAgentId" type="boolean" default="false">
@@ -12,10 +12,10 @@ index 7ac94c6750a..d96926e9c98 100644
  <ParamField path="agents.defaults.subagents.announceTimeoutMs" type="number" default="120000">
    Timeout for gateway `agent` announcement handoff attempts. Once a handoff is accepted, waiting for the parent session's turn does not consume this budget. After execution starts, the requester's normal [runtime timeout and cancellation controls](/concepts/agent-loop#timeouts) apply; the announcement timer does not restart. Values are positive integer milliseconds and are clamped to the platform-safe timer maximum. Queue waits, requester execution, and transient retries can make total delivery time longer than one configured timeout.
 diff --git a/src/agents/subagents/spawn/acp-spawn.test.ts b/src/agents/subagents/spawn/acp-spawn.test.ts
-index eebb2c9b0e4..6210534510c 100644
+index 510c01c3a..e9144908d 100644
 --- a/src/agents/subagents/spawn/acp-spawn.test.ts
 +++ b/src/agents/subagents/spawn/acp-spawn.test.ts
-@@ -309,6 +309,10 @@ function expectGatewayMethodNotCalled(method: string): void {
+@@ -321,6 +321,10 @@ function expectGatewayMethodNotCalled(method: string): void {
    expect(gatewayRequests().some((request) => request.method === method)).toBe(false);
  }
  
@@ -26,144 +26,96 @@ index eebb2c9b0e4..6210534510c 100644
  function expectInitializeSessionFields(expected: Record<string, unknown>): Record<string, unknown> {
    return expectRecordFields(
      firstMockCall(hoisted.initializeSessionMock, "session initialization")[0],
-@@ -1406,5 +1410,369 @@ describe("spawnAcpDirect", () => {
+@@ -1078,4 +1082,159 @@ describe("spawnAcpDirect", () => {
        }),
      );
    });
 +
-+  it("allows cron ACP runs to use a distinct default agent", async () => {
++  it("requires cron ACP callers to name a distinct configured target", async () => {
 +    replaceSpawnConfig({
 +      ...createDefaultSpawnConfig(),
-+      acp: {
-+        ...createDefaultSpawnConfig().acp,
-+        defaultAgent: "codex",
-+      },
-+    });
-+
-+    const result = await spawnAcpDirect(
-+      {
-+        task: "run an unattended coding task",
-+      },
-+      {
-+        agentSessionKey: "agent:main:cron:code-maintenance:run:run-1",
-+      },
-+    );
-+
-+    expectAcceptedSpawn(result);
-+  });
-+
-+  it("replays cron ACP target repair without falling back to the requester", async () => {
-+    replaceSpawnConfig({
-+      ...createDefaultSpawnConfig(),
-+      acp: {
-+        enabled: true,
-+        backend: "acpx",
-+        defaultAgent: "main",
-+        allowedAgents: ["main", "codex"],
-+      },
++      acp: { enabled: true, backend: "acpx", defaultAgent: "main", allowedAgents: ["main", "codex"] },
 +      agents: {
 +        defaults: {
 +          subagents: {
-+            allowAgents: ["main", "reader", "main-harness", "coder"],
++            allowAgents: ["main", "coder", "reader", "main-harness"],
 +            maxSpawnDepth: 2,
 +          },
 +        },
 +        entries: {
 +          main: {},
-+          reader: {},
-+          "main-harness": {
-+            runtime: {
-+              type: "acp",
-+              acp: {
-+                agent: "main",
-+              },
-+            },
-+          },
-+          coder: {
-+            runtime: {
-+              type: "acp",
-+              acp: {
-+                agent: "codex",
-+              },
-+            },
-+          },
++          coder: { runtime: { type: "acp", acp: { agent: "codex" } } },
++          reader: { runtime: { type: "native" } },
++          "main-harness": { runtime: { type: "acp", acp: { agent: "main" } } },
 +        },
 +      },
 +    });
 +
 +    const omitted = await spawnAcpDirect(
-+      {
-+        task: "run an unattended same-profile coding task",
-+      },
-+      {
-+        agentSessionKey: "agent:main:cron:code-maintenance:run:same-profile",
-+      },
++      { task: "run unattended work" },
++      { agentSessionKey: "agent:main:cron:maintenance:run:one" },
 +    );
++    expect(expectFailedSpawn(omitted, "forbidden").error).toContain("requires explicit agentId");
 +
-+    const omittedFailure = expectFailedSpawn(omitted, "forbidden");
-+    expect(omittedFailure.error).toContain("requires explicit agentId");
-+    expect(omittedFailure.error).toContain("allowed: coder");
-+    expect(omittedFailure.error).not.toContain("reader");
-+    expect(omittedFailure.error).not.toContain("main-harness");
-+    expect(omittedFailure.error).toContain("taskName and label do not select an agent profile");
-+
-+    const requesterRetry = await spawnAcpDirect(
-+      {
-+        task: "run an unattended same-profile coding task",
-+        agentId: "main",
-+      },
-+      {
-+        agentSessionKey: "agent:main:cron:code-maintenance:run:same-profile",
-+      },
++    const self = await spawnAcpDirect(
++      { task: "run unattended work", agentId: "main" },
++      { agentSessionKey: "agent:main:cron:maintenance:run:one" },
 +    );
++    const selfError = expectFailedSpawn(self, "forbidden").error;
++    expect(selfError).toContain("cannot target itself");
++    expect(selfError).toContain("allowed: coder");
++    expect(selfError).not.toContain("reader");
++    expect(selfError).not.toContain("main-harness");
 +
-+    const requesterFailure = expectFailedSpawn(requesterRetry, "forbidden");
-+    expect(requesterFailure.error).toContain("cannot target itself");
-+    expect(requesterFailure.error).toContain("allowed: coder");
-+    expect(requesterFailure.error).not.toContain("reader");
-+    expect(requesterFailure.error).not.toContain("main-harness");
-+    expect(hoisted.initializeSessionMock).not.toHaveBeenCalled();
-+
-+    const workerRetry = await spawnAcpDirect(
-+      {
-+        task: "run an unattended coding worker",
-+        agentId: "coder",
-+      },
-+      {
-+        agentSessionKey: "agent:main:cron:code-maintenance:run:same-profile",
-+      },
++    const worker = await spawnAcpDirect(
++      { task: "run unattended work", agentId: "coder" },
++      { agentSessionKey: "agent:main:cron:maintenance:run:one" },
 +    );
-+    expectAcceptedSpawn(workerRetry);
-+    expectAcceptedSpawn(workerRetry);
++    expectAcceptedSpawn(worker);
 +  });
 +
-+  it("requires explicit agentId for top-level ACP runs when configured", async () => {
++  it("permits an intentional cron same-agent child when explicit targeting is disabled", async () => {
 +    replaceSpawnConfig({
 +      ...createDefaultSpawnConfig(),
-+      acp: {
-+        ...createDefaultSpawnConfig().acp,
-+        defaultAgent: "codex",
-+      },
++      acp: { enabled: true, backend: "acpx", defaultAgent: "main", allowedAgents: ["main"] },
 +      agents: {
 +        defaults: {
-+          subagents: {
-+            allowAgents: ["codex"],
-+            maxSpawnDepth: 2,
-+            requireAgentId: true,
-+          },
++          subagents: { allowAgents: ["main"], maxSpawnDepth: 2, requireAgentId: false },
 +        },
++        entries: { main: {} },
 +      },
 +    });
 +
 +    const result = await spawnAcpDirect(
-+      {
-+        task: "run a top-level coding task",
-+      },
-+      {
-+        agentSessionKey: "agent:main:main",
-+      },
++      { task: "run intentional same-agent work" },
++      { agentSessionKey: "agent:main:cron:maintenance:run:two" },
 +    );
++    expectAcceptedSpawn(result);
++  });
 +
++  it("allows cron ACP runs whose configured default is a distinct target", async () => {
++    replaceSpawnConfig({
++      ...createDefaultSpawnConfig(),
++      acp: { enabled: true, backend: "acpx", defaultAgent: "codex", allowedAgents: ["codex"] },
++    });
++    expectAcceptedSpawn(
++      await spawnAcpDirect(
++        { task: "run unattended coding work" },
++        { agentSessionKey: "agent:main:cron:maintenance:run:default" },
++      ),
++    );
++  });
++
++  it("requires an explicit target outside cron when configured", async () => {
++    replaceSpawnConfig({
++      ...createDefaultSpawnConfig(),
++      acp: { enabled: true, backend: "acpx", defaultAgent: "codex", allowedAgents: ["codex"] },
++      agents: { defaults: { subagents: { allowAgents: ["codex"], maxSpawnDepth: 2, requireAgentId: true } } },
++    });
++    const result = await spawnAcpDirect(
++      { task: "run top-level coding work" },
++      { agentSessionKey: "agent:main:main" },
++    );
 +    expect(expectFailedSpawn(result, "forbidden").error).toContain("requires explicit agentId");
 +    expect(hoisted.initializeSessionMock).not.toHaveBeenCalled();
 +  });
@@ -171,223 +123,62 @@ index eebb2c9b0e4..6210534510c 100644
 +  it("reports disabled ACP before cron target selection", async () => {
 +    replaceSpawnConfig({
 +      ...createDefaultSpawnConfig(),
-+      acp: {
-+        ...createDefaultSpawnConfig().acp,
-+        enabled: false,
-+        defaultAgent: "codex",
-+      },
++      acp: { enabled: false, backend: "acpx", defaultAgent: "main", allowedAgents: ["main"] },
 +    });
-+
 +    const result = await spawnAcpDirect(
-+      {
-+        task: "run while ACP is disabled",
-+      },
-+      {
-+        agentSessionKey: "agent:main:cron:code-maintenance:run:disabled",
-+      },
++      { task: "run while disabled" },
++      { agentSessionKey: "agent:main:cron:maintenance:run:disabled" },
 +    );
-+
 +    expect(expectFailedSpawn(result, "forbidden").error).toContain("ACP is disabled by policy");
-+  });
-+
-+  it("allows cron ACP runs to opt into implicit agent targeting", async () => {
-+    replaceSpawnConfig({
-+      ...createDefaultSpawnConfig(),
-+      acp: {
-+        enabled: true,
-+        backend: "acpx",
-+        allowedAgents: ["main"],
-+        defaultAgent: "main",
-+      },
-+      agents: {
-+        defaults: {
-+          subagents: {
-+            allowAgents: ["main"],
-+            maxSpawnDepth: 2,
-+            requireAgentId: false,
-+          },
-+        },
-+      },
-+    });
-+
-+    const implicit = await spawnAcpDirect(
-+      {
-+        task: "run an intentional implicit coding task",
-+      },
-+      {
-+        agentSessionKey: "agent:main:cron:code-maintenance:run:run-2",
-+      },
-+    );
-+
-+    const explicit = await spawnAcpDirect(
-+      {
-+        task: "run an intentional explicit same-agent coding task",
-+        agentId: "main",
-+      },
-+      {
-+        agentSessionKey: "agent:main:cron:code-maintenance:run:run-3",
-+      },
-+    );
-+
-+    expectAcceptedSpawn(implicit);
-+    expectAcceptedSpawn(explicit);
-+  });
-+
-+  it("accepts an explicitly targeted cron ACP run", async () => {
-+    const result = await spawnAcpDirect(
-+      {
-+        task: "run an explicitly targeted coding task",
-+        agentId: "codex",
-+      },
-+      {
-+        agentSessionKey: "agent:main:cron:code-maintenance:run:run-3",
-+      },
-+    );
-+
-+    expectAcceptedSpawn(result);
 +  });
 +
 +  it("does not inherit requester tool policy for cross-agent ACP spawns", async () => {
 +    const result = await spawnAcpDirect(
-+      {
-+        task: "Use the target agent tool policy",
-+        agentId: "codex",
-+      },
++      { task: "Use target policy", agentId: "codex" },
 +      {
 +        agentSessionKey: "agent:main:main",
-+        inheritedToolAllowlist: [
-+          "apply_patch",
-+          "edit",
-+          "exec",
-+          "process",
-+          "read",
-+          "write",
-+          "custom_plugin_tool",
-+        ],
++        inheritedToolAllowlist: ["apply_patch", "edit", "exec", "process", "read", "write", "custom_plugin_tool"],
 +        inheritedToolDenylist: ["custom_control_tool"],
 +      },
 +    );
-+
 +    expectAcceptedSpawn(result);
-+    const patch = expectRecordFields(
++    const created = expectRecordFields(
 +      firstMockCall(hoisted.upsertSessionEntryMock, "session create")[1],
 +      {},
 +    );
-+    expect(patch).not.toHaveProperty("inheritedToolAllow");
-+    expect(patch).not.toHaveProperty("inheritedToolDeny");
-+  });
-+
-+  it("preserves requester tool policy for same-agent ACP spawns", async () => {
-+    const result = await spawnAcpDirect(
-+      {
-+        task: "Keep the requester tool policy",
-+        agentId: "codex",
-+      },
-+      {
-+        agentSessionKey: "agent:codex:main",
-+        inheritedToolAllowlist: [
-+          "apply_patch",
-+          "edit",
-+          "exec",
-+          "process",
-+          "read",
-+          "write",
-+          "message",
-+        ],
-+        inheritedToolDenylist: ["message"],
-+      },
-+    );
-+
-+    expectAcceptedSpawn(result);
-+    expectCreatedSessionFields({
-+      inheritedToolAllow: ["apply_patch", "edit", "exec", "process", "read", "write", "message"],
-+      inheritedToolDeny: ["message"],
-+    });
++    expect(created).not.toHaveProperty("inheritedToolAllow");
++    expect(created).not.toHaveProperty("inheritedToolDeny");
 +  });
 +
 +  it.each([
-+    {
-+      label: "deny",
-+      requesterAgentId: "codex",
-+      inheritedToolAllowlist: undefined,
-+      inheritedToolDenylist: ["exec"],
-+      expected: "requester denies exec",
-+    },
-+    {
-+      label: "filesystem group deny",
-+      requesterAgentId: "main",
-+      inheritedToolAllowlist: undefined,
-+      inheritedToolDenylist: ["group:fs"],
-+      expected: "requester denies apply_patch",
-+    },
-+    {
-+      label: "runtime group deny",
-+      requesterAgentId: "main",
-+      inheritedToolAllowlist: undefined,
-+      inheritedToolDenylist: ["group:runtime"],
-+      expected: "requester denies exec",
-+    },
-+    {
-+      label: "pattern deny",
-+      requesterAgentId: "main",
-+      inheritedToolAllowlist: undefined,
-+      inheritedToolDenylist: ["exec*"],
-+      expected: "requester denies exec",
-+    },
-+    {
-+      label: "wildcard deny",
-+      requesterAgentId: "main",
-+      inheritedToolAllowlist: undefined,
-+      inheritedToolDenylist: ["*"],
-+      expected: "requester denies apply_patch",
-+    },
-+    {
-+      label: "allow",
-+      requesterAgentId: "main",
-+      inheritedToolAllowlist: ["sessions_spawn"],
-+      inheritedToolDenylist: undefined,
-+      expected: "requester does not allow apply_patch",
-+    },
-+  ])("rejects incompatible requester $label policy for ACP spawns", async (testCase) => {
++    { label: "deny", allow: undefined, deny: ["exec"], expected: "requester denies exec" },
++    { label: "filesystem group", allow: undefined, deny: ["group:fs"], expected: "requester denies apply_patch" },
++    { label: "runtime group", allow: undefined, deny: ["group:runtime"], expected: "requester denies exec" },
++    { label: "pattern", allow: undefined, deny: ["exec*"], expected: "requester denies exec" },
++    { label: "wildcard", allow: undefined, deny: ["*"], expected: "requester denies apply_patch" },
++    { label: "allow", allow: ["sessions_spawn"], deny: undefined, expected: "requester does not allow apply_patch" },
++  ])("rejects incompatible requester $label policy before ACP initialization", async ({ allow, deny, expected }) => {
 +    const result = await spawnAcpDirect(
-+      {
-+        task: "Keep incompatible requester policy out of ACP",
-+        agentId: "codex",
-+      },
-+      {
-+        agentSessionKey: `agent:${testCase.requesterAgentId}:main`,
-+        inheritedToolAllowlist: testCase.inheritedToolAllowlist,
-+        inheritedToolDenylist: testCase.inheritedToolDenylist,
-+      },
++      { task: "Reject incompatible policy", agentId: "codex" },
++      { agentSessionKey: "agent:main:main", inheritedToolAllowlist: allow, inheritedToolDenylist: deny },
 +    );
-+
-+    const failure = expectFailedSpawn(result, "forbidden");
-+    expect(failure.error).toContain(testCase.expected);
++    expect(expectFailedSpawn(result, "forbidden").error).toContain(expected);
 +    expect(hoisted.initializeSessionMock).not.toHaveBeenCalled();
 +  });
 +
-+  it("preserves requester tool policy for global same-agent ACP spawns", async () => {
++  it.each([
++    { key: "agent:codex:main", override: undefined },
++    { key: "global", override: "codex" },
++  ])("preserves requester policy for same-agent ACP spawn from $key", async ({ key, override }) => {
 +    const result = await spawnAcpDirect(
++      { task: "Keep requester policy", agentId: "codex" },
 +      {
-+        task: "Keep the global requester's tool policy",
-+        agentId: "codex",
-+      },
-+      {
-+        agentSessionKey: "global",
-+        requesterAgentIdOverride: "codex",
-+        inheritedToolAllowlist: [
-+          "apply_patch",
-+          "edit",
-+          "exec",
-+          "process",
-+          "read",
-+          "write",
-+          "message",
-+        ],
++        agentSessionKey: key,
++        requesterAgentIdOverride: override,
++        inheritedToolAllowlist: ["apply_patch", "edit", "exec", "process", "read", "write", "message"],
 +        inheritedToolDenylist: ["message"],
 +      },
 +    );
-+
 +    expectAcceptedSpawn(result);
 +    expectCreatedSessionFields({
 +      inheritedToolAllow: ["apply_patch", "edit", "exec", "process", "read", "write", "message"],
@@ -395,12 +186,11 @@ index eebb2c9b0e4..6210534510c 100644
 +    });
 +  });
  });
- /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
 diff --git a/src/agents/subagents/spawn/acp-spawn.ts b/src/agents/subagents/spawn/acp-spawn.ts
-index b6ea2309067..c6b719de69e 100644
+index 545b2c848..a5703cfb9 100644
 --- a/src/agents/subagents/spawn/acp-spawn.ts
 +++ b/src/agents/subagents/spawn/acp-spawn.ts
-@@ -34,11 +34,16 @@ import {
+@@ -30,12 +30,17 @@ import {
    type SessionBindingRecord,
  } from "../../../infra/outbound/session-binding-service.js";
  import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
@@ -414,12 +204,13 @@ index b6ea2309067..c6b719de69e 100644
  import { recordSessionCreated } from "../../../sessions/session-created.js";
  import { waitForSessionParticipantRecording } from "../../../sessions/session-participant-recording.js";
  import { recordSubagentSpawned } from "../../../sessions/session-state-events.js";
+ import { resolveConfiguredAcpSubagentTargetIds } from "../../agent-roster.js";
 -import { resolveSessionAgentId } from "../../agent-scope.js";
 +import { resolveAgentConfig, resolveSessionAgentId } from "../../agent-scope.js";
  import { runWithAgentToolSourceExecutionScope } from "../../agent-tool-source-execution-guard.js";
  import { reserveChildAdmissionSlot } from "../../child-admission.js";
  import {
-@@ -109,6 +114,7 @@ import { withPreparedSessionCapabilityRead } from "./subagent-session-store.js";
+@@ -106,6 +111,7 @@ import { withPreparedSessionCapabilityRead } from "./subagent-session-store.js";
  import { readGatewayRunId } from "./subagent-spawn-gateway.js";
  import { resolveSubagentSpawnOwnership } from "./subagent-spawn-ownership.js";
  import { resolveConfiguredSubagentRunTimeoutSeconds } from "./subagent-spawn-plan.js";
@@ -427,7 +218,7 @@ index b6ea2309067..c6b719de69e 100644
  
  type SpawnAcpSandboxMode = "inherit" | "require";
  
-@@ -202,6 +208,48 @@ export async function spawnAcpDirect(
+@@ -199,6 +205,48 @@ export async function spawnAcpDirect(
      sessionKey: requesterInternalKey,
      agentId: ctx.requesterAgentIdOverride,
    });
@@ -437,7 +228,7 @@ index b6ea2309067..c6b719de69e 100644
 +  const isCronRequester = isCronSessionKey(requesterInternalKey);
 +  const requesterAllowAgents =
 +    requesterSubagents?.allowAgents ?? cfg.agents?.defaults?.subagents?.allowAgents;
-+  const routableAcpTargetIds = resolveConfiguredAcpSubagentTargetIds(cfg).filter((id) => {
++  const routableAcpTargetIds = [...resolveConfiguredAcpSubagentTargetIds(cfg)].filter((id) => {
 +    const target = resolveTargetAcpAgentId({ requestedAgentId: id, cfg });
 +    return (
 +      target.ok &&
@@ -476,7 +267,7 @@ index b6ea2309067..c6b719de69e 100644
    const runtimePolicyError = await resolveAcpSpawnRuntimePolicyError({
      cfg,
      requesterAgentId,
-@@ -212,27 +260,6 @@ export async function spawnAcpDirect(
+@@ -209,27 +257,6 @@ export async function spawnAcpDirect(
    if (runtimePolicyError) {
      return buildAcpSpawnError("runtime_policy", runtimePolicyError, "forbidden");
    }
@@ -504,7 +295,7 @@ index b6ea2309067..c6b719de69e 100644
    const spawnMode = resolveSpawnMode({
      requestedMode: params.mode,
      threadRequested: requestThreadBinding,
-@@ -270,6 +297,26 @@ export async function spawnAcpDirect(
+@@ -267,6 +294,26 @@ export async function spawnAcpDirect(
    if (requesterPolicyError) {
      return buildAcpSpawnError("runtime_policy", requesterPolicyError, "forbidden");
    }
@@ -531,7 +322,7 @@ index b6ea2309067..c6b719de69e 100644
    const agentPolicyError = resolveAcpAgentPolicyError(cfg, targetAgentId);
    if (agentPolicyError) {
      return buildAcpSpawnError("agent_forbidden", agentPolicyError.message, "forbidden");
-@@ -509,8 +556,12 @@ export async function spawnAcpDirect(
+@@ -506,8 +553,12 @@ export async function spawnAcpDirect(
              ...(ctx.inheritedToolPolicySource
                ? { inheritedToolPolicySource: ctx.inheritedToolPolicySource }
                : {}),
@@ -546,7 +337,7 @@ index b6ea2309067..c6b719de69e 100644
              ...(senderRestricted
                ? {
                    spawnedWorkspaceDir: ctx.workspaceDir ?? requesterRoot,
-@@ -625,8 +676,10 @@ export async function spawnAcpDirect(
+@@ -622,8 +673,10 @@ export async function spawnAcpDirect(
              maxDepth: admission.maxSpawnDepth,
              targetAgentId: ownerAgentId,
              sandbox: params.sandbox === "require" ? "require" : "inherit",
@@ -560,7 +351,7 @@ index b6ea2309067..c6b719de69e 100644
            parentExecutionIdentityToken: readParentExecutionIdentity(ctx),
            participantStorePath: resolveSessionStorePathCore(cfg.session?.store, {
 diff --git a/src/agents/subagents/spawn/subagent-spawn-request.ts b/src/agents/subagents/spawn/subagent-spawn-request.ts
-index 40c61c6d762..05da491973c 100644
+index ee1a75533..f1d3d3581 100644
 --- a/src/agents/subagents/spawn/subagent-spawn-request.ts
 +++ b/src/agents/subagents/spawn/subagent-spawn-request.ts
 @@ -2,10 +2,14 @@ import crypto from "node:crypto";
@@ -587,8 +378,8 @@ index 40c61c6d762..05da491973c 100644
 +import { resolveCronSelfSpawnPolicyError } from "./subagent-target-policy.js";
  import { normalizeSubagentTaskName } from "./subagent-task-name.js";
  
- export async function resolveSubagentSpawnRequest(
-@@ -224,6 +229,27 @@ export async function resolveSubagentSpawnRequest(
+ const BLIND_FORK_ERROR =
+@@ -235,6 +240,27 @@ export async function resolveSubagentSpawnRequest(
      ? normalizeAgentId(effectiveRequestedAgentId)
      : requesterAgentId;
    const configuredAgentIds = listAgentIds(cfg);
@@ -617,10 +408,10 @@ index 40c61c6d762..05da491973c 100644
    const requesterRunId = normalizeOptionalString(ctx.requesterRunId);
    const swarmGroupId = params.collect
 diff --git a/src/agents/subagents/spawn/subagent-spawn.test.ts b/src/agents/subagents/spawn/subagent-spawn.test.ts
-index 05d66fb7aeb..2a1e28f933c 100644
+index fd44d6425..5d6a2b5ca 100644
 --- a/src/agents/subagents/spawn/subagent-spawn.test.ts
 +++ b/src/agents/subagents/spawn/subagent-spawn.test.ts
-@@ -1080,4 +1080,261 @@ describe("spawnSubagentDirect seam flow", () => {
+@@ -795,4 +795,261 @@ describe("spawnSubagentDirect seam flow", () => {
      expect(hoisted.callGatewayMock).not.toHaveBeenCalled();
      expect(hoisted.emitSessionLifecycleEventMock).not.toHaveBeenCalled();
    });
@@ -883,10 +674,10 @@ index 05d66fb7aeb..2a1e28f933c 100644
 +  });
  });
 diff --git a/src/agents/subagents/spawn/subagent-spawn.ts b/src/agents/subagents/spawn/subagent-spawn.ts
-index 40d6d7b0cc4..3a81ae53a30 100644
+index 7e41a5c0e..283190174 100644
 --- a/src/agents/subagents/spawn/subagent-spawn.ts
 +++ b/src/agents/subagents/spawn/subagent-spawn.ts
-@@ -199,8 +199,10 @@ export async function spawnSubagentDirect(
+@@ -244,8 +244,10 @@ export async function spawnSubagentDirect(
          sessionPermissionPolicy: ctx.sessionPermissionPolicy,
          worktree: params.worktree ? params : undefined,
          admissionPatch: admission.childSessionPatch,
@@ -899,7 +690,7 @@ index 40d6d7b0cc4..3a81ae53a30 100644
          inheritedToolPolicySource: ctx.inheritedToolPolicySource,
          delegatedToolPolicy,
          modelPatch: plan.initialSessionPatch,
-@@ -407,8 +409,10 @@ export async function spawnSubagentDirect(
+@@ -412,8 +414,10 @@ export async function spawnSubagentDirect(
                  maxDepth: maxSpawnDepth,
                  targetAgentId,
                  sandbox: sandboxMode,
@@ -913,10 +704,10 @@ index 40d6d7b0cc4..3a81ae53a30 100644
                parentExecutionIdentityToken: readParentExecutionIdentity(ctx),
              },
 diff --git a/src/agents/subagents/spawn/subagent-target-policy.ts b/src/agents/subagents/spawn/subagent-target-policy.ts
-index 64b25f4a953..375f4b1780e 100644
+index 138111096..9e82d2168 100644
 --- a/src/agents/subagents/spawn/subagent-target-policy.ts
 +++ b/src/agents/subagents/spawn/subagent-target-policy.ts
-@@ -48,6 +48,34 @@ export function resolveSubagentAllowedTargetIds(params: {
+@@ -58,6 +58,34 @@ export function resolveSubagentAllowedTargetIds(params: {
    };
  }
  
@@ -948,31 +739,26 @@ index 64b25f4a953..375f4b1780e 100644
 +  );
 +}
 +
- /** Validate one requested target against subagent spawn policy. */
- export function resolveSubagentTargetPolicy(params: {
-   requesterAgentId: string;
+ /** Resolve a requester's effective spawn target settings: agent override, then defaults. */
+ export function resolveSubagentSpawnTargetConfig(
+   cfg: OpenClawConfig,
 diff --git a/src/agents/tools/sessions-spawn-tool.test.ts b/src/agents/tools/sessions-spawn-tool.test.ts
-index 4d28f42cd43..62fc718da5d 100644
+index 360d5a436..39eea7186 100644
 --- a/src/agents/tools/sessions-spawn-tool.test.ts
 +++ b/src/agents/tools/sessions-spawn-tool.test.ts
-@@ -841,6 +841,16 @@ describe("sessions_spawn tool", () => {
+@@ -819,6 +819,11 @@ describe("sessions_spawn tool", () => {
        lightContext: true,
      };
      const tool = makeTool(structuredClone(caller));
 +    expect(tool.parameters).toMatchObject({
 +      properties: {
 +        taskName: { description: expect.stringContaining("does not select an agent profile") },
-+        agentId: {
-+          description: expect.stringContaining(
-+            "ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile",
-+          ),
-+        },
 +      },
 +    });
      const { result, token } = await captureSessionDecisionWork(() =>
        tool.execute("native", {
          ...request,
-@@ -977,9 +987,10 @@ describe("sessions_spawn tool", () => {
+@@ -955,9 +960,10 @@ describe("sessions_spawn tool", () => {
        "requester does not allow apply_patch",
      ],
    ] satisfies Array<[SpawnOptions, string]>)(
@@ -984,7 +770,7 @@ index 4d28f42cd43..62fc718da5d 100644
        const result = await makeTool(policy).execute("acp-policy", {
          runtime: "acp",
          task: "inspect",
-@@ -990,7 +1001,10 @@ describe("sessions_spawn tool", () => {
+@@ -968,7 +974,10 @@ describe("sessions_spawn tool", () => {
          role: "codex",
          error: expect.stringContaining(error),
        });
@@ -997,10 +783,10 @@ index 4d28f42cd43..62fc718da5d 100644
    );
  
 diff --git a/src/agents/tools/sessions-spawn-tool.ts b/src/agents/tools/sessions-spawn-tool.ts
-index 894a3944bbe..82aef11fc1a 100644
+index cc9e7a5b4..fdf7eef16 100644
 --- a/src/agents/tools/sessions-spawn-tool.ts
 +++ b/src/agents/tools/sessions-spawn-tool.ts
-@@ -17,12 +17,6 @@ import {
+@@ -18,12 +18,6 @@ import {
    normalizeAcceptedSessionSpawnResult,
  } from "../accepted-session-spawn.js";
  import { captureAgentToolSourceExecutionGuard } from "../agent-tool-source-execution-guard.js";
@@ -1013,7 +799,7 @@ index 894a3944bbe..82aef11fc1a 100644
  import { createCachedToolSchema } from "../schema/cached-schema.js";
  import { optionalStringEnum, requesterProfileSchema } from "../schema/typebox.js";
  import { resolveSenderRestrictedSpawnError } from "../spawn-requester-policy.js";
-@@ -162,7 +156,7 @@ function buildSessionsSpawnToolSchema(params: {
+@@ -146,7 +140,7 @@ function buildSessionsSpawnToolSchema(params: {
      taskName: Type.Optional(
        Type.String({
          description:
@@ -1022,21 +808,7 @@ index 894a3944bbe..82aef11fc1a 100644
        }),
      ),
      label: Type.Optional(
-@@ -174,7 +168,12 @@ function buildSessionsSpawnToolSchema(params: {
-       params.acpAvailable ? SESSIONS_SPAWN_RUNTIMES : (["subagent"] as const),
-       { description: 'Runtime; visible=true and managed worktrees require "subagent".' },
-     ),
--    agentId: Type.Optional(Type.String()),
-+    agentId: Type.Optional(
-+      Type.String({
-+        description:
-+          "Target agent profile. Native scheduled/cron callers require it by default. ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile; same-profile omission requires policy to allow it.",
-+      }),
-+    ),
-     model: Type.Optional(Type.String()),
-     runTimeoutSeconds: Type.Optional(
-       Type.Integer({
-@@ -532,26 +531,6 @@ export function createSessionsSpawnTool(
+@@ -527,26 +521,6 @@ export function createSessionsSpawnTool(
              }),
            });
          }
@@ -1063,19 +835,24 @@ index 894a3944bbe..82aef11fc1a 100644
          if (runtime === "acp" && lightContext) {
            throw new Error("lightContext is only supported for runtime='subagent'.");
          }
+diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
+index 946c28afc..f7b0a16bf 100644
+--- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
++++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
+@@ -398,7 +398,7 @@
+             "type": "string"
+           },
+           "taskName": {
+-            "description": "Stable later-target alias; starts lowercase letter; then lowercase/digit/_/-.",
++            "description": "Stable later-target alias; does not select an agent profile; starts lowercase letter; then lowercase/digit/_/-.",
+             "type": "string"
+           },
+           "thinking": {
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
-index 67cb83ae241..3e5996df28f 100644
+index 2f06614c7..ec4cf3126 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
-@@ -168,6 +168,7 @@
-     "inputSchema": {
-       "properties": {
-         "agentId": {
-+          "description": "Target agent profile. Native scheduled/cron callers require it by default. ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile; same-profile omission requires policy to allow it.",
-           "type": "string"
-         },
-         "attachAs": {
-@@ -359,7 +360,7 @@
+@@ -405,7 +405,7 @@
            "type": "string"
          },
          "taskName": {
@@ -1085,117 +862,70 @@ index 67cb83ae241..3e5996df28f 100644
          },
          "thinking": {
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff
-index 53e48c1bb4c..abb335e225c 100644
+index 2d7bd2cea..2fcad6641 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff
 @@ -1,5 +1,5 @@
----- telegram-direct-codex-message-tool.md	sha256=aa3d5b380fd2f94b36d10af368f157a40b8bd17b5beccca95347f412f700e5e0
--+++ discord-group-codex-message-tool.md	sha256=f5fe3a3aab6d6755960d77621ed1a222ba9aa4edb36c7473071766f36465a81f
-+--- telegram-direct-codex-message-tool.md	sha256=9709fb1c6b8cd8f6d3a5e51624d01e9e74155e3448eeb0b21607430b4b99d1b5
-++++ discord-group-codex-message-tool.md	sha256=cacf6a789b27ec236c667251709feffef32cc5b89c03141aab34f3b02d8ab822
+---- telegram-direct-codex-message-tool.md	sha256=387fa082166d3a8a46e7a6bc3357a75ef2eb32c65bb18a008c35c077b515da4b
+-+++ discord-group-codex-message-tool.md	sha256=5860d02221557771f436444b90fa3f88ef7ece8318982998a097d39eaa266ea4
++--- telegram-direct-codex-message-tool.md	sha256=1b18a92e52b4e716c954178980e9090fe02b59854f84063f4192038cf1e68b30
+++++ discord-group-codex-message-tool.md	sha256=ca4f5ddb99d14f2bdc2d65485e358f4d2e9824db5379f4b6bfd7b739bb76efc8
  @@ -1,1 +1,1 @@
  -# Telegram Direct Codex Message Tool Turn
  +# Discord Group Codex Message Tool Turn
-@@ -32,10 +32,10 @@
- -    "chars": 1338,
- +    "chars": 1337,
+@@ -34,10 +34,10 @@
+ +    "chars": 972,
+ +    "roughTokens": 243
  @@ -262,2 +262,2 @@
---    "chars": 74699,
---    "roughTokens": 18675
--+    "chars": 75297,
--+    "roughTokens": 18825
-+-    "chars": 74976,
-+-    "roughTokens": 18744
-++    "chars": 75574,
-++    "roughTokens": 18894
+--    "chars": 84685,
+--    "roughTokens": 21172
+-+    "chars": 85319,
+-+    "roughTokens": 21330
++-    "chars": 84719,
++-    "roughTokens": 21180
+++    "chars": 85353,
+++    "roughTokens": 21339
  @@ -266,2 +266,2 @@
- -    "chars": 3194,
- -    "roughTokens": 799
-@@ -47,10 +47,10 @@
- +    "chars": 28887,
- +    "roughTokens": 7222
+ -    "chars": 3490,
+ -    "roughTokens": 873
+@@ -49,10 +49,10 @@
+ +    "chars": 29106,
+ +    "roughTokens": 7277
  @@ -278,2 +278,2 @@
---    "chars": 102271,
---    "roughTokens": 25568
--+    "chars": 104186,
--+    "roughTokens": 26047
-+-    "chars": 102548,
-+-    "roughTokens": 25637
-++    "chars": 104463,
-++    "roughTokens": 26116
+--    "chars": 112188,
+--    "roughTokens": 28047
+-+    "chars": 114427,
+-+    "roughTokens": 28607
++-    "chars": 112222,
++-    "roughTokens": 28056
+++    "chars": 114461,
+++    "roughTokens": 28616
  @@ -282,2 +282,2 @@
  -    "chars": 879,
  -    "roughTokens": 220
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
-index 2d9634d3220..0d3964f810c 100644
+index 5fc4ee594..d4195efac 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
 @@ -259,8 +259,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
      "roughTokens": 0
    },
    "dynamicToolsJson": {
--    "chars": 74699,
--    "roughTokens": 18675
-+    "chars": 74976,
-+    "roughTokens": 18744
+-    "chars": 84685,
+-    "roughTokens": 21172
++    "chars": 84719,
++    "roughTokens": 21180
    },
    "openClawDeveloperInstructions": {
-     "chars": 3194,
+     "chars": 3490,
 @@ -275,8 +275,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
-     "roughTokens": 6893
+     "roughTokens": 6876
    },
    "totalWithDynamicToolsJson": {
--    "chars": 102271,
--    "roughTokens": 25568
-+    "chars": 102548,
-+    "roughTokens": 25637
+-    "chars": 112188,
+-    "roughTokens": 28047
++    "chars": 112222,
++    "roughTokens": 28056
    },
    "userInputText": {
      "chars": 879,
-diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md.diff b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md.diff
-index 9ab3002dac0..341669ad490 100644
---- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md.diff
-+++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md.diff
-@@ -1,5 +1,5 @@
----- telegram-direct-codex-message-tool.md	sha256=aa3d5b380fd2f94b36d10af368f157a40b8bd17b5beccca95347f412f700e5e0
--+++ telegram-heartbeat-codex-tool.md	sha256=e09d337e1afbf4282c708d52ee8bd7c707a04a88ddd3a52b53d93fccd21282ae
-+--- telegram-direct-codex-message-tool.md	sha256=9709fb1c6b8cd8f6d3a5e51624d01e9e74155e3448eeb0b21607430b4b99d1b5
-++++ telegram-heartbeat-codex-tool.md	sha256=3f65488e801b34e7b35fdbb7a4abc3efa64e13e28e9104ee8cc6b8c1e1831fa6
- @@ -1,1 +1,1 @@
- -# Telegram Direct Codex Message Tool Turn
- +# Telegram Direct Codex Heartbeat Tool Turn
-@@ -40,10 +40,10 @@
- +    "chars": 27907,
- +    "roughTokens": 6977
- @@ -278,2 +274,2 @@
---    "chars": 102271,
---    "roughTokens": 25568
--+    "chars": 102608,
--+    "roughTokens": 25652
-+-    "chars": 102548,
-+-    "roughTokens": 25637
-++    "chars": 102885,
-++    "roughTokens": 25722
- @@ -282,2 +278,2 @@
- -    "chars": 879,
- -    "roughTokens": 220
-diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
---- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
-+++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
-@@ -6,6 +6,7 @@
-       "inputSchema": {
-         "properties": {
-           "agentId": {
-+            "description": "Target agent profile. Native scheduled/cron callers require it by default. ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile; same-profile omission requires policy to allow it.",
-             "type": "string"
-           },
-           "attachAs": {
-@@ -198,7 +199,7 @@
-             "type": "string"
-           },
-           "taskName": {
--            "description": "Stable later-target alias; starts lowercase letter; then lowercase/digit/_/-.",
-+            "description": "Stable later-target alias; does not select an agent profile; starts lowercase letter; then lowercase/digit/_/-.",
-             "type": "string"
-           },
-           "thinking": {

@@ -103,7 +103,7 @@ stay on the existing SDK entrypoint used by release migration; the newer public
 patch helpers do not advertise options they do not forward.
 
 The patch targets stable source
-`847611dcaa3bf0e2783335f961dd1fd0580e4d9f`. Its registered SDK tests use real
+`e13cf15ece9bbd969b7362927c315362c90c97ff` (2026.11.5). Its registered SDK tests use real
 SQLite, including the maintained compressed 2026.7.1-2 fixture. They cover
 readonly absent-state behavior, old-schema ordering, legacy config repair,
 markerless multi-agent ownership, Active Memory QMD retirement, Canvas host
@@ -126,3 +126,10 @@ authentication owner separate from Talk, heartbeat and system-agent ownership.
 Both preview and repair retain the authored include boundary. Six native Doctor
 cases prove exact persisted equality, fixed-store and workspace behavior, explicit
 owners, and byte-preserving refusal across included configuration files.
+
+The 11.5 port follows the native split entry writer and worker commit path.
+Doctor owns schema backup custody and retired heartbeat-to-automation migration.
+The SDK does not bypass either requirement. Its historical database regression
+uses native backup custody. Cron migration compares native opaque partition
+identities and refuses an ambiguous default; it does not select one. The fixture
+copies to an explicit reviewed partition while preserving that refusal.

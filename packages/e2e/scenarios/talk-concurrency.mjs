@@ -46,6 +46,8 @@ if (process.argv[3] !== "--child") {
   let finish;
   let failAttempt;
   let active = false;
+  let rejectSteering = false;
+  const steering = [];
   let appendFinal;
   const sent = [];
   const calls = [];
@@ -59,7 +61,11 @@ if (process.argv[3] !== "--child") {
   }, {
     claimAppend: () => true,
     claimFailureAppend: () => true,
-    steer: async () => { throw Object.assign(new Error("synthetic unsupported steering"), { code: "TALK_STEERING_UNSUPPORTED" }); },
+    steer: async request => {
+      steering.push(request);
+      if (rejectSteering) throw Object.assign(new Error("synthetic unsupported steering"), { code: "TALK_STEERING_UNSUPPORTED" });
+      return { text: "" };
+    },
   });
   const controller = new Controller({
     model: "gpt-live-1", signal: new AbortController().signal,
@@ -85,49 +91,33 @@ if (process.argv[3] !== "--child") {
   };
   const replies = id => sent.filter(e => e.type === "session.commentary.append" && e.delegation_id === id);
   try {
-    request("first", "read the synthetic calendar");
+    request("first", "research two synthetic options");
     await tick();
-    assert.deepEqual(sent, [], "calling the runner must not announce admission");
-    assert.equal(typeof calls[0].onProgress, "function");
-    calls[0].onProgress("Existing notes identify two options. Research is running.");
-    assert.deepEqual(sent, [{
-      type: "session.thinking.append", delegation_id: "first",
-      content: "Existing notes identify two options. Research is running.",
-    }]);
+    assert.equal(calls.length, 1);
+    assert.ok(sent.some(e => e.type === "session.commentary.append" && e.delegation_id === null),
+      "native launch acknowledgement should confirm hearing without claiming admission");
     controller.handleFrame(Buffer.from(JSON.stringify({
-      type: "session.input_transcript.delta",
-      delta: "While that lookup runs, help me brainstorm a cozy reading nook. I like plants ",
+      type: "session.input_transcript.delta", delta: "While that runs, I like plants. ",
       start_ms: 110, end_ms: 140,
     })), false);
     controller.handleFrame(Buffer.from(JSON.stringify({
       type: "session.output_transcript.delta", delta: "A warm lamp would help.",
       start_ms: 150, end_ms: 180,
     })), false);
-    request("status", "Are you actually checking that request?");
+    assert.equal(calls[0].signal.aborted, false, "conversation must not abort accepted research");
+    request("refined", "limit that research to the smaller option");
     await tick();
-    assert.equal(calls.length, 1, "status must not launch another task");
-    assert.equal(replies("status")[0].content, "The original task is active.");
-    assert.equal(classify({ text: "Also, that result makes sense." }).shouldAutoControl, false);
-    for (const id of ["weather", "memory"]) {
-      request(id, `also read synthetic ${id}`);
-      await tick();
-      assert.equal(replies(id).length, 1);
-      assert.match(replies(id)[0].content, /not accepted/);
-    }
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].signal.aborted, false);
-    assert.deepEqual(fatal, []);
-    calls[0].onProgress("The original research is still running.");
-    assert.equal(sent.at(-1).type, "session.thinking.append");
-    assert.equal(sent.at(-1).delegation_id, "first");
+    assert.equal(calls.length, 1, "steering must retain the original task");
+    assert.equal(steering.length, 1);
+    assert.match(steering[0].prompt, /smaller option/);
     finish({ text: "", yielded: true });
     await tick();
-    const settledCount = sent.length;
-    calls[0].onProgress("Late context must be dropped.");
-    assert.equal(sent.length, settledCount);
     assert.equal(appendFinal("original child result"), true);
     assert.equal(appendFinal("duplicate result"), false);
-    assert.ok(replies("first").some(e => e.content === "original child result"));
+    assert.ok(replies("refined").some(e => e.content === "original child result"),
+      "native completion must target the latest steering presentation");
+    assert.equal(sent.some(e => e.type === "session.thinking.append"), false,
+      "the removed silent-progress shim must not be required for completion");
     request("next", "now read synthetic memory");
     await tick();
     assert.equal(calls.length, 2);
@@ -138,24 +128,19 @@ if (process.argv[3] !== "--child") {
     await tick();
     failAttempt(new Error("synthetic reader handoff failure"));
     await tick();
-    assert.equal(replies("failed").length, 1);
     assert.match(replies("failed")[0].content, /failed/);
     request("retry", "try again using the other document");
     await tick();
     assert.equal(calls.length, 4);
-    assert.match(calls[3].prompt, /try again using the other document/);
-    request("overlap-one", "also read the second document");
-    request("overlap-two", "also read the third document");
+    rejectSteering = true;
+    request("unsupported", "refine that task again");
     await tick();
-    for (const id of ["overlap-one", "overlap-two"]) {
-      assert.equal(replies(id).length, 1, "every unaccepted input needs its own outcome");
-      assert.match(replies(id)[0].content, /not accepted/);
-    }
-    assert.equal(calls[3].signal.aborted, false);
-    finish({ text: "fresh attempt result" });
+    assert.equal(fatal.length, 1, "unsupported native steering must surface failure");
+    assert.equal(calls[3].signal.aborted, true);
+    assert.equal(appendFinal("stale completion"), false);
+    finish({ text: "stale result" });
     await tick();
-    assert.equal(replies("retry")[0].content, "fresh attempt result");
-    assert.deepEqual(fatal, []);
-    console.log(JSON.stringify({ status: "passed", checks: ["compiled-public-wire", "no-premature-admission", "native-status", "discussion-not-control", "silent-progress", "progress-fenced-after-yield", "repeated-overlap-rejection", "original-run-preserved", "delayed-child-once", "subsequent-request", "failure-then-fresh-request", "rapid-overlap-outcomes"], modelCalls: 0, externalWrites: 0 }));
+    assert.equal(replies("unsupported").some(e => /stale result/.test(e.content)), false);
+    console.log(JSON.stringify({ status: "passed", checks: ["compiled-public-wire", "native-launch-ack", "conversation-while-working", "same-task-steering", "proactive-child-once", "subsequent-request", "failure-then-fresh-request", "native-unsupported-steering-failure"], modelCalls: 0, externalWrites: 0 }));
   } finally { controller.stop(new Error("fixture complete")); }
 }

@@ -49,6 +49,20 @@ it('binds distinct interpreters and exact sources before the frozen runtime, wit
   expect(result.pythonEnv.XDG_CACHE_HOME).toBe(join(f.scratch,'cache'));
   expect(result.env.PYTEST_ADDOPTS).toBeUndefined();
 });
+it.each([{}, { TMPDIR: '/tmp', TMP: '/caller/tmp', TEMP: '/caller/temp' }])('keeps Python scratch temp paths out of native test environment: %j', async (caller) => {
+  const f = fixture();
+  const scratch = join(f.scratch, 'deep-registry-' + 'a'.repeat(120), 'tests', 'run');
+  mkdirSync(scratch, { recursive: true });
+  const result = await prepareApplicationPython({ ...f, scratch, env: caller,
+    run: async (_command: string, args: string[]) => {
+      if (args.includes('venv')) mkdirSync(join(args.at(-1)!, 'lib/python3.11/site-packages'), { recursive: true });
+    } });
+  for (const key of ['TMPDIR', 'TMP', 'TEMP'] as const) {
+    expect(result.pythonEnv[key]).toBe(join(scratch, 'tmp'));
+    expect(result.env[key]).toBe(caller[key as keyof typeof caller]);
+    expect(Object.hasOwn(result.env, key)).toBe(Object.hasOwn(caller, key));
+  }
+});
 it('loads the owned pth hook without environment or -B, preserving stdlib and exact frozen imports', () => {
   const f=fixture(), venv=join(f.scratch,'venv');
   const bootstrap=process.env.GMAIL_MCP_PYTHON ?? 'python3';

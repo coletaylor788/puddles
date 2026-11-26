@@ -28,6 +28,7 @@ describe("ordinary development loop contract", () => {
 
     const runtime = buildProfile("qaRuntime");
     expect(runtime.map((step: { label: string }) => step.label)).toEqual([
+      "runtime:scripts:check",
       "plugins:assets:build",
       "tsdown",
       "external-plugins:local-dist",

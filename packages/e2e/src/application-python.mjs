@@ -49,7 +49,8 @@ export async function prepareApplicationPython({ repository, artifact, scratch, 
     interpreters[service] = python;
   }
   return { interpreters, pythonEnv: { ...clean, GMAIL_MCP_PYTHON: interpreters['gmail-mcp'] },
-    // Keep the maintained Node/pnpm cache settings outside Python-only commands.
+    // Keep caller temp paths and Node/pnpm caches outside Python-only commands.
+    // Deep Python scratch paths can exceed native Unix socket path limits.
     env: { ...env, PYTHONPATH: '', PYTHONHOME: '', PYTHONNOUSERSITE: '1', PYTHONDONTWRITEBYTECODE: '1',
-      TMPDIR: clean.TMPDIR, TEMP: clean.TEMP, TMP: clean.TMP, GMAIL_MCP_PYTHON: interpreters['gmail-mcp'] } };
+      GMAIL_MCP_PYTHON: interpreters['gmail-mcp'] } };
 }

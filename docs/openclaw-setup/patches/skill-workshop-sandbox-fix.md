@@ -5,18 +5,14 @@ supports history and undo, and exports pending legacy proposal drafts during
 Doctor repair without activating them. Puddles uses those native behaviors and
 does not restore the retired proposal workflow.
 
-OpenClaw's configured Workshop factory still hides `skill_workshop` from an
-ordinary sandboxed run unless the run carries a human personal-library
-capability. Existing Puddles installations also grant the configured Workshop
-tool to approved iMessage, background, and delegated sandbox agents. Those
-paths cannot mint the human Gateway capability, so removing the old patch
-would silently remove their existing access.
+OpenClaw 2026.11.5 no longer blocks the configured Workshop factory for sandboxed
+runs. The previous factory change is removed from this patch. Native tool policy
+now provides the existing access directly.
 
-The reduced patch removes only that sandbox construction gate and its matching
-unavailable-tool diagnostics. It keeps the configured factory, agent and run
-scope, normal allow and deny policy, review guard, native immediate mutation,
-version history, undo, and current-authority checks. Sandboxed agents still
-need `skill_workshop` in their effective tool policy.
+The remaining patch removes an obsolete diagnostic that still says a sandboxed
+agent cannot receive the tool. It changes no construction, authorization or
+mutation behavior. Agent and run scope, allow and deny policy, review guards,
+version history, undo and current-authority checks remain native.
 
 ## Native ownership
 
@@ -24,8 +20,8 @@ The cumulative suite runs native regressions for immediate saves, version and
 restore history, review undo, human personal-library authority and revocation,
 agent-scoped Gateway methods, and Doctor export of pending or quarantined
 legacy drafts. Applied legacy skills stay live and are not activated again.
-The patch-owned regression proves that a configured sandbox agent receives the
-native Workshop tool and records an immediate versioned change.
+The patch-owned regression checks that the diagnostic accepts the supported
+sandboxed grant. Native tool tests cover access and immediate versioned changes.
 
 ## Validation and delivery
 
