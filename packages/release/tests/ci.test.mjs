@@ -255,3 +255,63 @@ test('DEV failure retains its callback phase after successful teardown', async t
   assert.ok(!f.seen.includes('dev-start'));
   assert.equal(existsSync(join(f.config.registry, f.manifest.id, 'gates/dev.json')), false);
 });
+
+for (const mode of ['dev', 'prod']) test(`${mode} preserves the initiating error across failed cleanup and restart`, async t => {
+  const f = await fixture(t); await f.request('failure-evidence', mode);
+  const path = join(f.config.runs, 'failure-evidence.json');
+  await assert.rejects(executeCI(f.config, 'failure-evidence', async (cmd, env) => {
+    if (cmd.env.ACTION === (mode === 'dev' ? 'dev-tests' : 'test-tests')) {
+      throw Object.assign(new Error('initial acceptance failure'), { exitCode: 23 });
+    }
+    if (cmd.env.ACTION.endsWith('-cleanup')) throw new Error('first cleanup timeout');
+    await f.execute(cmd, env);
+  }), /first cleanup timeout/);
+  const first = readJson(path);
+  assert.equal(first.primaryFailure.message, 'initial acceptance failure');
+  assert.equal(first.primaryFailure.phase, mode === 'dev' ? 'dev-tests' : 'test-tests');
+  assert.equal(first.primaryFailure.exitCode, 23);
+  assert.equal(first.cleanupFailure.message, 'first cleanup timeout');
+  assert.equal(first.status, 'cleanup-required');
+  await assert.rejects(executeCI(f.config, 'failure-evidence', async cmd => {
+    if (cmd.env.ACTION.endsWith('-cleanup')) throw new Error('second cleanup timeout');
+  }), /second cleanup timeout/);
+  assert.deepEqual(readJson(path).primaryFailure, first.primaryFailure);
+  assert.equal(readJson(path).cleanupFailure.message, 'second cleanup timeout');
+  f.seen.length = 0;
+  const result = await executeCI(f.config, 'failure-evidence', f.execute);
+  assert.equal(result.status, 'failed'); assert.equal(result.phase, 'complete');
+  assert.equal(result.child, null);
+  assert.deepEqual(result.primaryFailure, first.primaryFailure);
+  assert.deepEqual(f.seen, [mode === 'dev' ? 'dev-stop' : 'test-stop', mode === 'dev' ? 'dev-cleanup' : 'test-cleanup']);
+});
+
+test('cleanup-only failure keeps application outcome and bounds retained diagnostics', async t => {
+  const f = await fixture(t); await f.request('cleanup-only');
+  await assert.rejects(executeCI(f.config, 'cleanup-only', async cmd => {
+    if (cmd.env.ACTION === 'dev-cleanup') throw new Error('x'.repeat(25000));
+  }));
+  const state = readJson(join(f.config.runs, 'cleanup-only.json'));
+  assert.equal(state.primaryFailure, undefined);
+  assert.equal(state.cleanupFailure.message.length, 20000);
+  assert.equal((await executeCI(f.config, 'cleanup-only', f.execute)).status, 'passed');
+});
+
+for (const recoveryFails of [false, true]) test(`internal controller failure survives recovery failure=${recoveryFails}`, async t => {
+  const f = await fixture(t); await f.request('internal', 'prod');
+  let stops = 0;
+  const result = await executeCI(f.config, 'internal', async (cmd, env) => {
+    if (cmd.env.ACTION === 'test-stop') {
+      if (++stops === 1) writeFileSync(join(f.config.registry, f.manifest.id, 'artifact/version'), 'changed after pre-copy verification');
+      else if (recoveryFails) throw new Error('recovery stop failed');
+    }
+    await f.execute(cmd, env);
+  });
+  assert.equal(result.primaryFailure.message, 'Installed output differs from tested artifact');
+  assert.equal(result.primaryFailure.phase, 'test');
+  if (recoveryFails) {
+    assert.equal(result.status, 'recovery-required');
+    const recovered = await executeCI(f.config, 'internal', f.execute);
+    assert.equal(recovered.status, 'failed');
+    assert.deepEqual(recovered.primaryFailure, result.primaryFailure);
+  } else assert.equal(result.status, 'failed');
+});

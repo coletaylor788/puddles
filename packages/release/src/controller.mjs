@@ -103,6 +103,8 @@ export async function runNext(config, execute = command, options = {}) {
     };
     const leave = () => updateQueue(config.root, state => { state.active = null; });
     const recover = async () => {
+      // Preserve internal controller failures before a recovery command can fail.
+      if (active.error) options.onFailure?.(Object.assign(new Error(active.error), { exitCode: active.errorCode }), active.phase);
       await stopInterruptedChild(active.child, () => save({ child: null, status: 'recovering' }));
       if (!active.recoveryRestored) {
         if (active.phase === 'prod' || active.completed.includes('prod')) {

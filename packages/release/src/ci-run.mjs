@@ -89,11 +89,19 @@ export async function executeCI(config, id, execute = command) {
   const save = patch => { state = { ...state, ...patch, updatedAt: Date.now() }; atomicJson(path, state); };
   const event = (status, patch = {}) => save({ ...patch, events: state.events.at(-1)?.status === status ? state.events :
     [...state.events, { id: `${id}:${state.events.length}`, status, at: Date.now() }] });
+  const saveFailure = (error, phase = state.phase) => {
+    const failure = { phase, message: String(error.message).slice(-20_000), at: Date.now(),
+      ...(Number.isInteger(error.exitCode) ? { exitCode: error.exitCode } : {}) };
+    // Keep the initiating failure when recovery or cleanup subsequently fails.
+    const key = state.status === 'cleaning' || phase?.startsWith('cleanup') ? 'cleanupFailure' : 'primaryFailure';
+    save({ error: failure.message, failurePhase: phase,
+      ...(key === 'cleanupFailure' || !state.primaryFailure ? { [key]: failure } : {}) });
+  };
   const executeObserved = async (spec, env, observe) => {
     const phase = env.PUDDLES_RELEASE_PHASE;
     save({ phase });
     try { return await execute(spec, env, observe); }
-    catch (error) { save({ failurePhase: phase, error: error.message }); throw error; }
+    catch (error) { saveFailure(error, phase); throw error; }
   };
   const run = (spec, phase) => {
     save({ phase });
@@ -173,7 +181,7 @@ export async function executeCI(config, id, execute = command) {
               !/^(restore-|recover-|backup-restart)/.test(phase) && phase !== 'resume-intake' && phase !== 'resume-health') throw new Error('cancelled');
           return executeObserved(spec, { ...env, ...common }, observe);
         };
-        const result = await runNext(config.controller, guardedExecute, { recover: cancel, toolHash: config.toolDigest });
+        const result = await runNext(config.controller, guardedExecute, { recover: cancel, toolHash: config.toolDigest, onFailure: saveFailure });
         if (result.status === 'merge-pending') {
           // Do not restore a partially merged pair blindly or release its lane.
           save({ status: 'recovery-required', error: result.error }); event('recovery-required'); return state;
@@ -182,6 +190,7 @@ export async function executeCI(config, id, execute = command) {
         outcome = 'passed';
       }
     } catch (error) {
+      saveFailure(error);
       if (readQueue(config.controller.root).active?.id === id) {
         save({ status: 'recovery-required', error: error.message }); event('recovery-required'); return state;
       }
@@ -201,6 +210,7 @@ export async function executeCI(config, id, execute = command) {
     rmSync(ownerPath);
     return state;
   } catch (error) {
+    if (owned) saveFailure(error);
     if (owned) event('recovery-required', { status: state.status === 'cleaning' ? 'cleanup-required' : 'recovery-required', error: error.message });
     throw error;
   } finally { lane?.(); unlock(); }
