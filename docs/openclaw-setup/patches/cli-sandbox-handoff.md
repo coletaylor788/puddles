@@ -10,7 +10,7 @@ policy and MCP integrations remain. No additional node or delivery layer.
 Prepare only for effective coding selections. Fail closed on missing required
 sandbox or unmarked mutation bridges. Retain full native projected roots and
 owner disposal. Preserve delegated admission restrictions for other CLI providers
-and all existing cron restrictions.
+and cron requirements without established sandbox placement.
 
 Adapted from upstream PR #163238 head
 3033c7d66ef3f2b500abe406e0e4ca4666eb15ff. All 13 accessible review-comment versions
@@ -59,7 +59,7 @@ These are derived from the exact target APIs, not new upstream feature requests.
 3. **Reuse current mutation authority.** Stable `src/gateway/tool-resolution-authority.ts` distinguishes preparation cancellation from invocation lifetime. Carry the exact invocation assertion rather than a one-time config/owner check or captured request abort alone. Stable `src/infra/fs-safe-remove.ts:106` already supports the required removal callback and its own path pinning.
 4. **Preserve the current grant/Code Mode path.** The existing Claude Code Mode patch adds host skill readers, exact grant fields and single before-tool-hook preparation. New sandbox plumbing must not spread away tool metadata, bypass the native preparer, add a second hook, resurrect a stale cached tool, or widen `toolsAllow`. Direct and nested calls must reach the same sandbox-bound tools and current authority.
 5. **Preserve backend preparation cleanup.** `src/agents/cli-runner/prepare.ts` uses `sequenceCliCleanups`, `cleanupPreparedResources`, and a preparation-failure cleanup catch. Integrate the owner into that existing chain, including failures before grant minting or backend preparation finishes. Do not let a later cleanup assignment overwrite sandbox disposal.
-6. **Keep admission changes scoped.** The November 20 requester authorization permits production rollout of the tested three Claude child exceptions described below. Only bundled Claude is exempted at hidden spawn, visible spawn and execution-time admission. Other CLI backends and cron retain their existing refusal. Existing sandbox preparation, native-tool restriction and MCP authority checks remain required.
+6. **Keep admission changes scoped.** The November 20 requester authorization permits production rollout of the tested three Claude child exceptions described below. Only bundled Claude is exempted at hidden spawn, visible spawn and execution-time admission. Other CLI backends retain their existing refusal; the November 26 cron expansion below adds a separately qualified exception. Existing sandbox preparation, native-tool restriction and MCP authority checks remain required.
 7. **Keep builtin compatibility while failing closed for unmarked bridges.** Changes to shared bridge interfaces touch Docker/Podman, remote shell, OpenShell and MXC even though the configured backend is Docker. Preserve existing root/path/rename/removal semantics and wrapper capability propagation. A minimal adapter is preferable to replacing native implementations.
 
 ## Native 11.5 adaptation
@@ -99,7 +99,7 @@ remains required.
 The only new production conditions exempt `claude-cli` from the hidden-child,
 visible-child and execution-time refusal. Existing delegated tool policy,
 prepared sandbox custody, MCP grants and native cleanup perform the work.
-Other CLI providers and cron retain their guards. No node execution mode,
+Other CLI providers retain their guards. Cron was outside the November 20 expansion. No node execution mode,
 new tool bridge or child-specific sandbox implementation is added.
 
 The deterministic Gateway/Docker prototype passes hidden and visible child
@@ -118,3 +118,18 @@ Visible children inherit the requester's tool cap. A spawn-only requester
 correctly yields a visible child with no coding tools; sandbox admission must
 not bypass that policy. The positive fixture explicitly permits those tools
 on the parent and child.
+
+## Claude cron expansion
+
+The requester authorized verifying cron containment and extending this patch on
+November 26. Sandboxed cron candidates may use bundled `claude-cli` only when
+the prepared session is already classified as sandboxed. An inherited
+requirement on an unstamped root is not enough. The separate captured-runtime
+authority check remains unchanged, as do per-job tool caps and all other CLI
+refusals. This adds no scheduling, model, delivery or sandbox configuration.
+
+The exact latest stable v2026.11.10 and current main still contain the blanket
+cron rejection (checked November 26); upgrading alone does not supply this
+behavior. Qualification and release progress live in the
+[cron plan](../../plans/cron-cli-sandbox.md). Baseline installed runs reproduced
+the refusal. Positive installed cron containment, missing-image refusal and existing chat regression pass. Real subscription DEV/TEST and full CI qualification remain pending.
